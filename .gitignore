@@ -1,0 +1,31 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+tsconfig.tsbuildinfo
+
+# Vercel
+.vercel
+
+# Local env / secrets
+.env
+.env.*
+
+# Local agent / editor state
+.claude
+.DS_Store
+
+# Dev-only generated data (must not be deployed)
+public/sets
+public/api
+
+# Screenshots
+*.png
+
+# One-off / local-only tooling and data:
+#   - scripts/        : NSC aggregation + e2e tests (need external ../nsc_buzzpoints data)
+#                       and the ARCADIA scraper/uploader/validator
+#   - arcadia_testset/: large generated test data
+scripts/
+arcadia_testset/
