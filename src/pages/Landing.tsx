@@ -1,9 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useIndex } from "../data";
+import { useAuth } from "../auth";
 import { SetEntry } from "../types";
 import { Loading, ErrorBox, AuthNav, SearchInput } from "../components/Common";
 import { formatDate, relativeTime } from "../util";
+
+// Access groups for the listing, ordered top → bottom.
+const GROUP_LABELS = [
+  "Your tournaments & shared with you",
+  "Public tournaments",
+  "Invite-only — request access",
+];
+// 0 = owned or granted access, 1 = public, 2 = invite-only without access yet.
+function groupOf(s: SetEntry, user: string | null): 0 | 1 | 2 {
+  const isPublic = (s.visibility ?? "public") === "public";
+  const owned = !!user && s.owner === user;
+  if (owned || (s.hasAccess && !isPublic)) return 0;
+  if (isPublic) return 1;
+  return 2;
+}
 
 const VisBadge = ({ s }: { s: SetEntry }) =>
   s.visibility && s.visibility !== "public" ? (
@@ -21,6 +37,7 @@ const PAGE = 24; // cards shown per "page"; incremented by Show more
 
 export function Landing() {
   const { data, error, loading } = useIndex();
+  const { user } = useAuth();
   const sets = data?.sets ?? [];
 
   const [q, setQ] = useState("");
@@ -46,6 +63,8 @@ export function Landing() {
       return true;
     });
     r = [...r].sort((a, b) => {
+      const g = groupOf(a, user) - groupOf(b, user); // keep access groups contiguous
+      if (g !== 0) return g;
       switch (sort) {
         case "name": return a.name.localeCompare(b.name);
         case "games": return b.numGames - a.numGames;
@@ -55,7 +74,7 @@ export function Landing() {
       }
     });
     return r;
-  }, [sets, q, scoring, vis, sort]);
+  }, [sets, q, scoring, vis, sort, user]);
 
   // Reset paging whenever the result set changes.
   useEffect(() => setLimit(PAGE), [q, scoring, vis, sort]);
@@ -152,26 +171,35 @@ export function Landing() {
         {showControls && filtered.length === 0 && (
           <p className="muted">No tournaments match your search.</p>
         )}
-        {visible.length > 0 && (
-          <div className="card-grid">
-            {visible.map((s) => (
-              <Link key={s.slug} to={`/set/${s.slug}`} className="nav-card">
-                <div className="nav-card-title">
-                  {s.name} <VisBadge s={s} />
-                  {s.editions && s.editions.length > 1 && <span className="edition-count">{s.editions.length} editions</span>}
+        {visible.length > 0 && (() => {
+          const renderCard = (s: SetEntry) => (
+            <Link key={s.slug} to={`/set/${s.slug}`} className="nav-card">
+              <div className="nav-card-title">
+                {s.name} <VisBadge s={s} />
+                {s.editions && s.editions.length > 1 && <span className="edition-count">{s.editions.length} editions</span>}
+              </div>
+              <div className="nav-card-desc">
+                {s.numGames} games · {s.numTeams} teams · {s.numPlayers} players · {s.rounds} rounds
+              </div>
+              {s.createdAt && (
+                <div className="nav-card-date" title={new Date(s.createdAt).toLocaleString()}>
+                  Added {formatDate(s.createdAt)} · {relativeTime(s.createdAt)}
                 </div>
-                <div className="nav-card-desc">
-                  {s.numGames} games · {s.numTeams} teams · {s.numPlayers} players · {s.rounds} rounds
-                </div>
-                {s.createdAt && (
-                  <div className="nav-card-date" title={new Date(s.createdAt).toLocaleString()}>
-                    Added {formatDate(s.createdAt)} · {relativeTime(s.createdAt)}
-                  </div>
-                )}
-              </Link>
-            ))}
-          </div>
-        )}
+              )}
+            </Link>
+          );
+          const sections = ([0, 1, 2] as const)
+            .map((g) => ({ g, items: visible.filter((s) => groupOf(s, user) === g) }))
+            .filter((sec) => sec.items.length);
+          // Only label sections once more than one access group is on screen.
+          if (sections.length <= 1) return <div className="card-grid">{visible.map(renderCard)}</div>;
+          return sections.map((sec) => (
+            <section className="set-section" key={sec.g}>
+              <h3 className="set-section-title">{GROUP_LABELS[sec.g]}</h3>
+              <div className="card-grid">{sec.items.map(renderCard)}</div>
+            </section>
+          ));
+        })()}
         {visible.length < filtered.length && (
           <div className="show-more">
             <button className="btn-secondary" onClick={() => setLimit((n) => n + PAGE)}>

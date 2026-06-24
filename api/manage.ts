@@ -9,11 +9,12 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { currentUser, normEmail, canModerate, loadUsers } from "./_lib/auth.js";
 import {
   readIndex, writeIndex, readSource, readCorrections, aggregateAndWrite,
-  readAccess, writeAccess, readLinks, writeLinks, canViewContent, InviteLink, Visibility,
+  readAccess, writeAccess, readLinks, writeLinks, canViewContent, InviteLink, Visibility, AccessRole,
 } from "./_lib/sets.js";
 import { sendEmail, appUrl, accessRequestBody, accessGrantedBody } from "./_lib/email.js";
 
 const VIS = new Set<Visibility>(["public", "listed", "private"]);
+const ROLES = new Set<string>(["player", "staff", "coach"]);
 const isEmail = (e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
 const setUrl = (slug: string) => `${appUrl()}/set/${slug}`;
 
@@ -34,14 +35,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (body.op === "request-access") {
         if (canViewContent(entry, user)) return res.status(400).json({ error: "You already have access." });
+        const role = String(body.role || "").trim().toLowerCase();
+        const team = String(body.team || "").trim().slice(0, 120);
+        if (!ROLES.has(role)) return res.status(400).json({ error: "Select your role (player, staff, or coach)." });
+        if (!team) return res.status(400).json({ error: "Enter the team you were affiliated with." });
         const u = (await loadUsers())[user];
         const access = await readAccess(slug);
         const prior = access.find((a) => a.email === user);
         if (prior && prior.status === "pending") return res.status(200).json({ ok: true, already: true });
-        const rec = { email: user, name: u?.name || user, at: new Date().toISOString(), status: "pending" as const };
+        const rec = { email: user, name: u?.name || user, at: new Date().toISOString(), status: "pending" as const, role: role as AccessRole, team };
         await writeAccess(slug, [rec, ...access.filter((a) => a.email !== user)]);
         if (entry.owner)
-          await sendEmail({ to: entry.owner, subject: `Access request — ${entry.name}`, html: accessRequestBody(`${rec.name} (${user})`, entry.name, `${setUrl(slug)}/settings`) });
+          await sendEmail({ to: entry.owner, subject: `Access request — ${entry.name}`, html: accessRequestBody(`${rec.name} (${user})`, entry.name, `${setUrl(slug)}/settings`, `${role}, ${team}`) });
         return res.status(200).json({ ok: true });
       }
 

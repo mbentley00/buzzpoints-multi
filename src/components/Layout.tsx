@@ -37,10 +37,16 @@ export function SetLayout() {
   const denied = !!error && /\b(401|403)\b/.test(error);
   const [reqState, setReqState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [reqMsg, setReqMsg] = useState("");
+  const [reqRole, setReqRole] = useState("");
+  const [reqTeam, setReqTeam] = useState("");
   async function requestAccess() {
+    if (!reqRole || !reqTeam.trim()) {
+      setReqState("error"); setReqMsg("Select your role and enter the team you were affiliated with.");
+      return;
+    }
     setReqState("sending"); setReqMsg("");
     try {
-      const r = await fetch("/api/manage", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ slug, op: "request-access" }) });
+      const r = await fetch("/api/manage", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ slug, op: "request-access", role: reqRole, team: reqTeam.trim() }) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || `Failed (${r.status})`);
       setReqState("sent");
@@ -60,7 +66,6 @@ export function SetLayout() {
 
   const base = `/set/${slug}`;
   const tabs = [
-    { to: base, label: "Overview", end: true },
     { to: `${base}/tossup`, label: "Tossups" },
     ...(meta?.hasBonuses ? [{ to: `${base}/bonus`, label: "Bonuses" }] : []),
     { to: `${base}/packet`, label: "Packets" },
@@ -82,15 +87,19 @@ export function SetLayout() {
           <Link to="/" className="brand" title="All tournaments">
             Buzzpoints
           </Link>
-          {meta?.setName && <span className="brand-set" title={meta.setName}>{meta.setName}</span>}
-          <nav className="nav">
+          {meta?.setName && (
+            <NavLink to={base} end className={({ isActive }) => "brand-set" + (isActive ? " active" : "")} title={meta.setName}>
+              {meta.setName}
+            </NavLink>
+          )}
+          <div className="topbar-auth"><AuthNav /></div>
+          <nav className="nav nav-tabs">
             {meta &&
               tabs.map((t) => (
-                <NavLink key={t.to} to={t.to} end={t.end} className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}>
+                <NavLink key={t.to} to={t.to} className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}>
                   {t.label}
                 </NavLink>
               ))}
-            <AuthNav />
           </nav>
         </div>
       </header>
@@ -120,10 +129,25 @@ export function SetLayout() {
                 <span className="ok-msg">Access request sent — the owner will review it.</span>
               ) : (
                 <>
-                  Your account hasn't been invited to view it.{" "}
-                  <button className="btn-link" disabled={reqState === "sending"} onClick={requestAccess}>
-                    {reqState === "sending" ? "Sending…" : "Request access"}
-                  </button>
+                  <div>Your account hasn't been invited to view it. To request access, tell the owner how you were affiliated with this tournament.</div>
+                  <div className="request-form">
+                    <label className="field">
+                      <span>Your role</span>
+                      <select value={reqRole} onChange={(e) => setReqRole(e.target.value)}>
+                        <option value="">Select a role…</option>
+                        <option value="player">Player</option>
+                        <option value="staff">Staff</option>
+                        <option value="coach">Coach</option>
+                      </select>
+                    </label>
+                    <label className="field">
+                      <span>Team you were affiliated with</span>
+                      <input type="text" value={reqTeam} placeholder="e.g. Lincoln High School A" onChange={(e) => setReqTeam(e.target.value)} />
+                    </label>
+                    <button className="btn-primary btn-sm" disabled={reqState === "sending"} onClick={requestAccess}>
+                      {reqState === "sending" ? "Sending…" : "Request access"}
+                    </button>
+                  </div>
                   {reqState === "error" && <span className="error-inline"> {reqMsg}</span>}
                 </>
               )

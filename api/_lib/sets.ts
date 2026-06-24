@@ -110,10 +110,12 @@ export function redactContent(file: string, data: any): any {
   }
 }
 // Client-safe view of an entry (never leak the invite list to non-owners).
+// `hasAccess` lets the list group sets the viewer can already open (owned, invited,
+// or public) without exposing who else is invited.
 export function sanitizeEntry(e: SetEntry, user: string | null) {
   const isOwner = !!user && user === e.owner;
   const { invites, ...rest } = e;
-  return { ...rest, visibility: effectiveVisibility(e), inviteCount: (invites || []).length, ...(isOwner ? { invites } : {}) };
+  return { ...rest, visibility: effectiveVisibility(e), inviteCount: (invites || []).length, hasAccess: canViewContent(e, user), ...(isOwner ? { invites } : {}) };
 }
 export interface CorrectionRequest {
   id: string;
@@ -144,7 +146,9 @@ export const readRequests = (slug: string) => readBlobJson<CorrectionRequest[]>(
 export const writeRequests = (slug: string, r: CorrectionRequest[]) => writeJson(`sets/${slug}/_requests.json`, r);
 
 // Access requests: a logged-in user asks the owner to be invited to a set.
-export interface AccessRequest { email: string; name: string; at: string; status: "pending" | "approved" | "denied"; }
+// They must declare their affiliation: a role and the team they were part of.
+export type AccessRole = "player" | "staff" | "coach";
+export interface AccessRequest { email: string; name: string; at: string; status: "pending" | "approved" | "denied"; role?: AccessRole; team?: string; }
 export const readAccess = (slug: string) => readBlobJson<AccessRequest[]>(`sets/${slug}/_access.json`, false).then((r) => r || []);
 export const writeAccess = (slug: string, r: AccessRequest[]) => writeJson(`sets/${slug}/_access.json`, r);
 

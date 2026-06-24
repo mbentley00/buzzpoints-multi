@@ -42,7 +42,7 @@ export function BuzzerRaces() {
   const columns: Column<BuzzerRace>[] = [
     { key: "buzzes", label: "Buzzes", align: "right", sortVal: (r) => r.buzzCount, render: (r) => <span className="race-count">{r.buzzCount}</span>, title: "Buzzes landing within a 5-word window — the contested clue" },
     {
-      key: "breakdown", label: "P / C / X", align: "center", sortVal: (r) => r.powers,
+      key: "breakdown", label: "P / C / N", align: "center", sortVal: (r) => r.powers,
       render: (r) => (
         <span className="mono breakdown">
           {meta.hasPower && <><span className="b-pwr">{r.powers}</span>/</>}

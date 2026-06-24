@@ -28,7 +28,7 @@ export function Settings() {
   const [date, setDate] = useState("");
   const [invites, setInvites] = useState<string[]>([]);
   const [newInvite, setNewInvite] = useState("");
-  const [accessRequests, setAccessRequests] = useState<{ email: string; name: string; at: string }[]>([]);
+  const [accessRequests, setAccessRequests] = useState<{ email: string; name: string; at: string; role?: string; team?: string }[]>([]);
   const [links, setLinks] = useState<{ id: string; label: string; at: string; revoked?: boolean; uses: number }[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -159,7 +159,12 @@ export function Settings() {
             <ul className="invite-list">
               {accessRequests.map((a) => (
                 <li key={a.email}>
-                  <span><strong>{a.name}</strong> <span className="muted">· {a.email}</span></span>
+                  <span>
+                    <strong>{a.name}</strong> <span className="muted">· {a.email}</span>
+                    {(a.role || a.team) && (
+                      <span className="muted"> · {[a.role, a.team].filter(Boolean).join(" — ")}</span>
+                    )}
+                  </span>
                   <span className="req-actions">
                     <button className="btn-primary btn-sm" disabled={busy} onClick={() => decide(a.email, true)}>Approve</button>
                     <button className="btn-link" disabled={busy} onClick={() => decide(a.email, false)}>Deny</button>

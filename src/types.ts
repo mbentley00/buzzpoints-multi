@@ -19,6 +19,7 @@ export interface SetEntry {
   editions?: EditionSummary[];
   visibility?: Visibility;
   inviteCount?: number;
+  hasAccess?: boolean; // viewer can already open this set (owned, invited, or public)
   invites?: string[]; // only present for the owner
   autoPublicAt?: string | null;
   numGames: number;

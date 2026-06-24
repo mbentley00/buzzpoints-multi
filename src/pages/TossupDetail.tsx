@@ -20,11 +20,16 @@ function annotClass(v: number): string {
   return "an-zero";
 }
 
+// Effective buzz position: imprecise buzzes collapse to the power mark.
+const effIdx = (d: TossupDetail, b: Buzz) =>
+  b.imprecise && d.powerIndex !== null ? d.powerIndex : b.wordIndex;
+
 /** Question text: each buzzed word becomes a blue chip with value[count]
- *  annotations above it; an orange dashed line marks the average buzz. */
-function Question({ d }: { d: TossupDetail }) {
-  const P = d.powerIndex;
-  const eff = (b: Buzz) => (b.imprecise && P !== null ? P : b.wordIndex);
+ *  annotations above it; an orange dashed line marks the average buzz. Hovering
+ *  any word reveals its 1-based index (handy for corrections) and, via
+ *  onHoverWord, highlights the buzzers at that word in the buzz list. */
+function Question({ d, onHoverWord }: { d: TossupDetail; onHoverWord: (i: number | null) => void }) {
+  const eff = (b: Buzz) => effIdx(d, b);
 
   const byWord = new Map<number, Buzz[]>();
   for (const b of d.buzzes) {
@@ -49,7 +54,13 @@ function Question({ d }: { d: TossupDetail }) {
       {d.words.map((w, i) => {
         const bz = byWord.get(i);
         return (
-          <span key={i} className="q-tok">
+          <span
+            key={i}
+            className="q-tok"
+            onMouseEnter={() => onHoverWord(i)}
+            onMouseLeave={() => onHoverWord(null)}
+          >
+            <span className="q-idx" aria-hidden="true">{i + 1}</span>
             {bz ? (
               <span className="q-word">
                 <span className="q-annots">
@@ -145,14 +156,14 @@ function BuzzEditor({ d, b, slug, isOwner, teammates, onClose, onApplied }: {
   );
 }
 
-function BuzzRow({ d, b, slug, i, isOwner, canEdit, editing, teammates, onEdit, onClose, onApplied }: {
+function BuzzRow({ d, b, slug, i, isOwner, canEdit, editing, highlight, teammates, onEdit, onClose, onApplied }: {
   d: TossupDetail; b: Buzz; slug: string; i: number; isOwner: boolean; canEdit: boolean; editing: boolean;
-  teammates: string[]; onEdit: () => void; onClose: () => void; onApplied: () => void;
+  highlight: boolean; teammates: string[]; onEdit: () => void; onClose: () => void; onApplied: () => void;
 }) {
   const t = tier(b.value);
   return (
     <>
-      <tr className={`buzz-row ${rowCls[t]}`}>
+      <tr className={`buzz-row ${rowCls[t]}${highlight ? " buzz-hl" : ""}`}>
         <td className="buzz-who">
           <span className="buzz-player">
             {b.playerId ? <Link className="link" to={`/set/${slug}/player/${b.playerId}`}>{b.player}</Link> : b.player}
@@ -184,6 +195,7 @@ export function TossupDetailPage() {
   const { data, error, loading } = useSetJson<Record<string, TossupDetail>>(slug, dispFile, nonce);
   const { data: rosters } = useSetJson<Rosters>(slug, version !== "all" ? `editions/${version}/rosters.json` : "rosters.json", nonce);
   const [editing, setEditing] = useState<number | null>(null);
+  const [hoverWord, setHoverWord] = useState<number | null>(null);
 
   if (loading) return <Loading />;
   if (error) return <ErrorBox error={error} />;
@@ -214,7 +226,7 @@ export function TossupDetailPage() {
       <div className="tu-grid">
         <div className="tu-left">
           <h1>Packet {d.round}: Tossup {d.num}</h1>
-          <Question d={d} />
+          <Question d={d} onHoverWord={setHoverWord} />
           <p className="tu-answer">ANSWER: <Html html={d.answer} /></p>
           <p className="subtitle">{d.category} · <span className="muted">{d.subcategory}</span></p>
         </div>
@@ -236,7 +248,8 @@ export function TossupDetailPage() {
                 {sorted.map((b, i) => (
                   <BuzzRow
                     key={i} d={d} b={b} slug={slug} i={i} isOwner={isOwner} canEdit={!!user}
-                    editing={editing === i} teammates={rosters?.[b.team] ?? []}
+                    editing={editing === i} highlight={hoverWord !== null && effIdx(d, b) === hoverWord}
+                    teammates={rosters?.[b.team] ?? []}
                     onEdit={() => setEditing(i)} onClose={() => setEditing(null)}
                     onApplied={() => { setEditing(null); setNonce((n) => n + 1); }}
                   />

@@ -9,6 +9,18 @@ import {
   getSetEntry, readRequests, writeRequests, readSource, readCorrections, writeCorrections,
   aggregateAndWrite, mergeCorrection, validCorrection, canView, CorrectionRequest,
 } from "./_lib/sets.js";
+import { sendEmail, appUrl, correctionRequestBody } from "./_lib/email.js";
+
+// Human-readable one-line summary of a proposed correction, for the owner email.
+function correctionSummary(c: any): string {
+  const where = `Round ${c.round}, Q${c.num} (${c.team})`;
+  const parts: string[] = [];
+  if (c.toPlayer !== undefined)
+    parts.push(`buzz reassigned ${c.fromPlayer ?? "—"} → ${c.toPlayer ?? "—"}`);
+  if (c.toWordIndex !== undefined)
+    parts.push(`buzz word moved ${c.fromWordIndex ?? "—"} → ${c.toWordIndex ?? "—"}`);
+  return `${where}: ${parts.join("; ") || "edit"}.`;
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const user = currentUser(req);
@@ -45,6 +57,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       };
       reqs.unshift(r);
       await writeRequests(slug, reqs);
+      if (entry.owner && entry.owner !== user)
+        await sendEmail({
+          to: entry.owner,
+          subject: `Edit suggested — ${entry.name}`,
+          html: correctionRequestBody(user, entry.name, correctionSummary(r.correction), r.desc || "", `${appUrl()}/set/${slug}/requests`),
+        });
       return res.status(200).json({ ok: true, id: r.id });
     } catch (e) {
       return res.status(500).json({ error: (e as Error).message });

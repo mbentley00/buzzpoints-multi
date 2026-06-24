@@ -34,11 +34,15 @@ const btn = (href: string, label: string) =>
 export const verifyEmailBody = (name: string, url: string) =>
   wrap(`<p>Hi ${esc(name)},</p><p>Confirm your email to finish creating your Buzzpoints account.</p>${btn(url, "Verify email")}<p style="font-size:12px;color:#888">This link expires in 24 hours. If you didn't sign up, ignore this email.</p>`);
 
-export const accessRequestBody = (requester: string, setName: string, url: string) =>
-  wrap(`<p><strong>${esc(requester)}</strong> requested access to <strong>${esc(setName)}</strong>.</p><p>Review and approve or deny the request in the tournament's settings.</p>${btn(url, "Review request")}`);
+export const accessRequestBody = (requester: string, setName: string, url: string, affiliation?: string) =>
+  wrap(`<p><strong>${esc(requester)}</strong> requested access to <strong>${esc(setName)}</strong>.</p>${affiliation ? `<p><strong>Affiliation:</strong> ${esc(affiliation)}</p>` : ""}<p>Review and approve or deny the request in the tournament's settings.</p>${btn(url, "Review request")}`);
 
 export const accessGrantedBody = (setName: string, url: string) =>
   wrap(`<p>You've been granted access to <strong>${esc(setName)}</strong> on Buzzpoints.</p>${btn(url, "Open tournament")}`);
+
+// Sent to the owner when a viewer submits a correction (edit) request.
+export const correctionRequestBody = (requester: string, setName: string, summary: string, desc: string, url: string) =>
+  wrap(`<p><strong>${esc(requester)}</strong> suggested an edit to <strong>${esc(setName)}</strong>.</p><p>${esc(summary)}</p>${desc ? `<p><strong>Note:</strong> ${esc(desc)}</p>` : ""}<p>Review and approve or reject it on the tournament's Requests page.</p>${btn(url, "Review edit")}`);
 
 // Sent to moderators/admins when a first-time poster submits a tournament.
 export const submissionPendingBody = (submitter: string, setName: string, url: string) =>

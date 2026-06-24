@@ -19,6 +19,12 @@
   /* Bonus conversion tiers: a green → gold → clay → red gradient in the same family. */
   --tier-gold: #a98c45;   --tier-gold-h: #9b8040;
   --tier-clay: #b06f49;   --tier-clay-h: #a26542;
+  /* Bonus conversion list: its own indigo → mauve heat scale (full → zero), kept
+     visually separate from the tossup buzz palette so the two tables don't blur. */
+  --bonus-full: #45599b;  --bonus-full-h: #3d4f8c;
+  --bonus-part: #6a63a4;  --bonus-part-h: #5f5996;
+  --bonus-low:  #8a6298;  --bonus-low-h:  #7c5889;
+  --bonus-zero: #9c6079;  --bonus-zero-h: #8c566c;
 }
 
 * { box-sizing: border-box; }
@@ -69,6 +75,8 @@ a:hover { text-decoration: underline; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.brand-set:hover { color: #fff; text-decoration: none; }
+.brand-set.active { color: #fff; }
 .nav { display: flex; gap: 20px; flex-wrap: wrap; }
 .nav-link {
   color: rgba(255, 255, 255, 0.78);
@@ -78,6 +86,10 @@ a:hover { text-decoration: underline; }
 }
 .nav-link:hover { color: #fff; text-decoration: none; }
 .nav-link.active { color: #fff; font-weight: 700; }
+/* Set header: auth (username + log out) sits on the top row, right-aligned, so the
+   tab row below has the full width. */
+.topbar-auth { margin-left: auto; }
+.nav-tabs { flex-basis: 100%; padding-bottom: 6px; }
 
 .content { max-width: 1180px; width: 100%; margin: 0 auto; padding: 26px 24px 60px; flex: 1; }
 .footer {
@@ -162,6 +174,12 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
 .set-card-title { font-size: 16px; font-weight: 700; }
 .set-card-meta, .nav-card-desc { color: var(--muted); margin-top: 4px; }
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.set-section { margin-top: 22px; }
+.set-section:first-of-type { margin-top: 0; }
+.set-section-title {
+  font-size: 12px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 10px;
+}
 .nav-card-title { font-weight: 700; font-size: 15px; }
 .nav-card-date { color: var(--muted); font-size: 12px; margin-top: 6px; }
 
@@ -292,6 +310,11 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
   font-size: 13px;
 }
 .note-imprecise { background: #f7f7f5; border: 1px solid var(--line); color: #444; }
+.request-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-top: 10px; }
+.request-form .field { gap: 4px; }
+.request-form input[type="text"], .request-form select {
+  padding: 6px 8px; border: 1px solid #cdd5e0; border-radius: 4px; font: inherit; min-width: 200px;
+}
 
 .loading { padding: 30px; color: var(--muted); }
 .error-box {
@@ -406,7 +429,15 @@ mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
 @media (max-width: 900px) { .tu-grid { grid-template-columns: 1fr; } }
 .tu-left h1 { font-size: 20px; margin-bottom: 14px; }
 .q-text { font-size: 15px; line-height: 3.0; margin: 0; }
-.q-tok { white-space: normal; }
+.q-tok { white-space: normal; position: relative; }
+/* Subtle 1-based word index, revealed on hover — handy when entering corrections. */
+.q-idx {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: -0.9em; font-size: 9.5px; font-weight: 600; line-height: 1;
+  color: var(--muted); background: var(--bg); padding: 1px 3px; border-radius: 3px;
+  opacity: 0; pointer-events: none; transition: opacity 0.08s ease; white-space: nowrap;
+}
+.q-tok:hover > .q-idx { opacity: 0.8; }
 .q-word { display: inline-flex; flex-direction: column; align-items: center; vertical-align: bottom; }
 .q-annots { display: flex; gap: 5px; height: 13px; line-height: 1; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
 .q-annot.an-power { color: var(--power); }
@@ -495,18 +526,22 @@ mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
 .data-table tbody tr.buzz-row-get:hover td { background: var(--get-bg-h); }
 .data-table tbody tr.buzz-row-neg td { background: var(--neg-bg); }
 .data-table tbody tr.buzz-row-neg:hover td { background: var(--neg-bg-h); }
+/* Highlight buzzers at the word currently hovered in the question text. The inset
+   overlay lightens whatever tier background the row has; a white left edge marks it. */
+.data-table tbody tr.buzz-row.buzz-hl td { box-shadow: inset 0 0 0 9999px rgba(255, 255, 255, 0.18); }
+.data-table tbody tr.buzz-row.buzz-hl td:first-child { box-shadow: inset 0 0 0 9999px rgba(255, 255, 255, 0.18), inset 3px 0 0 #fff; }
 
 /* colored conversion rows on the bonus detail view (by parts converted) */
 .data-table tbody tr.bonus-row td { color: #fff; border-bottom-color: rgba(255, 255, 255, 0.18); }
 .data-table tbody tr.bonus-row a { color: #fff; text-decoration: underline; }
-.data-table tbody tr.bonus-row-full td { background: var(--get-bg); }
-.data-table tbody tr.bonus-row-full:hover td { background: var(--get-bg-h); }
-.data-table tbody tr.bonus-row-part td { background: var(--tier-gold); }
-.data-table tbody tr.bonus-row-part:hover td { background: var(--tier-gold-h); }
-.data-table tbody tr.bonus-row-low td { background: var(--tier-clay); }
-.data-table tbody tr.bonus-row-low:hover td { background: var(--tier-clay-h); }
-.data-table tbody tr.bonus-row-zero td { background: var(--neg-bg); }
-.data-table tbody tr.bonus-row-zero:hover td { background: var(--neg-bg-h); }
+.data-table tbody tr.bonus-row-full td { background: var(--bonus-full); }
+.data-table tbody tr.bonus-row-full:hover td { background: var(--bonus-full-h); }
+.data-table tbody tr.bonus-row-part td { background: var(--bonus-part); }
+.data-table tbody tr.bonus-row-part:hover td { background: var(--bonus-part-h); }
+.data-table tbody tr.bonus-row-low td { background: var(--bonus-low); }
+.data-table tbody tr.bonus-row-low:hover td { background: var(--bonus-low-h); }
+.data-table tbody tr.bonus-row-zero td { background: var(--bonus-zero); }
+.data-table tbody tr.bonus-row-zero:hover td { background: var(--bonus-zero-h); }
 
 /* first-sentence */
 .fs-list { display: flex; flex-direction: column; gap: 10px; }
@@ -518,21 +553,23 @@ mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
 .fs-sentence { font-size: 15px; line-height: 1.9; margin: 4px 0 10px; }
 .fs-ellipsis { color: var(--muted); }
 .fs-buzzers { display: flex; flex-wrap: wrap; gap: 6px 8px; }
+/* Buzzer chips are filled with the tier color (matching the tossup page's buzz
+   rows) so both pages share one palette. */
 .fs-buzzer {
   font-size: 12.5px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: #f4f4f4;
-  border: 1px solid var(--line);
+  border: 1px solid transparent;
   border-radius: 3px;
   padding: 2px 8px;
-  color: var(--ink);
+  color: #fff;
 }
-.fs-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-.fs-buzzer.buzz-power .fs-dot { background: var(--power); }
-.fs-buzzer.buzz-get .fs-dot { background: var(--get); }
-.fs-buzzer.buzz-neg .fs-dot { background: var(--neg); }
+.fs-buzzer .muted { color: rgba(255, 255, 255, 0.78); }
+.fs-buzzer.buzz-power { background: var(--power-bg); }
+.fs-buzzer.buzz-get { background: var(--get-bg); }
+.fs-buzzer.buzz-neg { background: var(--neg-bg); }
+.fs-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: rgba(255, 255, 255, 0.9); }
 
 /* create-tournament form */
 .create-form { max-width: 560px; display: flex; flex-direction: column; gap: 16px; margin-top: 14px; }
