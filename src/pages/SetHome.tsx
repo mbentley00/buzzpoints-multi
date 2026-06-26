@@ -1,9 +1,11 @@
 import { Link, useParams } from "react-router-dom";
 import { useSetCtx } from "../components/Layout";
+import { ResultsStandings } from "./Results";
 
 export function SetHome() {
   const { meta } = useSetCtx();
   const { slug = "" } = useParams();
+  if (meta.kind === "results") return <ResultsStandings />;
   const base = `/set/${slug}`;
   const links = [
     { to: `${base}/tossup`, label: "Tossups", desc: `${meta.numTossups} questions` },

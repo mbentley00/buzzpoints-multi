@@ -18,6 +18,7 @@ import { CategoriesTossup } from "./pages/CategoriesTossup";
 import { CategoryPlayersPage } from "./pages/CategoryPlayers";
 import { CategoriesBonus } from "./pages/CategoriesBonus";
 import { Editions } from "./pages/Editions";
+import { ResultsPlayers, ResultsGames } from "./pages/Results";
 import { Login } from "./pages/Login";
 import { Verify } from "./pages/Verify";
 import { Join } from "./pages/Join";
@@ -51,6 +52,8 @@ export default function App() {
         <Route path="category/tossup/:cid/players" element={<CategoryPlayersPage />} />
         <Route path="category/bonus" element={<CategoriesBonus />} />
         <Route path="editions" element={<Editions />} />
+        <Route path="players" element={<ResultsPlayers />} />
+        <Route path="games" element={<ResultsGames />} />
         <Route path="requests" element={<Requests />} />
         <Route path="settings" element={<Settings />} />
       </Route>

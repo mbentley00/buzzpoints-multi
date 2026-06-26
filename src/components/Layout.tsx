@@ -65,20 +65,29 @@ export function SetLayout() {
   };
 
   const base = `/set/${slug}`;
-  const tabs = [
-    { to: `${base}/tossup`, label: "Tossups" },
-    ...(meta?.hasBonuses ? [{ to: `${base}/bonus`, label: "Bonuses" }] : []),
-    { to: `${base}/packet`, label: "Packets" },
-    { to: `${base}/buzzer-races`, label: "Buzzer Races" },
-    { to: `${base}/first-sentence`, label: "First Sentence" },
-    { to: `${base}/player`, label: "Players" },
-    { to: `${base}/team`, label: "Teams" },
-    { to: `${base}/category/tossup`, label: "Categories (Tossup)" },
-    ...(meta?.hasBonuses ? [{ to: `${base}/category/bonus`, label: "Categories (Bonus)" }] : []),
-    ...(hasEditions || isOwner ? [{ to: `${base}/editions`, label: "Editions" }] : []),
-    ...(isOwner ? [{ to: `${base}/requests`, label: "Requests" }] : []),
-    ...(isOwner ? [{ to: `${base}/settings`, label: "Settings" }] : []),
-  ];
+  const isResults = meta?.kind === "results";
+  // Results (YellowFruit) tournaments have only box-score stats — the set name
+  // links to Standings; buzz/question tabs don't apply.
+  const tabs = isResults
+    ? [
+        { to: `${base}/players`, label: "Players" },
+        { to: `${base}/games`, label: "Games" },
+        ...(isOwner ? [{ to: `${base}/settings`, label: "Settings" }] : []),
+      ]
+    : [
+        { to: `${base}/tossup`, label: "Tossups" },
+        ...(meta?.hasBonuses ? [{ to: `${base}/bonus`, label: "Bonuses" }] : []),
+        { to: `${base}/packet`, label: "Packets" },
+        { to: `${base}/buzzer-races`, label: "Buzzer Races" },
+        { to: `${base}/first-sentence`, label: "First Sentence" },
+        { to: `${base}/player`, label: "Players" },
+        { to: `${base}/team`, label: "Teams" },
+        { to: `${base}/category/tossup`, label: "Categories (Tossup)" },
+        ...(meta?.hasBonuses ? [{ to: `${base}/category/bonus`, label: "Categories (Bonus)" }] : []),
+        ...(hasEditions || isOwner ? [{ to: `${base}/editions`, label: "Editions" }] : []),
+        ...(isOwner ? [{ to: `${base}/requests`, label: "Requests" }] : []),
+        ...(isOwner ? [{ to: `${base}/settings`, label: "Settings" }] : []),
+      ];
 
   return (
     <div className="app">

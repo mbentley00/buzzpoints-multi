@@ -13,7 +13,9 @@ export interface PendingSubmission {
   scoring: string;
   at: string;        // ISO submitted-at
 }
-// The full upload, replayed through the normal create path on approval.
+// The full upload, replayed through the normal create path on approval. For a
+// "results" submission, `yf` holds the raw YellowFruit/QBJ JSON and packets/games
+// are unused.
 export interface PendingPayload {
   name: string;
   scoring: string;
@@ -21,8 +23,10 @@ export interface PendingPayload {
   visibility?: string;
   autoPublicAt?: string | null;
   edition?: string;
-  packets: { name: string; json: any }[];
-  games: { name: string; json: any }[];
+  kind?: "buzz" | "results";
+  yf?: any;
+  packets?: { name: string; json: any }[];
+  games?: { name: string; json: any }[];
 }
 
 async function writeJson(path: string, obj: unknown) {

@@ -15,6 +15,7 @@ export interface SetEntry {
   name: string;
   scoring: string;
   hasBonuses: boolean;
+  kind?: "buzz" | "results";
   owner?: string;
   editions?: EditionSummary[];
   visibility?: Visibility;
@@ -77,15 +78,31 @@ export interface Meta {
   hasPower: boolean;
   hasNeg: boolean;
   hasBonuses: boolean;
+  kind?: "buzz" | "results";
   numGames: number;
   numTeams: number;
   numPlayers: number;
   numTossups: number;
   numBonuses: number;
   rounds: number[];
+  phases?: string[];
   editions?: EditionSummary[];
   generatedAt: string;
 }
+
+// ---- "results" (YellowFruit/QBJ box-score) tournament shapes ----
+export interface ResultsTeam {
+  id: string; name: string; games: number; wins: number; losses: number; ties: number;
+  pct: number; pts: number; tuPts: number; bonusPts: number; powers: number; gets: number; negs: number;
+  tuh: number; ppg: number; pp20tuh: number; bonusesHeard: number; ppb: number | null; rank: number;
+}
+export interface ResultsPlayer {
+  id: string; name: string; team: string; teamId: string | null; games: number; tuh: number;
+  powers: number; gets: number; negs: number; pts: number; ppg: number; pp20tuh: number; ptsPerTuh: number;
+}
+export interface ResultsGamePlayer { name: string; tuh: number; powers: number; gets: number; negs: number; pts: number; }
+export interface ResultsGameTeam { team: string; points: number; bonusPoints: number; tuPts: number; players: ResultsGamePlayer[]; }
+export interface ResultsGame { phase: string; round: number; tiebreaker: boolean; tossupsRead: number; teams: ResultsGameTeam[]; }
 
 export interface TossupRow {
   id: string;

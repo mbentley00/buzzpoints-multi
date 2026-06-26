@@ -6,7 +6,9 @@ import { SCORINGS } from "./scoring.js";
 import {
   readIndex, writeIndex, writeSource, writeCorrections, writeRequests,
   aggregateAndWrite, SetSource, SetEntry, Visibility,
+  writeYf, writeResultsCorrections, aggregateResultsAndWrite,
 } from "./sets.js";
+import { parseYellowFruit } from "./yellowfruit.js";
 
 // A file payload: either inline JSON (legacy / small uploads) or a reference to
 // a blob the client uploaded directly (resolved to `json` before aggregation).
@@ -74,6 +76,49 @@ export async function createTournament(body: CreateBody, owner: string): Promise
     visibility, invites: [], autoPublicAt,
     numGames: meta.numGames, numTeams: meta.numTeams, numPlayers: meta.numPlayers,
     numTossups: meta.numTossups, rounds: meta.rounds.length, createdAt,
+  };
+  await writeIndex({ sets: [entry, ...index.sets.filter((s) => s.slug !== slug)] });
+  return { slug };
+}
+
+export interface CreateResultsBody {
+  name?: string; yf?: any; visibility?: string; autoPublicAt?: string | null;
+}
+
+// Create a "results" tournament from an uploaded YellowFruit/QBJ file. Scoring,
+// bonus presence, and the name default come from the file itself.
+export async function createResultsTournament(body: CreateResultsBody, owner: string): Promise<{ slug: string }> {
+  if (!body.yf) throw new CreateError(400, "A YellowFruit (.yft) or QBJ file is required.");
+  let yf;
+  try { yf = parseYellowFruit(body.yf); }
+  catch (e) { throw new CreateError(400, (e as Error).message); }
+
+  const name = (body.name || "").trim() || yf.name;
+  if (!name) throw new CreateError(400, "Tournament name is required.");
+
+  const visibility: Visibility = VISIBILITIES.has(body.visibility as Visibility) ? (body.visibility as Visibility) : "listed";
+  const createdAt = new Date().toISOString();
+  let autoPublicAt: string | null = null;
+  if (visibility !== "public") {
+    if (body.autoPublicAt === null) autoPublicAt = null;
+    else if (typeof body.autoPublicAt === "string" && !Number.isNaN(Date.parse(body.autoPublicAt))) autoPublicAt = new Date(body.autoPublicAt).toISOString();
+    else autoPublicAt = new Date(Date.now() + TWO_YEARS_MS).toISOString();
+  }
+
+  const index = await readIndex();
+  const taken = new Set(index.sets.map((s) => s.slug));
+  let slug = slugify(name);
+  if (taken.has(slug)) { let n = 2; while (taken.has(`${slug}-${n}`)) n++; slug = `${slug}-${n}`; }
+
+  await writeYf(slug, body.yf);
+  await writeResultsCorrections(slug, []);
+  const { meta } = await aggregateResultsAndWrite(slug, body.yf, []);
+
+  const entry: SetEntry = {
+    slug, name, scoring: yf.scoringId, hasBonuses: meta.hasBonuses, kind: "results", owner,
+    visibility, invites: [], autoPublicAt,
+    numGames: meta.numGames, numTeams: meta.numTeams, numPlayers: meta.numPlayers,
+    numTossups: 0, rounds: (meta.rounds || []).length, createdAt,
   };
   await writeIndex({ sets: [entry, ...index.sets.filter((s) => s.slug !== slug)] });
   return { slug };

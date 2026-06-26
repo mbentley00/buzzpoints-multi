@@ -4,6 +4,8 @@ import { put, del } from "@vercel/blob";
 import { readBlobJson } from "./blob.js";
 import { aggregate, PacketFile, GameFile, Correction } from "./aggregate.js";
 import { getScoring } from "./scoring.js";
+import { parseYellowFruit } from "./yellowfruit.js";
+import { aggregateResults, ResultsCorrection } from "./resultsAggregate.js";
 
 export interface Edition {
   id: string;
@@ -33,6 +35,9 @@ export interface SetEntry {
   name: string;
   scoring: string;
   hasBonuses: boolean;
+  // "results" = imported from a YellowFruit/QBJ box score (no buzz/question data);
+  // absent/"buzz" = the default packet + QBJ buzz-level tournament.
+  kind?: "buzz" | "results";
   owner: string;
   // A tournament may have multiple editions (mirrors). Top-level counts are the
   // COMBINED totals; per-edition summaries live here. Absent => single edition.
@@ -151,6 +156,24 @@ export type AccessRole = "player" | "staff" | "coach";
 export interface AccessRequest { email: string; name: string; at: string; status: "pending" | "approved" | "denied"; role?: AccessRole; team?: string; }
 export const readAccess = (slug: string) => readBlobJson<AccessRequest[]>(`sets/${slug}/_access.json`, false).then((r) => r || []);
 export const writeAccess = (slug: string, r: AccessRequest[]) => writeJson(`sets/${slug}/_access.json`, r);
+
+// YellowFruit "results" tournaments: the raw uploaded YF/QBJ JSON (kept for
+// re-export round-tripping) and the buzz-style scoring corrections applied on top.
+export const readYf = (slug: string) => readBlobJson<any>(`sets/${slug}/_yf.json`, false);
+export const writeYf = (slug: string, raw: unknown) => writeJson(`sets/${slug}/_yf.json`, raw);
+export const readResultsCorrections = (slug: string) =>
+  readBlobJson<ResultsCorrection[]>(`sets/${slug}/_results_corrections.json`, false).then((c) => c || []);
+export const writeResultsCorrections = (slug: string, c: ResultsCorrection[]) =>
+  writeJson(`sets/${slug}/_results_corrections.json`, c);
+
+// Parse + aggregate a YF results tournament and write its stat files. Returns the
+// computed meta (counts used to update the index entry).
+export async function aggregateResultsAndWrite(slug: string, rawYf: unknown, corrections: ResultsCorrection[]) {
+  const yf = parseYellowFruit(rawYf);
+  const out = aggregateResults(yf, getScoring(yf.scoringId), corrections);
+  await writeFiles(`sets/${slug}/`, out);
+  return { meta: out["meta.json"] as any, yf };
+}
 
 // Invite links: a shareable token any logged-in account can redeem to join a set.
 export interface InviteLink { id: string; label: string; by: string; at: string; revoked?: boolean; uses: number; }
