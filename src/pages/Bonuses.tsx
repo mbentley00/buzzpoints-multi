@@ -2,9 +2,10 @@ import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { BonusRow } from "../types";
-import { CategoryTag, Html, pct, num, plain } from "../util";
+import { CategoryTag, Html, pct, num, plain, catMatches } from "../util";
 import { DataTable, Column } from "../components/DataTable";
 import { PageHeader, Loading, ErrorBox, RoundFilter, SearchInput } from "../components/Common";
+import { useCategoryFilter, CategoryFilterChip } from "../components/CategoryFilter";
 
 export function Bonuses() {
   const { meta } = useSetCtx();
@@ -12,16 +13,18 @@ export function Bonuses() {
   const { data, error, loading } = useScopedJson<BonusRow[]>("bonuses.json");
   const [round, setRound] = useState<number | "all">("all");
   const [q, setQ] = useState("");
+  const cat = useCategoryFilter();
 
   const rows = useMemo(() => {
     let r = data ?? [];
     if (round !== "all") r = r.filter((b) => b.round === round);
+    if (cat.values.length) r = r.filter((b) => cat.values.some((v) => catMatches(b.subcategory, v)));
     if (q.trim()) {
       const n = q.toLowerCase();
       r = r.filter((b) => b.subcategory.toLowerCase().includes(n) || [b.easyAnswer, b.medAnswer, b.hardAnswer].some((a) => a && plain(a).toLowerCase().includes(n)));
     }
     return r;
-  }, [data, round, q]);
+  }, [data, round, q, cat.values]);
 
   const partCell = (answer: string | null, p: number | null) =>
     answer === null ? (
@@ -58,6 +61,7 @@ export function Bonuses() {
         <RoundFilter rounds={meta.rounds} value={round} onChange={setRound} />
         <SearchInput value={q} onChange={setQ} placeholder="Search answer / category" />
       </PageHeader>
+      {cat.active && <CategoryFilterChip label={cat.label} onClear={cat.clear} />}
       {loading && <Loading />}
       {error && <ErrorBox error={error} />}
       {data && <DataTable rows={rows} columns={columns} initialSort="rn" initialDir="asc" rowKey={(b) => b.id} />}

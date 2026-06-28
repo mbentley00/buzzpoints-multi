@@ -2,9 +2,10 @@ import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { TossupRow } from "../types";
-import { CategoryTag, Html, pct, num, plain } from "../util";
+import { CategoryTag, Html, pct, num, plain, catMatches } from "../util";
 import { DataTable, Column } from "../components/DataTable";
 import { PageHeader, Loading, ErrorBox, RoundFilter, MinHeardFilter, SearchInput } from "../components/Common";
+import { useCategoryFilter, CategoryFilterChip } from "../components/CategoryFilter";
 
 export function Tossups() {
   const { meta } = useSetCtx();
@@ -13,17 +14,19 @@ export function Tossups() {
   const [round, setRound] = useState<number | "all">("all");
   const [minHeard, setMinHeard] = useState(0);
   const [q, setQ] = useState("");
+  const cat = useCategoryFilter();
 
   const rows = useMemo(() => {
     let r = data ?? [];
     if (round !== "all") r = r.filter((t) => t.round === round);
     if (minHeard > 0) r = r.filter((t) => t.heard >= minHeard);
+    if (cat.values.length) r = r.filter((t) => cat.values.some((v) => catMatches(t.subcategory, v)));
     if (q.trim()) {
       const n = q.toLowerCase();
       r = r.filter((t) => plain(t.answer).toLowerCase().includes(n) || t.subcategory.toLowerCase().includes(n));
     }
     return r;
-  }, [data, round, minHeard, q]);
+  }, [data, round, minHeard, q, cat.values]);
 
   const columns: Column<TossupRow>[] = [
     {
@@ -72,6 +75,7 @@ export function Tossups() {
         <MinHeardFilter value={minHeard} onChange={setMinHeard} />
         <SearchInput value={q} onChange={setQ} placeholder="Search answer / category" />
       </PageHeader>
+      {cat.active && <CategoryFilterChip label={cat.label} onClear={cat.clear} />}
       {loading && <Loading />}
       {error && <ErrorBox error={error} />}
       {data && <DataTable rows={rows} columns={columns} initialSort="rn" initialDir="asc" rowKey={(t) => t.id} />}

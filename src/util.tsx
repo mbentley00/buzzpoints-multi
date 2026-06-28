@@ -12,6 +12,12 @@ export function Html({ html, className }: { html: string; className?: string }) 
   return <span className={className} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
+// Does a full subcategory path belong to a category filter value? Matches the
+// value itself or any descendant ("Science" matches "Science - Biology - …").
+export function catMatches(fullSub: string, value: string): boolean {
+  return fullSub === value || fullSub.startsWith(value + " - ");
+}
+
 export function pct(v: number | null | undefined): string {
   return v === null || v === undefined ? "—" : `${v.toFixed(1)}%`;
 }

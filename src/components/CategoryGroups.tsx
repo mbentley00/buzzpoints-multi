@@ -89,7 +89,11 @@ export function CategoryGroups<G extends GroupBase<S>, S extends SubBase>({
                     </button>
                     <Link
                       className="cat-main-link"
-                      to={`${linkBase}?${mainParam}=${encodeURIComponent(g.category)}`}
+                      to={
+                        g.virtual
+                          ? `${linkBase}?subcats=${encodeURIComponent(g.subs.map((s) => s.subcategory).join("|"))}`
+                          : `${linkBase}?${mainParam}=${encodeURIComponent(g.category)}`
+                      }
                     >
                       <CategoryTag cat={g.category} />
                     </Link>
