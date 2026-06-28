@@ -176,7 +176,7 @@ export function Landing() {
         )}
         {visible.length > 0 && (() => {
           const renderCard = (s: SetEntry) => (
-            <Link key={s.slug} to={`/set/${s.slug}`} className="nav-card">
+            <Link key={s.slug} to={s.kind === "results" ? `/set/${s.slug}` : `/set/${s.slug}/tossup`} className="nav-card">
               <div className="nav-card-title">
                 {s.name} <VisBadge s={s} />
                 {s.editions && s.editions.length > 1 && <span className="edition-count">{s.editions.length} editions</span>}

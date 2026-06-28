@@ -92,7 +92,7 @@ export function SetLayout() {
         { to: `${base}/category/tossup`, label: "Categories (Tossup)" },
         ...(meta?.hasBonuses ? [{ to: `${base}/category/bonus`, label: "Categories (Bonus)" }] : []),
         ...(hasEditions || isOwner ? [{ to: `${base}/editions`, label: "Editions" }] : []),
-        ...(isOwner ? [{ to: `${base}/requests`, label: "Requests" }] : []),
+        ...(isOwner ? [{ to: `${base}/requests`, label: "Corrections" }] : []),
         ...(isOwner ? [{ to: `${base}/settings`, label: "Settings" }] : []),
       ];
 

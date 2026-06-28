@@ -60,7 +60,14 @@ a:hover { text-decoration: underline; }
   min-height: 58px;
   flex-wrap: wrap;
 }
-.brand { color: #fff; font-weight: 700; font-size: 16px; }
+.brand { display: inline-flex; align-items: center; gap: 8px; color: #fff; font-weight: 700; font-size: 16px; }
+.brand::before {
+  content: "";
+  flex: none;
+  width: 22px;
+  height: 22px;
+  background: url(/favicon-32.png) center / contain no-repeat;
+}
 .brand:hover { text-decoration: none; }
 .brand-mark { display: none; }
 .brand-set {
