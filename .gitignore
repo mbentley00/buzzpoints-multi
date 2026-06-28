@@ -22,6 +22,10 @@ public/api
 
 # Screenshots
 *.png
+# ...but keep the app icons (favicons / apple-touch-icon)
+!public/favicon-16.png
+!public/favicon-32.png
+!public/apple-touch-icon.png
 
 # One-off / local-only tooling and data:
 #   - scripts/        : NSC aggregation + e2e tests (need external ../nsc_buzzpoints data)
