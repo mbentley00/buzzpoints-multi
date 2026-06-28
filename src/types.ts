@@ -10,6 +10,16 @@ export interface EditionSummary {
   rounds: number;
 }
 
+// A round-tag ("phase") summary with its scoped stat files under tags/<slug>/.
+export interface TagSummary {
+  name: string;
+  slug: string;
+  rounds: number[];
+  numGames: number;
+  numTeams: number;
+  numPlayers: number;
+}
+
 export interface SetEntry {
   slug: string;
   name: string;
@@ -23,6 +33,7 @@ export interface SetEntry {
   hasAccess?: boolean; // viewer can already open this set (owned, invited, or public)
   invites?: string[]; // only present for the owner
   autoPublicAt?: string | null;
+  tags?: TagSummary[]; // round-tag phases, if the owner has tagged rounds
   numGames: number;
   numTeams: number;
   numPlayers: number;
@@ -35,7 +46,7 @@ export interface SetEntry {
 export interface SetCtx {
   meta: Meta;
   slug: string;
-  scope: string; // "all" (combined) or an edition id
+  scope: string; // "all" (combined), an edition id, or "tag:<slug>" (a phase)
   editions: EditionSummary[];
   owner: string | null;
   isOwner: boolean;
@@ -288,6 +299,8 @@ export interface CatTeamTossupSub {
   earliest: number | null;
   avgBuzz: number | null;
   pctPoints: number;
+  rank?: number | null;   // this team's rank in this category by total points
+  rankOf?: number | null; // number of teams that played this category
   leaves?: CatTeamTossupSub[];
 }
 export interface CatTeamTossupRow extends Omit<CatTeamTossupSub, "subcategory" | "subLabel" | "leaves"> {
@@ -377,6 +390,13 @@ export interface CatTossupSub {
 export interface CatTossupRow extends Omit<CatTossupSub, "subcategory" | "subLabel" | "leaves"> {
   category: string;
   subs: CatTossupSub[];
+  virtual?: boolean; // owner-defined merged category
+}
+
+// An owner-defined merged category: a named group of existing (sub)categories.
+export interface VirtualCategory {
+  name: string;
+  members: string[]; // subcategory path strings
 }
 
 export interface CatBonusSub {
@@ -392,4 +412,5 @@ export interface CatBonusSub {
 export interface CatBonusRow extends Omit<CatBonusSub, "subcategory" | "subLabel" | "leaves"> {
   category: string;
   subs: CatBonusSub[];
+  virtual?: boolean; // owner-defined merged category
 }

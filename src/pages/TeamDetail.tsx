@@ -8,6 +8,8 @@ import { CategoryGroups, CatColumn } from "../components/CategoryGroups";
 import { DataTable, Column } from "../components/DataTable";
 
 const buzz = (v: number | null) => (v === null ? "—" : num(v));
+const rankCell = (rank?: number | null, rankOf?: number | null) =>
+  rank == null ? "—" : rankOf ? `${rank} / ${rankOf}` : String(rank);
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -34,6 +36,7 @@ export function TeamDetailPage() {
     { label: "Get", align: "right", main: (g) => g.gets, sub: (s) => s.gets },
     { label: meta.hasNeg ? "Neg" : "Inc", align: "right", main: (g) => g.incorrect, sub: (s) => s.incorrect },
     { label: "Points", align: "right", main: (g) => g.points, sub: (s) => s.points },
+    { label: "Rank", align: "right", title: "This team's rank in the category by total points, of the teams that played it", main: (g) => rankCell(g.rank, g.rankOf), sub: (s) => rankCell(s.rank, s.rankOf) },
     { label: "Earliest", align: "right", main: (g) => g.earliest ?? "—", sub: (s) => s.earliest ?? "—" },
     { label: "Avg Buzz", align: "right", main: (g) => buzz(g.avgBuzz), sub: (s) => buzz(s.avgBuzz) },
     { label: "% Pts", align: "right", main: (g) => num(g.pctPoints, 1), sub: (s) => num(s.pctPoints, 1) },

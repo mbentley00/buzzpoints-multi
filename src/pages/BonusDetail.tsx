@@ -22,7 +22,8 @@ function rowClass(r: BonusResult, parts: PartConv[]): string {
 export function BonusDetailPage() {
   const { slug, scope } = useSetCtx();
   const { id = "" } = useParams();
-  const [version, setVersion] = useState(scope);
+  // A tag (phase) scope has no per-edition file; fall back to combined for it.
+  const [version, setVersion] = useState(scope.startsWith("tag:") ? "all" : scope);
   const combinedFile = "bonuses_detail.json";
   const dispFile = version !== "all" ? `editions/${version}/bonuses_detail.json` : combinedFile;
   const { data: comb } = useSetJson<Record<string, BonusDetail>>(slug, combinedFile);

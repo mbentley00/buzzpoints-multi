@@ -4,6 +4,7 @@ import { useSetCtx } from "../components/Layout";
 import { refreshIndex } from "../data";
 import { Visibility } from "../types";
 import { Loading } from "../components/Common";
+import { RoundTagsEditor } from "../components/RoundTagsEditor";
 
 const VIS_OPTIONS: { id: Visibility; label: string; desc: string }[] = [
   { id: "listed", label: "Listed (login + invite)", desc: "Shown in the list; only invited, logged-in people can view." },
@@ -21,7 +22,7 @@ const toDateInput = (iso: string | null) => (iso ? new Date(iso).toISOString().s
 
 export function Settings() {
   const { slug = "" } = useParams();
-  const { isOwner } = useSetCtx();
+  const { isOwner, meta } = useSetCtx();
   const [loading, setLoading] = useState(true);
   const [visibility, setVisibility] = useState<Visibility>("listed");
   const [autoPublish, setAutoPublish] = useState(false);
@@ -145,6 +146,17 @@ export function Settings() {
         )}
         <button className="btn-primary" disabled={busy} onClick={saveSettings}>Save settings</button>
       </div>
+
+      {meta?.kind !== "results" && (meta?.rounds?.length ?? 0) > 0 && (
+        <>
+          <h2 style={{ marginTop: 28 }}>Round phases / tags</h2>
+          <p className="muted">
+            Tag rounds with phases (e.g. Prelims, Playoffs, Finals). Viewers can then filter every page to a phase. A
+            round can carry more than one tag.
+          </p>
+          <RoundTagsEditor slug={slug} rounds={meta!.rounds} />
+        </>
+      )}
 
       <h2 style={{ marginTop: 28 }}>Maintenance</h2>
       <p className="muted">Recompute all stats from the uploaded files (use this to pick up new stats pages or fixes).</p>

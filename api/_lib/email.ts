@@ -1,13 +1,13 @@
 // Transactional email via Resend. When RESEND_API_KEY is unset, sending is a
 // no-op (the caller falls back to surfacing links/notices in-app).
 const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
-const EMAIL_FROM = process.env.EMAIL_FROM || "Buzzpoints <onboarding@resend.dev>";
+const EMAIL_FROM = process.env.EMAIL_FROM || "Buzzpoints <noreply@buzzpoints.buzz>";
 
 export const emailEnabled = () => !!RESEND_API_KEY;
 
 // Base URL for links in emails. Prefer APP_URL; fall back to the prod host.
 export const appUrl = () =>
-  (process.env.APP_URL || "https://buzzpoints-multi.vercel.app").replace(/\/+$/, "");
+  (process.env.APP_URL || "https://buzzpoints.buzz").replace(/\/+$/, "");
 
 export async function sendEmail(opts: { to: string; subject: string; html: string; text?: string }): Promise<boolean> {
   if (!RESEND_API_KEY) return false;

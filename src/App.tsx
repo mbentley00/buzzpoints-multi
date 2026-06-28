@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { SetLayout } from "./components/Layout";
 import { Landing } from "./pages/Landing";
+import { About } from "./pages/About";
 import { CreateSet } from "./pages/CreateSet";
 import { SetHome } from "./pages/SetHome";
 import { Tossups } from "./pages/Tossups";
@@ -30,6 +31,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
+      <Route path="/about" element={<About />} />
       <Route path="/login" element={<Login />} />
       <Route path="/verify" element={<Verify />} />
       <Route path="/join/:slug" element={<Join />} />

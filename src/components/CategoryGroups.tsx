@@ -10,6 +10,7 @@ interface SubBase {
 interface GroupBase<S> {
   category: string;
   subs: S[];
+  virtual?: boolean;
 }
 
 export interface CatColumn<G, S> {
@@ -92,6 +93,7 @@ export function CategoryGroups<G extends GroupBase<S>, S extends SubBase>({
                     >
                       <CategoryTag cat={g.category} />
                     </Link>
+                    {g.virtual && <span className="cat-virtual-badge" title="Owner-defined merged category">merged</span>}
                   </td>
                   {columns.map((c) => (
                     <td key={c.label} className={alignClass(c.align) + " strong"}>

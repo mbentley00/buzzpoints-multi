@@ -3,12 +3,13 @@ import { useSetCtx, useScopedJson } from "../components/Layout";
 import { CatTossupRow, CatTossupSub } from "../types";
 import { pct, num } from "../util";
 import { CategoryGroups, CatColumn } from "../components/CategoryGroups";
+import { MergeCategoriesEditor } from "../components/MergeCategoriesEditor";
 import { PageHeader, Loading, ErrorBox } from "../components/Common";
 
 const buzz = (v: number | null) => (v === null ? "—" : `${num(v)}%`);
 
 export function CategoriesTossup() {
-  const { meta } = useSetCtx();
+  const { meta, isOwner } = useSetCtx();
   const { slug = "" } = useParams();
   const { data, error, loading } = useScopedJson<CatTossupRow[]>("categories_tossup.json");
 
@@ -34,6 +35,7 @@ export function CategoriesTossup() {
       <PageHeader title="Categories — Tossups" subtitle="Conversion & buzz speed by subject" />
       {loading && <Loading />}
       {error && <ErrorBox error={error} />}
+      {data && isOwner && <MergeCategoriesEditor slug={slug} groups={data} />}
       {data && <CategoryGroups groups={data} columns={columns} linkBase={`/set/${slug}/tossup`} mainParam="category" subParam="subcategory" />}
     </div>
   );

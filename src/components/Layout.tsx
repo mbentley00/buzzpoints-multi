@@ -10,12 +10,18 @@ export function useSetCtx(): SetCtx {
   return useOutletContext<SetCtx>();
 }
 
-// Load a per-set data file scoped to the currently-selected edition ("all" =
-// combined, served from the top level; a specific edition from editions/<id>/).
+// Map the current scope to a data path. "all" = combined (top level); an edition
+// id = editions/<id>/; "tag:<slug>" = a round-tag phase under tags/<slug>/.
+export function scopedPath(scope: string, file: string): string {
+  if (!scope || scope === "all") return file;
+  if (scope.startsWith("tag:")) return `tags/${scope.slice(4)}/${file}`;
+  return `editions/${scope}/${file}`;
+}
+
+// Load a per-set data file scoped to the currently-selected edition/phase.
 export function useScopedJson<T>(file: string, nonce = 0) {
   const { slug, scope } = useOutletContext<SetCtx>();
-  const path = scope && scope !== "all" ? `editions/${scope}/${file}` : file;
-  return useSetJson<T>(slug, path, nonce);
+  return useSetJson<T>(slug, scopedPath(scope, file), nonce);
 }
 
 export function SetLayout() {
@@ -26,13 +32,14 @@ export function SetLayout() {
 
   const entry = index?.sets.find((s) => s.slug === slug);
   const [scope, setScope] = useState("all");
-  const scopePath = (f: string) => (scope !== "all" ? `editions/${scope}/${f}` : f);
-  const { data: meta, error, loading } = useSetJson<Meta>(slug, scopePath("meta.json"));
+  const { data: meta, error, loading } = useSetJson<Meta>(slug, scopedPath(scope, "meta.json"));
 
   const owner = entry?.owner ?? null;
   const isOwner = !!user && !!owner && user === owner;
   const editions = entry?.editions ?? meta?.editions ?? [];
   const hasEditions = editions.length > 1;
+  const tags = entry?.tags ?? [];
+  const hasScopes = hasEditions || tags.length > 0;
   const ctx: SetCtx = { meta: meta as Meta, slug, scope, editions, owner, isOwner, user };
   const denied = !!error && /\b(401|403)\b/.test(error);
   const [reqState, setReqState] = useState<"idle" | "sending" | "sent" | "error">("idle");
@@ -112,14 +119,23 @@ export function SetLayout() {
           </nav>
         </div>
       </header>
-      {hasEditions && (
+      {hasScopes && (
         <div className="editions-bar">
           <span className="muted">Showing</span>
           <select value={scope} onChange={(e) => setScope(e.target.value)}>
-            <option value="all">All editions (combined)</option>
-            {editions.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
+            <option value="all">{hasEditions ? "All editions (combined)" : "All rounds"}</option>
+            {hasEditions && (
+              <optgroup label="Editions">
+                {editions.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
+              </optgroup>
+            )}
+            {tags.length > 0 && (
+              <optgroup label="Phases">
+                {tags.map((t) => <option key={t.slug} value={`tag:${t.slug}`}>{t.name} ({t.rounds.length} rd{t.rounds.length === 1 ? "" : "s"})</option>)}
+              </optgroup>
+            )}
           </select>
-          {scope !== "all" && <span className="muted">· filtered to one edition · <button className="btn-link" onClick={() => setScope("all")}>show combined</button></span>}
+          {scope !== "all" && <span className="muted">· <button className="btn-link" onClick={() => setScope("all")}>show all</button></span>}
         </div>
       )}
       <main className="content">

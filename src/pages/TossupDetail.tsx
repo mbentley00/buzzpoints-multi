@@ -188,7 +188,9 @@ export function TossupDetailPage() {
   const { meta, isOwner, user, slug, scope } = useSetCtx();
   const { id = "" } = useParams();
   const [nonce, setNonce] = useState(0);
-  const [version, setVersion] = useState(scope); // "all" (combined/latest) or an edition id
+  // Question detail switches between edition wordings, not phases; a tag scope
+  // has no per-edition file, so fall back to combined for it.
+  const [version, setVersion] = useState(scope.startsWith("tag:") ? "all" : scope); // "all" (combined/latest) or an edition id
   const combinedFile = "tossups_detail.json";
   const dispFile = version !== "all" ? `editions/${version}/tossups_detail.json` : combinedFile;
   const { data: comb } = useSetJson<Record<string, TossupDetail>>(slug, combinedFile, nonce);

@@ -2,7 +2,7 @@
 // re-aggregation helper used by ingest and the edit endpoints.
 import { put, del } from "@vercel/blob";
 import { readBlobJson } from "./blob.js";
-import { aggregate, PacketFile, GameFile, Correction } from "./aggregate.js";
+import { aggregate, PacketFile, GameFile, Correction, VirtualCategory } from "./aggregate.js";
 import { getScoring } from "./scoring.js";
 import { parseYellowFruit } from "./yellowfruit.js";
 import { aggregateResults, ResultsCorrection } from "./resultsAggregate.js";
@@ -48,6 +48,9 @@ export interface SetEntry {
   invites: string[]; // normalized emails allowed to view (besides the owner)
   // ISO date when a non-public set auto-publishes, or null if the owner opted out.
   autoPublicAt: string | null;
+  // Phase/tag summaries (present when the owner has tagged rounds) used to build
+  // the phase filter; each tag also has a scoped set of stat files.
+  tags?: TagSummary[];
   numGames: number;
   numTeams: number;
   numPlayers: number;
@@ -147,6 +150,25 @@ export const writeSource = (slug: string, s: SetSource) => writeJson(`sets/${slu
 export const readCorrections = (slug: string) => readBlobJson<Correction[]>(`sets/${slug}/_corrections.json`, false).then((c) => c || []);
 export const writeCorrections = (slug: string, c: Correction[]) => writeJson(`sets/${slug}/_corrections.json`, c);
 
+// Owner-defined merged ("virtual") categories applied to the tossup + bonus
+// category trees on (re-)aggregation.
+export const readVirtualCats = (slug: string) =>
+  readBlobJson<VirtualCategory[]>(`sets/${slug}/_virtualcats.json`, false).then((c) => c || []);
+export const writeVirtualCats = (slug: string, c: VirtualCategory[]) => writeJson(`sets/${slug}/_virtualcats.json`, c);
+
+// Owner-assigned round tags ("phases"): a map of round number -> tag names. Used
+// to write per-tag scoped stat files so viewers can filter every page to a phase.
+export type RoundTags = Record<string, string[]>;
+export const readRoundTags = (slug: string) =>
+  readBlobJson<RoundTags>(`sets/${slug}/_roundtags.json`, false).then((r) => r || {});
+export const writeRoundTags = (slug: string, r: RoundTags) => writeJson(`sets/${slug}/_roundtags.json`, r);
+
+// Default phase vocabulary offered in the owner UI (custom tags are also allowed).
+export const DEFAULT_ROUND_TAGS = ["Prelims", "Playoffs", "Finals", "Superplayoffs", "Tiebreakers"];
+
+export interface TagSummary { name: string; slug: string; rounds: number[]; numGames: number; numTeams: number; numPlayers: number; }
+export const tagSlug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "tag";
+
 export const readRequests = (slug: string) => readBlobJson<CorrectionRequest[]>(`sets/${slug}/_requests.json`, false).then((r) => r || []);
 export const writeRequests = (slug: string, r: CorrectionRequest[]) => writeJson(`sets/${slug}/_requests.json`, r);
 
@@ -239,10 +261,11 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   const cfg = { name: source.name, slug, scoring: getScoring(source.scoring), hasBonuses: source.hasBonuses };
   const editions = editionsOf(source);
   const multi = editions.length > 1;
+  const virtualCats = await readVirtualCats(slug);
 
   const editionSummaries: EditionSummary[] = [];
   for (const ed of editions) {
-    const out = aggregate(ed.packets, ed.games, cfg, corrections);
+    const out = aggregate(ed.packets, ed.games, cfg, corrections, virtualCats);
     const m = out["meta.json"] as any;
     editionSummaries.push({ id: ed.id, label: ed.label, numGames: m.numGames, numTeams: m.numTeams, numPlayers: m.numPlayers, numTossups: m.numTossups, rounds: m.rounds.length });
     if (multi) await writeFiles(`sets/${slug}/editions/${ed.id}/`, out);
@@ -250,11 +273,39 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
 
   // combined (single-edition: identical to the one edition)
   const combinedGames = editions.flatMap((e) => e.games || []);
-  const out = aggregate(combinedPackets(editions), combinedGames, cfg, corrections);
+  const combined = combinedPackets(editions);
+  const out = aggregate(combined, combinedGames, cfg, corrections, virtualCats);
   (out["meta.json"] as any).editions = editionSummaries;
   if (multi) attachVersions(out, editions);
   await writeFiles(`sets/${slug}/`, out);
-  return { meta: out["meta.json"] as any, editions: editionSummaries };
+
+  // Per-phase (round-tag) scopes: re-aggregate the subset of rounds carrying each
+  // tag and write its stat files under tags/<slug>/, so the UI can filter every
+  // page to a phase the same way it scopes to an edition.
+  const roundTags = await readRoundTags(slug);
+  const tagToRounds = new Map<string, Set<number>>();
+  for (const [rnd, names] of Object.entries(roundTags))
+    for (const name of names) {
+      const key = name.trim();
+      if (!key) continue;
+      let s = tagToRounds.get(key);
+      if (!s) { s = new Set(); tagToRounds.set(key, s); }
+      s.add(Number(rnd));
+    }
+  const tags: TagSummary[] = [];
+  for (const [name, roundsSet] of tagToRounds) {
+    const gm = combinedGames.filter((g) => roundsSet.has(g.round));
+    if (!gm.length) continue;
+    const pk = combined.filter((p) => roundsSet.has(p.round));
+    const tout = aggregate(pk, gm, cfg, corrections, virtualCats);
+    const slugT = tagSlug(name);
+    await writeFiles(`sets/${slug}/tags/${slugT}/`, tout);
+    const tm = tout["meta.json"] as any;
+    tags.push({ name, slug: slugT, rounds: [...roundsSet].sort((a, b) => a - b), numGames: tm.numGames, numTeams: tm.numTeams, numPlayers: tm.numPlayers });
+  }
+  tags.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+
+  return { meta: out["meta.json"] as any, editions: editionSummaries, tags };
 }
 
 export async function deleteSet(slug: string, blobUrls: string[]) {

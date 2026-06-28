@@ -63,6 +63,19 @@ export interface Correction {
 const corrKeyOf = (r: number, num: number, team: string | null, player: string | null, widx: number | null) =>
   `${r}|${num}|${team}|${player}|${widx}`;
 
+// An owner-defined "virtual" (merged) category: a named group that aggregates the
+// stats of one or more existing (sub)categories. `members` are subcategory path
+// strings (e.g. "Fine Arts - Auditory - Opera"); a subcategory may belong to
+// several virtual categories. They appear as extra top-level nodes in the tossup
+// and bonus category trees without altering the underlying questions.
+export interface VirtualCategory {
+  name: string;
+  members: string[];
+}
+// A full subcategory path `fs` belongs to member `m` when it is `m` itself or a
+// descendant of it ("Fine Arts" matches "Fine Arts - Auditory - Opera").
+const vmatchSub = (fs: string, m: string) => fs === m || fs.startsWith(m + " - ");
+
 const SEP = "||"; // delimiter for composite (player, team[, sub]) keys
 const RACE_WINDOW = 5;
 const RACE_CONTEXT = 6;
@@ -189,6 +202,39 @@ function buildCategoryTree<A extends { main: string }>(
   return out;
 }
 
+// Build a single synthetic top-level node for a virtual (merged) category by
+// aggregating every subcategory that matches one of its members. Each member
+// becomes a sub-row (its own aggregate); the main row aggregates the union of all
+// members (each matched subcategory counted once, even if two members overlap).
+// Returns null when no member matches any data in this tree.
+function buildVirtualNode<A>(
+  name: string,
+  members: string[],
+  subStats: Map<string, A>,
+  newAcc: () => A,
+  addAcc: (acc: A, s: A) => void,
+  fin: (acc: A) => Record<string, unknown>
+): TreeNode | null {
+  const mainAcc = newAcc();
+  const seen = new Set<string>();
+  const subs: SubNode[] = [];
+  for (const m of members) {
+    const memAcc = newAcc();
+    let has = false;
+    for (const [fs, s] of subStats) {
+      if (!vmatchSub(fs, m)) continue;
+      addAcc(memAcc, s);
+      has = true;
+      if (!seen.has(fs)) { seen.add(fs); addAcc(mainAcc, s); }
+    }
+    if (has) subs.push({ subcategory: m, subLabel: m.split(" - ").slice(-1)[0].trim(), ...fin(memAcc), leaves: [] });
+  }
+  if (!subs.length) return null;
+  subs.sort((a, b) => a.subLabel.toLowerCase().localeCompare(b.subLabel.toLowerCase()));
+  const main = fin(mainAcc);
+  return { category: name, ...main, heard: Number(main.heard) || 0, subs, virtual: true } as TreeNode;
+}
+
 /* ----------------------------- accumulators ----------------------------- */
 interface TUStat { round: number; num: number; questionHtml: string; answer: string; category: string; subcategory: string; categoryMid: string; words: string[]; wordCount: number; powerIndex: number | null; }
 interface BNStat { round: number; num: number; leadin: string; parts: string[]; answers: string[]; difficultyModifiers: string[]; category: string; subcategory: string; }
@@ -205,7 +251,8 @@ export function aggregate(
   packets: PacketFile[],
   games: GameFile[],
   cfg: AggregateConfig,
-  corrections: Correction[] = []
+  corrections: Correction[] = [],
+  virtualCats: VirtualCategory[] = []
 ): Record<string, unknown> {
   const scoring = cfg.scoring;
   const hasPower = scoring.hasPower;
@@ -526,7 +573,12 @@ export function aggregate(
     }
     files["bonuses.json"] = bnSumm;
     files["bonuses_detail.json"] = bnDetail;
-    files["categories_bonus.json"] = buildCategoryTree<CatBnAcc>(catBnSub, bnNew, bnAdd, bnFin);
+    const bnTree = buildCategoryTree<CatBnAcc>(catBnSub, bnNew, bnAdd, bnFin);
+    for (const v of virtualCats) {
+      const node = buildVirtualNode<CatBnAcc>(v.name, v.members, catBnSub, bnNew, bnAdd, bnFin);
+      if (node) bnTree.push(node);
+    }
+    files["categories_bonus.json"] = bnTree;
   }
 
   /* ----------------------------- players (list + detail) ----------------------------- */
@@ -613,21 +665,66 @@ export function aggregate(
       roster,
     };
   }
+  // Rank each team within every category node by total points, so a team's
+  // category breakdown can show "rank of N" against the other teams that played
+  // the same category. Levels are kept separate (main vs sub vs leaf) so a main
+  // and its "(general)" sub — which share a key string — don't get pooled.
+  {
+    type RankEntry = { tid: string; points: number };
+    const groups = new Map<string, RankEntry[]>();
+    const push = (key: string, tid: string, points: number) => {
+      let a = groups.get(key); if (!a) { a = []; groups.set(key, a); } a.push({ tid, points });
+    };
+    // collect
+    for (const tid in tmDetail) {
+      const cats = (tmDetail[tid] as any).categories as Record<string, any>[];
+      for (const m of cats) {
+        push(`0|${m.category}`, tid, m.points);
+        for (const s of m.subs as Record<string, any>[]) {
+          push(`1|${s.subcategory}`, tid, s.points);
+          for (const lf of (s.leaves || []) as Record<string, any>[]) push(`2|${lf.subcategory}`, tid, lf.points);
+        }
+      }
+    }
+    // rank within each group (descending points; ties share a rank)
+    const rankByKey = new Map<string, { ranks: Map<string, number>; total: number }>();
+    for (const [key, arr] of groups) {
+      arr.sort((a, b) => b.points - a.points);
+      const ranks = new Map<string, number>();
+      let rank = 0, seen = 0, prev = NaN;
+      for (const e of arr) { seen++; if (e.points !== prev) { rank = seen; prev = e.points; } ranks.set(e.tid, rank); }
+      rankByKey.set(key, { ranks, total: arr.length });
+    }
+    // annotate
+    for (const tid in tmDetail) {
+      const cats = (tmDetail[tid] as any).categories as Record<string, any>[];
+      const set = (key: string, node: Record<string, any>) => {
+        const r = rankByKey.get(key);
+        node.rank = r ? r.ranks.get(tid) ?? null : null;
+        node.rankOf = r ? r.total : null;
+      };
+      for (const m of cats) {
+        set(`0|${m.category}`, m);
+        for (const s of m.subs as Record<string, any>[]) {
+          set(`1|${s.subcategory}`, s);
+          for (const lf of (s.leaves || []) as Record<string, any>[]) set(`2|${lf.subcategory}`, lf);
+        }
+      }
+    }
+  }
   teams.sort((a, b) => (b.ppg as number) - (a.ppg as number));
   files["teams.json"] = teams;
   files["teams_detail.json"] = tmDetail;
 
   /* ----------------------------- tossup categories + per-category players ----------------------------- */
-  const ct = buildCategoryTree<CatTuAcc>(
-    catTuSub,
-    () => ({ main: "", heard: 0, powers: 0, gets: 0, buzzSum: 0, buzzN: 0, firstConv: 0, secondConv: 0, incorrectBefore: 0 }),
-    (a, s) => { a.main = a.main || s.main; a.heard += s.heard; a.powers += s.powers; a.gets += s.gets; a.buzzSum += s.buzzSum; a.buzzN += s.buzzN; a.firstConv += s.firstConv; a.secondConv += s.secondConv; a.incorrectBefore += s.incorrectBefore; },
-    (a) => ({
-      heard: a.heard, powers: a.powers, gets: a.gets, convPct: pct(a.powers + a.gets, a.heard), powerPct: pct(a.powers, a.heard),
-      avgBuzzPct: a.buzzN ? round1((100 * a.buzzSum) / a.buzzN) : null,
-      firstSentConvPct: pct(a.firstConv, a.heard), secondSentConvPct: pct(a.secondConv, a.heard), incorrectPct: pct(a.incorrectBefore, a.heard),
-    })
-  );
+  const tuCatNew = (): CatTuAcc => ({ main: "", heard: 0, powers: 0, gets: 0, buzzSum: 0, buzzN: 0, firstConv: 0, secondConv: 0, incorrectBefore: 0 });
+  const tuCatAdd = (a: CatTuAcc, s: CatTuAcc) => { a.main = a.main || s.main; a.heard += s.heard; a.powers += s.powers; a.gets += s.gets; a.buzzSum += s.buzzSum; a.buzzN += s.buzzN; a.firstConv += s.firstConv; a.secondConv += s.secondConv; a.incorrectBefore += s.incorrectBefore; };
+  const tuCatFin = (a: CatTuAcc) => ({
+    heard: a.heard, powers: a.powers, gets: a.gets, convPct: pct(a.powers + a.gets, a.heard), powerPct: pct(a.powers, a.heard),
+    avgBuzzPct: a.buzzN ? round1((100 * a.buzzSum) / a.buzzN) : null,
+    firstSentConvPct: pct(a.firstConv, a.heard), secondSentConvPct: pct(a.secondConv, a.heard), incorrectPct: pct(a.incorrectBefore, a.heard),
+  });
+  const ct = buildCategoryTree<CatTuAcc>(catTuSub, tuCatNew, tuCatAdd, tuCatFin);
 
   const categoriesPlayers: Record<string, unknown> = {};
   let cpCounter = 0;
@@ -673,6 +770,15 @@ export function aggregate(
         emitNode(lf, lc, (fs) => fs === lc || fs.startsWith(lc + " - "));
       }
     }
+  }
+  // Owner-defined merged categories: extra top-level nodes aggregating their
+  // member subcategories. Each member also gets a per-category players view.
+  for (const v of virtualCats) {
+    const node = buildVirtualNode<CatTuAcc>(v.name, v.members, catTuSub, tuCatNew, tuCatAdd, tuCatFin);
+    if (!node) continue;
+    emitNode(node, v.name, (fs) => v.members.some((m) => vmatchSub(fs, m)));
+    for (const s of node.subs) emitNode(s, s.subcategory, (fs) => vmatchSub(fs, s.subcategory));
+    ct.push(node);
   }
   files["categories_tossup.json"] = ct;
   files["categories_players.json"] = categoriesPlayers;
