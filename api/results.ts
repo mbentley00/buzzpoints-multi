@@ -4,9 +4,12 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { currentUser, canModerate } from "./_lib/auth.js";
 import {
-  readIndex, writeIndex, readYf, readResultsCorrections, writeResultsCorrections, aggregateResultsAndWrite,
+  readIndex, writeIndex, readYf, readResultsCorrections, writeResultsCorrections, aggregateResultsAndWrite, canView,
 } from "./_lib/sets.js";
-import { ResultsCorrection } from "./_lib/resultsAggregate.js";
+import { ResultsCorrection, aggregateResults } from "./_lib/resultsAggregate.js";
+import { parseYellowFruit } from "./_lib/yellowfruit.js";
+import { getScoring } from "./_lib/scoring.js";
+import { buildZip, applyCorrectionsToRawYf, renderReports } from "./_lib/yfExport.js";
 
 function validCorrection(c: any): c is ResultsCorrection {
   return (
@@ -20,8 +23,37 @@ function validCorrection(c: any): c is ResultsCorrection {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
   const user = currentUser(req);
+
+  // GET = download the corrections-applied YellowFruit (.yft) + regenerated HTML
+  // stat reports as a zip (anyone who can view the set).
+  if (req.method === "GET") {
+    const slug = String(req.query.slug || "");
+    const index = await readIndex();
+    const entry = index.sets.find((s) => s.slug === slug);
+    if (!entry) return res.status(404).json({ error: "Tournament not found." });
+    if (entry.kind !== "results") return res.status(400).json({ error: "Not a results tournament." });
+    if (!canView(entry, user, await canModerate(user))) return res.status(403).json({ error: "You don't have access to this tournament." });
+    const raw = await readYf(slug);
+    if (!raw) return res.status(500).json({ error: "Source YellowFruit file not found." });
+    const corrections = await readResultsCorrections(slug);
+    try {
+      const yf = parseYellowFruit(raw);
+      const out = aggregateResults(yf, getScoring(yf.scoringId), corrections);
+      const updated = applyCorrectionsToRawYf(raw, corrections);
+      const reports = renderReports(out, out["meta.json"]);
+      const safe = slug.replace(/[^a-z0-9-]+/gi, "_");
+      const zip = buildZip([{ name: `${safe}.yft`, data: JSON.stringify(updated) }, ...reports]);
+      res.setHeader("content-type", "application/zip");
+      res.setHeader("content-disposition", `attachment; filename="${safe}-export.zip"`);
+      res.setHeader("cache-control", "no-store");
+      return res.status(200).send(zip);
+    } catch (e) {
+      return res.status(500).json({ error: (e as Error).message });
+    }
+  }
+
+  if (req.method !== "POST") return res.status(405).json({ error: "GET or POST" });
   if (!user) return res.status(401).json({ error: "Log in." });
 
   const body = (req.body || {}) as any;

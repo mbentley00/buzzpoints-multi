@@ -64,10 +64,10 @@ export function MergeCategoriesEditor({ slug, groups }: { slug: string; groups: 
     setSaving(true);
     setError("");
     try {
-      const r = await fetch("/api/categories", {
+      const r = await fetch("/api/manage", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ slug, virtualCategories: cats.map((c) => ({ name: c.name.trim(), members: c.members })) }),
+        body: JSON.stringify({ slug, op: "categories", virtualCategories: cats.map((c) => ({ name: c.name.trim(), members: c.members })) }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || `Failed (${r.status})`);

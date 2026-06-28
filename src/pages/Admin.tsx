@@ -57,7 +57,7 @@ export function Admin() {
 
   const del = (s: AdminSet) =>
     window.confirm(`Delete "${s.name}" (${s.slug})? This permanently removes all its data.`) &&
-    run(s.slug, async () => { await postJson("/api/delete", { slug: s.slug }); refreshIndex(); await load(); });
+    run(s.slug, async () => { await postJson("/api/manage", { slug: s.slug, op: "delete" }); refreshIndex(); await load(); });
   const rebuild = (s: AdminSet) => run(s.slug, () => postJson("/api/manage", { slug: s.slug, op: "reaggregate" }));
   const setVisibility = (s: AdminSet, visibility: Visibility) =>
     run(s.slug, async () => { await postJson("/api/manage", { slug: s.slug, op: "settings", visibility }); refreshIndex(); await load(); });

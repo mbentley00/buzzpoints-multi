@@ -19,7 +19,7 @@ export function RoundTagsEditor({ slug, rounds }: { slug: string; rounds: number
   const [err, setErr] = useState("");
 
   useEffect(() => {
-    fetch(`/api/roundtags?slug=${encodeURIComponent(slug)}`)
+    fetch(`/api/manage?slug=${encodeURIComponent(slug)}&op=roundtags`)
       .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
       .then(({ ok, d }) => {
         if (!ok) throw new Error(d.error || "Failed to load round tags");
@@ -59,10 +59,10 @@ export function RoundTagsEditor({ slug, rounds }: { slug: string; rounds: number
   async function save() {
     setBusy(true); setErr(""); setMsg("");
     try {
-      const r = await fetch("/api/roundtags", {
+      const r = await fetch("/api/manage", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ slug, roundTags }),
+        body: JSON.stringify({ slug, op: "roundtags", roundTags }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || `Failed (${r.status})`);

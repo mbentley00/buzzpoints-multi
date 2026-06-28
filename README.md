@@ -42,8 +42,8 @@ See the in-app **/about** page for a feature overview.
   updates `sets/index.json`. Owner edits (corrections, merged categories, round
   tags) re-run the same aggregation via `aggregateAndWrite`.
 - **`/api/index`** — returns the tournament list visible to the caller.
-- **`/api/auth`, `/api/manage`, `/api/categories`, `/api/roundtags`, …** —
-  accounts, access control, and owner configuration.
+- **`/api/auth`, `/api/manage`, …** — accounts, access control, and owner
+  configuration (settings, invites, merged categories, round tags, delete).
 
 The precompute-then-serve-static-JSON model is preserved; the precompute lives in
 a function and the output (plus source files, the user store, and the set index)

@@ -41,7 +41,7 @@ export function ResultsStandings() {
             Standings · {meta.numGames} games · {meta.numTeams} teams · {meta.numPlayers} players · {meta.rounds.length} rounds · {meta.scoringLabel}
           </p>
         </div>
-        <a className="btn-secondary" href={`/api/results-export?slug=${encodeURIComponent(slug)}`} title="Download the updated YellowFruit file and HTML stat reports">
+        <a className="btn-secondary" href={`/api/results?slug=${encodeURIComponent(slug)}`} title="Download the updated YellowFruit file and HTML stat reports">
           Export (.yft + stats)
         </a>
       </div>

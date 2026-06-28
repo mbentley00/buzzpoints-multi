@@ -5,19 +5,54 @@
 //     owner: settings | reaggregate | invite | uninvite |
 //            approve-access(email) | deny-access(email) | create-link(label?) | revoke-link(id)
 import crypto from "node:crypto";
+import { list, del } from "@vercel/blob";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { currentUser, normEmail, canModerate, loadUsers } from "./_lib/auth.js";
 import {
   readIndex, writeIndex, readSource, readCorrections, aggregateAndWrite,
   readAccess, writeAccess, readLinks, writeLinks, canViewContent, InviteLink, Visibility, AccessRole,
   readYf, readResultsCorrections, aggregateResultsAndWrite,
+  writeVirtualCats, readRoundTags, writeRoundTags, DEFAULT_ROUND_TAGS, RoundTags,
 } from "./_lib/sets.js";
+import { VirtualCategory } from "./_lib/aggregate.js";
 import { sendEmail, appUrl, accessRequestBody, accessGrantedBody } from "./_lib/email.js";
 
 const VIS = new Set<Visibility>(["public", "listed", "private"]);
 const ROLES = new Set<string>(["player", "staff", "coach"]);
 const isEmail = (e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
 const setUrl = (slug: string) => `${appUrl()}/set/${slug}`;
+
+// ---- merged-category ("op: categories") + round-tag ("op: roundtags") helpers ----
+const MAX_CATS = 50, MAX_MEMBERS = 300, MAX_NAME = 80, MAX_MEMBER_LEN = 200;
+function sanitizeVirtualCats(input: unknown): VirtualCategory[] | null {
+  if (!Array.isArray(input) || input.length > MAX_CATS) return null;
+  const out: VirtualCategory[] = [];
+  const seen = new Set<string>();
+  for (const v of input as any[]) {
+    if (!v || typeof v.name !== "string" || !Array.isArray(v.members)) return null;
+    const name = v.name.trim().slice(0, MAX_NAME);
+    if (!name) return null;
+    const key = name.toLowerCase();
+    if (seen.has(key)) return null;
+    seen.add(key);
+    const members = [...new Set((v.members as unknown[]).filter((m): m is string => typeof m === "string").map((m) => m.trim().slice(0, MAX_MEMBER_LEN)).filter(Boolean))];
+    if (!members.length || members.length > MAX_MEMBERS) return null;
+    out.push({ name, members });
+  }
+  return out;
+}
+const MAX_TAGS_PER_ROUND = 12, MAX_TAG_NAME = 40;
+function sanitizeRoundTags(input: unknown): RoundTags | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const out: RoundTags = {};
+  for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+    if (!/^\d+$/.test(k) || !Array.isArray(v)) return null;
+    const names = [...new Set(v.filter((t): t is string => typeof t === "string").map((t) => t.trim().slice(0, MAX_TAG_NAME)).filter(Boolean))];
+    if (names.length > MAX_TAGS_PER_ROUND) return null;
+    if (names.length) out[k] = names;
+  }
+  return out;
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const user = currentUser(req);
@@ -71,7 +106,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // ---------------- owner / moderator / admin only ----------------
     if (!user || (entry.owner !== user && !(await canModerate(user)))) return res.status(403).json({ error: "Owner only." });
 
-    if (req.method === "GET")
+    if (req.method === "GET") {
+      if (req.query.op === "roundtags")
+        return res.status(200).json({ roundTags: await readRoundTags(slug), defaults: DEFAULT_ROUND_TAGS, tags: entry.tags ?? [] });
       return res.status(200).json({
         visibility: entry.visibility ?? "listed",
         autoPublicAt: entry.autoPublicAt ?? null,
@@ -79,6 +116,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         accessRequests: (await readAccess(slug)).filter((a) => a.status === "pending"),
         links: await readLinks(slug),
       });
+    }
     if (req.method !== "POST") return res.status(405).json({ error: "GET or POST" });
 
     const op = body.op as string;
@@ -138,6 +176,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (link) link.revoked = true;
       await writeLinks(slug, links);
       return res.status(200).json({ ok: true, links });
+    } else if (op === "categories") {
+      if (entry.kind === "results") return res.status(400).json({ error: "Category groups apply to buzz tournaments only." });
+      const clean = sanitizeVirtualCats(body.virtualCategories);
+      if (!clean) return res.status(400).json({ error: "Invalid category groups." });
+      const source = await readSource(slug);
+      if (!source) return res.status(500).json({ error: "Source data not found." });
+      await writeVirtualCats(slug, clean);
+      await aggregateAndWrite(slug, source, await readCorrections(slug));
+      return res.status(200).json({ ok: true });
+    } else if (op === "roundtags") {
+      if (entry.kind === "results") return res.status(400).json({ error: "Round tags apply to buzz tournaments only." });
+      const clean = sanitizeRoundTags(body.roundTags);
+      if (!clean) return res.status(400).json({ error: "Invalid round tags." });
+      const source = await readSource(slug);
+      if (!source) return res.status(500).json({ error: "Source data not found." });
+      await writeRoundTags(slug, clean);
+      const { tags } = await aggregateAndWrite(slug, source, await readCorrections(slug));
+      entry.tags = tags;
+      await writeIndex(index);
+      return res.status(200).json({ ok: true, roundTags: clean, tags });
+    } else if (op === "delete") {
+      const { blobs } = await list({ prefix: `sets/${slug}/` });
+      if (blobs.length) await del(blobs.map((b) => b.url));
+      await writeIndex({ sets: index.sets.filter((s) => s.slug !== slug) });
+      return res.status(200).json({ deleted: slug, removedBlobs: blobs.length });
     } else {
       return res.status(400).json({ error: "Unknown op." });
     }
