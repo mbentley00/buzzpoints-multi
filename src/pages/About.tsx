@@ -8,7 +8,7 @@ const FEATURES: Feature[] = [
   {
     title: "Self-serve & multi-tournament",
     body:
-      "One site hosts every tournament. Upload packet JSONs and QBJ scoresheets, pick a scoring format, and a full interactive stats site is generated — no per-tournament deployment or code changes. Earlier BuzzPoints sites were typically stood up one tournament at a time.",
+      "One site hosts every tournament. Upload packet JSONs and QBJ scoresheets, pick a scoring format, and a full interactive stats site is generated, with no per-tournament deployment or code changes. Earlier BuzzPoints sites were typically stood up one tournament at a time.",
   },
   {
     title: "Configurable scoring, optional bonuses",
@@ -18,47 +18,37 @@ const FEATURES: Feature[] = [
   {
     title: "Multiple editions & versions",
     body:
-      "Combine mirrors of the same set into one tournament, switch between editions, and see exactly which questions were revised or replaced — with each edition's wording on the question page.",
+      "Combine mirrors of the same set into one tournament, switch between editions, and see exactly which questions were revised or replaced, with each edition's wording on the question page.",
     tag: "Enhanced",
   },
   {
     title: "Merged categories",
     body:
-      "Owners can group existing categories into custom “merged” categories — e.g. a Fine Arts – Other made of Opera and Jazz — with fully aggregated stats and player views. A category can belong to several merged groups.",
+      "Owners can group existing categories into custom “merged” categories, e.g. a Fine Arts - Other made of Opera and Jazz, with fully aggregated stats and player views. A category can belong to several merged groups.",
     tag: "New",
   },
   {
     title: "Round phases & filtering",
     body:
-      "Tag rounds with phases (Prelims, Playoffs, Finals, Superplayoffs, Tiebreakers, or your own), then filter every page — tossups, players, teams, categories — to a single phase. Stats are re-aggregated per phase, not just hidden.",
-    tag: "New",
-  },
-  {
-    title: "Per-category team rank",
-    body:
-      "On a team's page, every category shows that team's rank by total points against the other teams that played the category — so you can see who owned History or Science.",
+      "Tag rounds with phases (Prelims, Playoffs, Finals, Superplayoffs, Tiebreakers, or your own), then filter every page (tossups, players, teams, categories) to a single phase. Stats are re-aggregated per phase, not just hidden.",
     tag: "New",
   },
   {
     title: "Buzz-level analysis",
     body:
-      "Buzzer races, first-sentence buzzes, and first / top-3 buzz tracking surface who was fastest and where the pack converted — beyond plain conversion percentages.",
+      "Buzzer races, first-sentence buzzes, and first / top-3 buzz tracking surface who was fastest and where the pack converted, beyond plain conversion percentages.",
   },
   {
     title: "Corrections workflow",
     body:
       "Owners can reassign buzzes and fix word positions directly; viewers can submit correction requests for the owner to approve. The set re-aggregates automatically when an edit lands.",
+    tag: "New",
   },
   {
     title: "Visibility & access control",
     body:
       "Each tournament can be public, listed (login + invite), or private. Invite specific people, share invite links, review access requests, and schedule a date to auto-publish.",
-  },
-  {
-    title: "YellowFruit results import",
-    body:
-      "Have only a box score? Create a results-only tournament straight from a YellowFruit / QBJ file to get standings and player stats, and export back out again.",
-  },
+  }
 ];
 
 export function About() {
@@ -79,7 +69,7 @@ export function About() {
         <div className="hero">
           <h1>About Buzzpoints</h1>
           <p>
-            Buzzpoints turns quiz-bowl packets and QBJ scoresheets into a hosted, interactive stats site — buzz-point
+            Buzzpoints turns quizbowl packets and QBJ scoresheets into a hosted, interactive stats site: buzz-point
             analysis, category breakdowns, and player and team pages for any tournament.
           </p>
         </div>
@@ -89,7 +79,7 @@ export function About() {
           <p className="about-lead">
             Upload your packet JSONs (one per round) and QBJ match files, choose a scoring format, and Buzzpoints
             precomputes everything: tossup conversion and buzz timing, bonus conversion, per-player and per-team
-            category splits, buzzer races, and more. The result is a shareable site you control — public to everyone or
+            category splits, buzzer races, and more. The result is a shareable site you control: public to everyone or
             limited to invited people.
           </p>
           <div className="about-cta">
@@ -124,7 +114,7 @@ export function About() {
           <p className="about-lead">
             Buzzpoints builds on the original{" "}
             <a className="link" href="https://github.com/JemCasey/buzzpoints" target="_blank" rel="noreferrer">JemCasey/buzzpoints</a>{" "}
-            project and the broader quiz-bowl stats community. The precompute-then-serve-static-data model is preserved;
+            project and the broader quizbowl stats community. The precompute-then-serve-static-data model is preserved;
             this version moves hosting, ingestion, and access control into one self-serve app so anyone can publish a
             tournament without standing up their own deployment.
           </p>
