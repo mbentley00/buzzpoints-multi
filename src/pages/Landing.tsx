@@ -90,6 +90,9 @@ export function Landing() {
             Buzzpoints
           </Link>
           <nav className="nav">
+            <Link to="/search" className="nav-link">
+              Search
+            </Link>
             <Link to="/new" className="nav-link active">
               + New tournament
             </Link>

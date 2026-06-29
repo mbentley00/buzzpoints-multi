@@ -187,6 +187,24 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
 .set-card-meta, .nav-card-desc { color: var(--muted); margin-top: 4px; }
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
 
+/* cross-tournament search */
+.search-form { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 14px 0 6px; }
+.search-toggle { display: inline-flex; gap: 4px; }
+.mini-btn.on { background: var(--nav); color: #fff; border-color: var(--nav); }
+.search-box {
+  flex: 1; min-width: 240px; padding: 9px 12px; font-size: 15px;
+  border: 1px solid var(--line-strong); border-radius: 6px;
+}
+.search-results { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.search-result {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  padding: 10px 12px; border-radius: 6px; border: 1px solid transparent;
+}
+.search-result:hover { background: var(--hover); border-color: var(--line); text-decoration: none; }
+.search-result-main { font-weight: 600; color: var(--ink); }
+.search-result-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; color: var(--muted); font-size: 13px; text-align: right; }
+.search-set { font-weight: 600; color: var(--link); }
+
 /* about page — restrained, document-style layout with careful typography */
 .about-doc { flex: 1; width: 100%; background: #fbfbf9; }
 .about-doc article {
