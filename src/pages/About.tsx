@@ -54,7 +54,7 @@ export function About() {
 
           <h2>Credit</h2>
           <p className="about-foot">
-            Buzzpoints.buzz is maintained by <a href="mailto:bentley.michael.j@gmail.com.">Mike Bentley</a>.
+            Buzzpoints.buzz is maintained by <a href="mailto:bentley.michael.j@gmail.com">Mike Bentley</a>.
             It builds on the open-source{" "}
             <a href="https://github.com/JemCasey/buzzpoints" target="_blank" rel="noreferrer">BuzzPoints</a>{" "}
             project by Jordan Brownstein and other contributors.
