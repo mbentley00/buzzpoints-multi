@@ -11,7 +11,7 @@ import { currentUser, normEmail, canModerate, loadUsers } from "./_lib/auth.js";
 import {
   readIndex, writeIndex, readSource, readCorrections, aggregateAndWrite,
   readAccess, writeAccess, readLinks, writeLinks, canViewContent, InviteLink, Visibility, AccessRole,
-  writeVirtualCats, readRoundTags, writeRoundTags, DEFAULT_ROUND_TAGS, RoundTags,
+  writeVirtualCats, readRoundTags, writeRoundTags, DEFAULT_ROUND_TAGS, RoundTags, TOURNAMENT_LEVELS,
 } from "./_lib/sets.js";
 import { VirtualCategory } from "./_lib/aggregate.js";
 import { sendEmail, appUrl, accessRequestBody, accessGrantedBody } from "./_lib/email.js";
@@ -113,6 +113,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         autoPublicAt: entry.autoPublicAt ?? null,
         invites: entry.invites ?? [],
         hasYf: !!entry.hasYf,
+        level: entry.level ?? "",
+        tdLink: entry.tdLink ?? "",
         accessRequests: (await readAccess(slug)).filter((a) => a.status === "pending"),
         links: await readLinks(slug),
       });
@@ -193,6 +195,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (blobs.length) await del(blobs.map((b) => b.url));
       await writeIndex({ sets: index.sets.filter((s) => s.slug !== slug) });
       return res.status(200).json({ deleted: slug, removedBlobs: blobs.length });
+    } else if (op === "details") {
+      const lvl = String(body.level || "");
+      if (!(TOURNAMENT_LEVELS as readonly string[]).includes(lvl))
+        return res.status(400).json({ error: "Choose a tournament type." });
+      entry.level = lvl;
+      const link = String(body.tdLink || "").trim();
+      if (link && !/^https?:\/\/\S+$/i.test(link)) return res.status(400).json({ error: "The Tournament Database link must be a valid URL." });
+      if (link) entry.tdLink = link.slice(0, 500); else delete entry.tdLink;
+      await writeIndex(index);
+      return res.status(200).json({ ok: true, level: entry.level, tdLink: entry.tdLink ?? "" });
     } else {
       return res.status(400).json({ error: "Unknown op." });
     }

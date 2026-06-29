@@ -199,8 +199,9 @@ export function Landing() {
                 {s.editions && s.editions.length > 1 && <span className="edition-count">{s.editions.length} editions</span>}
               </div>
               <div className="nav-card-desc">
-                {s.level && <span className="level-badge">{levelLabel(s.level)}</span>}
-                {s.numGames} games · {s.numTeams} teams · {s.numPlayers} players · {s.rounds} rounds
+                {s.level
+                  ? levelLabel(s.level)
+                  : `${s.numGames} games · ${s.numTeams} teams · ${s.numPlayers} players · ${s.rounds} rounds`}
               </div>
               {s.createdAt && (
                 <div className="nav-card-date" title={new Date(s.createdAt).toLocaleString()}>

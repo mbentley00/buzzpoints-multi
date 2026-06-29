@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useSetCtx } from "../components/Layout";
 import { refreshIndex } from "../data";
-import { Visibility } from "../types";
+import { Visibility, TOURNAMENT_LEVELS } from "../types";
 import { Loading } from "../components/Common";
 import { RoundTagsEditor } from "../components/RoundTagsEditor";
 
@@ -30,6 +30,8 @@ export function Settings() {
   const [invites, setInvites] = useState<string[]>([]);
   const [newInvite, setNewInvite] = useState("");
   const [hasYf, setHasYf] = useState(false);
+  const [level, setLevel] = useState("");
+  const [tdLink, setTdLink] = useState("");
   const [accessRequests, setAccessRequests] = useState<{ email: string; name: string; at: string; role?: string; team?: string }[]>([]);
   const [links, setLinks] = useState<{ id: string; label: string; at: string; revoked?: boolean; uses: number }[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -48,6 +50,8 @@ export function Settings() {
         setDate(toDateInput(d.autoPublicAt) || new Date(Date.now() + 2 * 365 * 864e5).toISOString().slice(0, 10));
         setInvites(d.invites || []);
         setHasYf(!!d.hasYf);
+        setLevel(d.level || "");
+        setTdLink(d.tdLink || "");
         setAccessRequests(d.accessRequests || []);
         setLinks(d.links || []);
       })
@@ -65,6 +69,18 @@ export function Settings() {
       await postJson("/api/manage", { slug, op: "settings", visibility, autoPublicAt });
       refreshIndex();
       setMsg("Settings saved.");
+    } catch (e) {
+      setErr(String((e as Error).message || e));
+    } finally { setBusy(false); }
+  }
+
+  async function saveDetails() {
+    setErr(null); setMsg(null); setBusy(true);
+    try {
+      if (!level) throw new Error("Choose a tournament type.");
+      await postJson("/api/manage", { slug, op: "details", level, tdLink: tdLink.trim() });
+      refreshIndex();
+      setMsg("Tournament details saved.");
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally { setBusy(false); }
@@ -124,7 +140,25 @@ export function Settings() {
       {err && <div className="error-box">{err}</div>}
       {msg && <div className="caveat"><span className="ok-msg">{msg}</span></div>}
 
-      <h2>Visibility</h2>
+      <h2>Tournament details</h2>
+      <div className="create-form" style={{ maxWidth: 520 }}>
+        <label className="field">
+          <span>Tournament type</span>
+          <select value={level} onChange={(e) => setLevel(e.target.value)}>
+            <option value="" disabled>Choose a type…</option>
+            {TOURNAMENT_LEVELS.map((l) => (
+              <option key={l.id} value={l.id}>{l.label}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Tournament Database link (optional)</span>
+          <input type="url" value={tdLink} onChange={(e) => setTdLink(e.target.value)} placeholder="https://hsquizbowl.org/db/tournaments/…" />
+        </label>
+        <button className="btn-primary" disabled={busy} onClick={saveDetails}>Save details</button>
+      </div>
+
+      <h2 style={{ marginTop: 28 }}>Visibility</h2>
       <div className="create-form" style={{ maxWidth: 520 }}>
         <label className="field">
           <span>Who can see this tournament</span>
