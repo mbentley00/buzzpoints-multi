@@ -23,6 +23,8 @@ export interface PendingPayload {
   visibility?: string;
   autoPublicAt?: string | null;
   edition?: string;
+  level?: string;
+  tdLink?: string;
   kind?: "buzz" | "results";
   yf?: any;
   packets?: { name: string; json: any }[];

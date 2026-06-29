@@ -5,7 +5,7 @@ import { PacketFile, GameFile } from "./aggregate.js";
 import { SCORINGS } from "./scoring.js";
 import {
   readIndex, writeIndex, writeSource, writeCorrections, writeRequests,
-  aggregateAndWrite, SetSource, SetEntry, Visibility, writeYf,
+  aggregateAndWrite, SetSource, SetEntry, Visibility, writeYf, TOURNAMENT_LEVELS,
 } from "./sets.js";
 import { parseYellowFruit } from "./yellowfruit.js";
 
@@ -17,6 +17,20 @@ export interface CreateBody {
   packets?: FileRef[]; games?: FileRef[];
   visibility?: string; autoPublicAt?: string | null; edition?: string;
   yf?: any; // optional companion YellowFruit (.yft) for corrected re-export
+  level?: string; tdLink?: string; // tournament type + optional Tournament Database link
+}
+
+// Validate the tournament level (required) and normalize an optional TD link.
+export function validLevel(level: unknown): string {
+  if (typeof level !== "string" || !(TOURNAMENT_LEVELS as readonly string[]).includes(level))
+    throw new CreateError(400, "Choose a tournament type (high school, college, open, pop culture, or side event).");
+  return level;
+}
+export function cleanTdLink(link: unknown): string | undefined {
+  const s = String(link ?? "").trim();
+  if (!s) return undefined;
+  if (!/^https?:\/\/\S+$/i.test(s)) throw new CreateError(400, "The Tournament Database link must be a valid URL.");
+  return s.slice(0, 500);
 }
 
 const VISIBILITIES = new Set<Visibility>(["public", "listed", "private"]);
@@ -47,6 +61,8 @@ export async function createTournament(body: CreateBody, owner: string): Promise
   if (!body.scoring || !(body.scoring in SCORINGS)) throw new CreateError(400, "Unknown scoring format.");
   if (!body.packets?.length) throw new CreateError(400, "At least one packet is required.");
   if (!body.games?.length) throw new CreateError(400, "At least one game (QBJ) is required.");
+  const level = validLevel(body.level);
+  const tdLink = cleanTdLink(body.tdLink);
 
   const { packets, games } = parseFiles(body);
   const hasBonuses = !!body.hasBonuses;
@@ -84,7 +100,7 @@ export async function createTournament(body: CreateBody, owner: string): Promise
 
   const entry: SetEntry = {
     slug, name, scoring: body.scoring!, hasBonuses, owner, editions,
-    visibility, invites: [], autoPublicAt, ...(hasYf ? { hasYf } : {}),
+    visibility, invites: [], autoPublicAt, ...(hasYf ? { hasYf } : {}), level, ...(tdLink ? { tdLink } : {}),
     numGames: meta.numGames, numTeams: meta.numTeams, numPlayers: meta.numPlayers,
     numTossups: meta.numTossups, rounds: meta.rounds.length, createdAt,
   };

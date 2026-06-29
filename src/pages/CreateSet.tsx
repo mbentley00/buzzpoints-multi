@@ -5,7 +5,7 @@ import { useAuth } from "../auth";
 import { AuthNav } from "../components/Common";
 import { detectScoring } from "../detectScoring";
 import { uploadFiles } from "../upload";
-import { Visibility } from "../types";
+import { Visibility, TOURNAMENT_LEVELS } from "../types";
 
 const SCORING_OPTIONS = [
   { id: "mACF", label: "mACF (15 / 10 / -5)" },
@@ -44,6 +44,8 @@ export function CreateSet() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const [name, setName] = useState("");
+  const [level, setLevel] = useState("");
+  const [tdLink, setTdLink] = useState("");
   const [scoring, setScoring] = useState("mACF");
   const [detected, setDetected] = useState<string | null>(null);
   const [hasBonuses, setHasBonuses] = useState(true);
@@ -75,6 +77,7 @@ export function CreateSet() {
     e.preventDefault();
     setError(null);
     if (!name.trim()) return setError("Enter a tournament name.");
+    if (!level) return setError("Choose a tournament type.");
     if (!packets?.length) return setError("Choose at least one packet file.");
     if (!games?.length) return setError("Choose at least one QBJ game file.");
 
@@ -98,7 +101,7 @@ export function CreateSet() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          name: name.trim(), scoring, hasBonuses, visibility, autoPublicAt,
+          name: name.trim(), level, tdLink: tdLink.trim() || undefined, scoring, hasBonuses, visibility, autoPublicAt,
           packets: packetRefs, games: gameRefs, ...(yf ? { yf } : {}),
         }),
       });
@@ -163,6 +166,22 @@ export function CreateSet() {
           <label className="field">
             <span>Tournament name</span>
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Spring Open 2026" />
+          </label>
+
+          <label className="field">
+            <span>Tournament type</span>
+            <select value={level} onChange={(e) => setLevel(e.target.value)}>
+              <option value="" disabled>Choose a type…</option>
+              {TOURNAMENT_LEVELS.map((l) => (
+                <option key={l.id} value={l.id}>{l.label}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Tournament Database link (optional)</span>
+            <input type="url" value={tdLink} onChange={(e) => setTdLink(e.target.value)} placeholder="https://hsquizbowl.org/db/tournaments/…" />
+            <small className="muted">Link to this tournament's entry on the hsquizbowl Tournament Database, if it has one.</small>
           </label>
 
           <label className="field">

@@ -28,6 +28,9 @@ export function editionsOf(s: SetSource): Edition[] {
 export interface EditionSummary { id: string; label: string; numGames: number; numTeams: number; numPlayers: number; numTossups: number; rounds: number; }
 export type Visibility = "public" | "listed" | "private";
 
+// Tournament level/type ids (labels live on the client).
+export const TOURNAMENT_LEVELS = ["hs", "college", "open", "popculture", "side"] as const;
+
 export interface SetEntry {
   slug: string;
   name: string;
@@ -52,6 +55,10 @@ export interface SetEntry {
   // True when the owner uploaded a companion YellowFruit (.yft) file, enabling the
   // corrected-export download.
   hasYf?: boolean;
+  // Tournament level/type (one of TOURNAMENT_LEVELS) and an optional link to its
+  // hsquizbowl Tournament Database entry. Set at creation; absent on legacy sets.
+  level?: string;
+  tdLink?: string;
   numGames: number;
   numTeams: number;
   numPlayers: number;

@@ -1,8 +1,9 @@
 import { Link, useParams } from "react-router-dom";
 import { useSetCtx } from "../components/Layout";
+import { levelLabel } from "../types";
 
 export function SetHome() {
-  const { meta } = useSetCtx();
+  const { meta, level, tdLink } = useSetCtx();
   const { slug = "" } = useParams();
   const base = `/set/${slug}`;
   const links = [
@@ -19,10 +20,16 @@ export function SetHome() {
         <div>
           <h1>{meta.setName}</h1>
           <p className="subtitle">
+            {level && <>{levelLabel(level)} · </>}
             {meta.numGames} games · {meta.numTeams} teams · {meta.numPlayers} players · {meta.rounds.length} rounds ·{" "}
             {meta.scoringLabel}
             {meta.hasBonuses ? " · with bonuses" : " · no bonuses"}
           </p>
+          {tdLink && (
+            <p className="subtitle">
+              <a className="link" href={tdLink} target="_blank" rel="noreferrer">Tournament Database entry →</a>
+            </p>
+          )}
         </div>
       </div>
       <div className="card-grid">

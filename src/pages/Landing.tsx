@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useIndex } from "../data";
 import { useAuth } from "../auth";
-import { SetEntry } from "../types";
+import { SetEntry, TOURNAMENT_LEVELS, levelLabel } from "../types";
 import { Loading, ErrorBox, AuthNav, SearchInput } from "../components/Common";
 import { formatDate, relativeTime } from "../util";
 
@@ -43,6 +43,7 @@ export function Landing() {
   const [q, setQ] = useState("");
   const [scoring, setScoring] = useState<string>("all");
   const [vis, setVis] = useState<string>("all");
+  const [lvl, setLvl] = useState<string>("all");
   const [sort, setSort] = useState<Sort>("new");
   const [limit, setLimit] = useState(PAGE);
 
@@ -53,6 +54,7 @@ export function Landing() {
   );
   // Only worth showing a visibility filter when some non-public sets are visible.
   const hasNonPublic = useMemo(() => sets.some((s) => s.visibility && s.visibility !== "public"), [sets]);
+  const levelOpts = useMemo(() => TOURNAMENT_LEVELS.filter((l) => sets.some((s) => s.level === l.id)), [sets]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -60,6 +62,7 @@ export function Landing() {
       if (needle && !s.name.toLowerCase().includes(needle)) return false;
       if (scoring !== "all" && s.scoring !== scoring) return false;
       if (vis !== "all" && (s.visibility ?? "public") !== vis) return false;
+      if (lvl !== "all" && s.level !== lvl) return false;
       return true;
     });
     r = [...r].sort((a, b) => {
@@ -74,10 +77,10 @@ export function Landing() {
       }
     });
     return r;
-  }, [sets, q, scoring, vis, sort, user]);
+  }, [sets, q, scoring, vis, lvl, sort, user]);
 
   // Reset paging whenever the result set changes.
-  useEffect(() => setLimit(PAGE), [q, scoring, vis, sort]);
+  useEffect(() => setLimit(PAGE), [q, scoring, vis, lvl, sort]);
 
   const visible = filtered.slice(0, limit);
   const showControls = data && !data.needsSetup && sets.length > 0;
@@ -138,6 +141,17 @@ export function Landing() {
                 </select>
               </label>
             )}
+            {levelOpts.length > 1 && (
+              <label className="filter">
+                Type:{" "}
+                <select value={lvl} onChange={(e) => setLvl(e.target.value)}>
+                  <option value="all">All</option>
+                  {levelOpts.map((l) => (
+                    <option key={l.id} value={l.id}>{l.label}</option>
+                  ))}
+                </select>
+              </label>
+            )}
             {hasNonPublic && (
               <label className="filter">
                 Visibility:{" "}
@@ -185,6 +199,7 @@ export function Landing() {
                 {s.editions && s.editions.length > 1 && <span className="edition-count">{s.editions.length} editions</span>}
               </div>
               <div className="nav-card-desc">
+                {s.level && <span className="level-badge">{levelLabel(s.level)}</span>}
                 {s.numGames} games · {s.numTeams} teams · {s.numPlayers} players · {s.rounds} rounds
               </div>
               {s.createdAt && (

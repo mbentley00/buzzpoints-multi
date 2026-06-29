@@ -15,7 +15,7 @@ import {
   readIndex, writeIndex, readSource, writeSource, writeCorrections, readCorrections,
   aggregateAndWrite, editionsOf, SetSource,
 } from "./_lib/sets.js";
-import { createTournament, parseFiles, CreateError, FileRef } from "./_lib/publish.js";
+import { createTournament, parseFiles, validLevel, cleanTdLink, CreateError, FileRef } from "./_lib/publish.js";
 import { parseYellowFruit } from "./_lib/yellowfruit.js";
 import {
   readModConfig, findBlocked, readPending, writePending, writePendingPayload, PendingSubmission,
@@ -27,6 +27,7 @@ interface Body {
   visibility?: string; autoPublicAt?: string | null; editionOf?: string; edition?: string;
   editionId?: string; // when set with editionOf: append files to this existing edition
   yf?: any; // optional companion YellowFruit (.yft) JSON for corrected re-export
+  level?: string; tdLink?: string; // tournament type + optional Tournament Database link
 }
 
 // Resolve a list of file refs to inline JSON. A ref uploaded directly to Blob
@@ -139,6 +140,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!body.scoring || !(body.scoring in SCORINGS)) return res.status(400).json({ error: "Unknown scoring format." });
     const blocked = findBlocked(name, blocklist) || findBlocked(body.edition || "", blocklist);
     if (blocked) return res.status(400).json({ error: `Tournament name contains a disallowed word: "${blocked}".` });
+    // Validate the tournament type + optional TD link now, so a queued first post
+    // doesn't fail only at approval time.
+    let level: string, tdLink: string | undefined;
+    try { level = validLevel(body.level); tdLink = cleanTdLink(body.tdLink); }
+    catch (e) { if (e instanceof CreateError) return res.status(e.status).json({ error: e.message }); throw e; }
 
     // First-post gate: queue for review unless this account has posted before or
     // is a moderator/admin.
@@ -150,7 +156,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await writePendingPayload(id, {
         name, scoring: body.scoring!, hasBonuses: !!body.hasBonuses,
         visibility: body.visibility, autoPublicAt: body.autoPublicAt ?? null,
-        edition: body.edition,
+        edition: body.edition, level, ...(tdLink ? { tdLink } : {}),
         packets: body.packets!.map((r) => ({ name: r.name, json: r.json })),
         games: body.games!.map((r) => ({ name: r.name, json: r.json })),
         ...(body.yf ? { yf: body.yf } : {}),

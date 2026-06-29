@@ -1,5 +1,15 @@
 export type Visibility = "public" | "listed" | "private";
 
+// Tournament type/level options (ids match the server's TOURNAMENT_LEVELS).
+export const TOURNAMENT_LEVELS: { id: string; label: string }[] = [
+  { id: "hs", label: "High school" },
+  { id: "college", label: "College" },
+  { id: "open", label: "Open" },
+  { id: "popculture", label: "Pop culture" },
+  { id: "side", label: "Side event" },
+];
+export const levelLabel = (id?: string): string => TOURNAMENT_LEVELS.find((l) => l.id === id)?.label ?? "";
+
 export interface EditionSummary {
   id: string;
   label: string;
@@ -35,6 +45,8 @@ export interface SetEntry {
   autoPublicAt?: string | null;
   tags?: TagSummary[]; // round-tag phases, if the owner has tagged rounds
   hasYf?: boolean; // owner uploaded a companion YellowFruit file (corrected export available)
+  level?: string; // tournament type (see TOURNAMENT_LEVELS)
+  tdLink?: string; // optional hsquizbowl Tournament Database link
   numGames: number;
   numTeams: number;
   numPlayers: number;
@@ -52,6 +64,8 @@ export interface SetCtx {
   owner: string | null;
   isOwner: boolean;
   user: string | null;
+  level?: string;
+  tdLink?: string;
 }
 
 // A buzz reassignment / move, as sent to /api/correct or /api/request.

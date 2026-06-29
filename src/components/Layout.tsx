@@ -40,7 +40,7 @@ export function SetLayout() {
   const hasEditions = editions.length > 1;
   const tags = entry?.tags ?? [];
   const hasScopes = hasEditions || tags.length > 0;
-  const ctx: SetCtx = { meta: meta as Meta, slug, scope, editions, owner, isOwner, user };
+  const ctx: SetCtx = { meta: meta as Meta, slug, scope, editions, owner, isOwner, user, level: entry?.level, tdLink: entry?.tdLink };
   const denied = !!error && /\b(401|403)\b/.test(error);
   const [reqState, setReqState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [reqMsg, setReqMsg] = useState("");
