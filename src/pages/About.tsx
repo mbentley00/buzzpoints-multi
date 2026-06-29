@@ -1,15 +1,14 @@
 import { Link } from "react-router-dom";
 import { AuthNav } from "../components/Common";
 
-// Short title + one-liner per feature — no boxes, no badges.
 const FEATURES: [string, string][] = [
-  ["Self-serve hosting", "Upload packets and QBJ files; one site hosts every tournament."],
-  ["Any scoring format", "ACF, mACF, PACE, or Super-power, bonuses optional."],
-  ["Editions & versions", "Combine mirrors and see how questions changed."],
+  ["Self-serve hosting", "One site hosts every tournament; anyone can create one."],
+  ["Any scoring format", "ACF, mACF, PACE, or Super-power, with optional bonuses."],
+  ["Editions and versions", "Combine mirrors of a set and see how questions changed."],
   ["Merged categories", "Group categories into your own custom buckets."],
   ["Round phases", "Tag rounds and filter every page to a phase."],
-  ["Deep buzz analysis", "Buzzer races, first-sentence, and first / top-3 tracking."],
-  ["Corrections", "Fix buzzes directly; stats rebuild instantly."],
+  ["Buzz analysis", "Buzzer races, first-sentence buzzes, and first and top-3 tracking."],
+  ["Corrections", "Fix buzzes directly or review requests; stats rebuild instantly."],
   ["Access control", "Public, invite-only, or private, with scheduled auto-publish."],
   ["YellowFruit export", "Attach your .yft and download a corrected copy."],
 ];
@@ -29,37 +28,46 @@ export function About() {
         </div>
       </header>
 
-      <main className="about-llm">
-        <div className="about-inner">
-          <p className="about-eyebrow">✨ Quizbowl stats, reimagined</p>
-          <h1 className="about-title">Every buzz, beautifully tracked.</h1>
-          <p className="about-sub">
-            Upload your packets and scoresheets — Buzzpoints turns them into a fast, shareable
-            stats site for any tournament.
+      <main className="about-doc">
+        <article>
+          <h1>About Buzzpoints</h1>
+          <p className="lead">
+            Buzzpoints turns quizbowl packets and QBJ scoresheets into a fast, shareable stats
+            site for any tournament: buzz-point analysis, category breakdowns, and player and
+            team pages.
           </p>
-          <div className="about-actions">
-            <Link to="/new" className="about-btn primary">Create a tournament</Link>
-            <Link to="/" className="about-btn ghost">Browse tournaments</Link>
-          </div>
 
-          <div className="about-features">
+          <hr />
+
+          <h2>How it works</h2>
+          <p>
+            Upload your packets (one per round) and QBJ match files, then choose a scoring format.
+            Buzzpoints precomputes everything: tossup conversion and buzz timing, bonus conversion,
+            category splits, buzzer races, and more. The result is a site you control, open to
+            everyone or limited to people you invite.
+          </p>
+
+          <h2>What it does</h2>
+          <dl>
             {FEATURES.map(([title, desc]) => (
-              <div className="about-feature" key={title}>
-                <span className="about-check">✓</span>
-                <div>
-                  <h3>{title}</h3>
-                  <p>{desc}</p>
-                </div>
+              <div key={title}>
+                <dt>{title}</dt>
+                <dd>{desc}</dd>
               </div>
             ))}
-          </div>
+          </dl>
 
+          <h2>Credit</h2>
           <p className="about-foot">
-            Built on the open-source{" "}
-            <a className="about-link" href="https://github.com/JemCasey/buzzpoints" target="_blank" rel="noreferrer">BuzzPoints</a>{" "}
+            Buzzpoints builds on the open-source{" "}
+            <a href="https://github.com/JemCasey/buzzpoints" target="_blank" rel="noreferrer">BuzzPoints</a>{" "}
             project, reimagined as a self-serve app.
           </p>
-        </div>
+
+          <p className="about-links">
+            <Link to="/new">Create a tournament</Link> &nbsp;·&nbsp; <Link to="/">Browse tournaments</Link>
+          </p>
+        </article>
       </main>
     </div>
   );

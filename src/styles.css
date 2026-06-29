@@ -187,68 +187,29 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
 .set-card-meta, .nav-card-desc { color: var(--muted); margin-top: 4px; }
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
 
-/* about page — gradient "AI-landing" aesthetic, scoped so it never touches the
-   rest of the app's yellow/navy palette */
-.about-llm {
-  flex: 1;
-  width: 100%;
+/* about page — restrained, document-style layout with careful typography */
+.about-doc { flex: 1; width: 100%; background: #fbfbf9; }
+.about-doc article {
+  max-width: 660px;
   margin: 0 auto;
-  padding: 70px 24px 90px;
-  text-align: center;
-  background:
-    radial-gradient(60% 50% at 50% -5%, rgba(139, 92, 246, 0.20), transparent 70%),
-    radial-gradient(38% 42% at 86% 14%, rgba(217, 70, 239, 0.16), transparent 70%),
-    radial-gradient(42% 46% at 10% 26%, rgba(79, 70, 229, 0.16), transparent 70%);
+  padding: 56px 24px 84px;
+  font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
+  color: #1b1b1b;
+  font-size: 17px;
+  line-height: 1.72;
 }
-.about-inner { max-width: 860px; margin: 0 auto; }
-.about-eyebrow {
-  display: inline-block;
-  font-size: 13px; font-weight: 600; letter-spacing: 0.01em;
-  color: #7c3aed; background: rgba(124, 58, 237, 0.08);
-  border: 1px solid rgba(124, 58, 237, 0.18);
-  padding: 6px 14px; border-radius: 999px; margin: 0 0 24px;
-}
-.about-title {
-  font-size: clamp(36px, 6vw, 58px); line-height: 1.04; font-weight: 800; letter-spacing: -0.025em;
-  margin: 0 0 18px;
-  background: linear-gradient(100deg, #4f46e5, #8b5cf6 45%, #d946ef);
-  -webkit-background-clip: text; background-clip: text; color: transparent;
-}
-.about-sub {
-  font-size: clamp(16px, 2.3vw, 19px); line-height: 1.6; color: #475569;
-  max-width: 600px; margin: 0 auto 32px;
-}
-.about-actions { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
-.about-btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  padding: 12px 26px; border-radius: 999px; font-weight: 600; font-size: 15px;
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
-}
-.about-btn:hover { text-decoration: none; transform: translateY(-1px); }
-.about-btn.primary {
-  color: #fff;
-  background: linear-gradient(100deg, #6366f1, #8b5cf6 50%, #d946ef);
-  box-shadow: 0 12px 26px -10px rgba(124, 58, 237, 0.65);
-}
-.about-btn.primary:hover { box-shadow: 0 16px 30px -10px rgba(124, 58, 237, 0.7); }
-.about-btn.ghost { color: #6d28d9; background: rgba(255, 255, 255, 0.7); border: 1px solid rgba(124, 58, 237, 0.25); }
-.about-features {
-  margin: 64px auto 0; max-width: 760px; text-align: left;
-  display: grid; grid-template-columns: repeat(2, 1fr); gap: 28px 40px;
-}
-.about-feature { display: flex; gap: 14px; align-items: flex-start; }
-.about-check {
-  flex: none; width: 28px; height: 28px; border-radius: 9px;
-  display: grid; place-items: center; color: #fff; font-size: 15px; font-weight: 700;
-  background: linear-gradient(135deg, #8b5cf6, #d946ef);
-  box-shadow: 0 8px 16px -7px rgba(217, 70, 239, 0.75);
-}
-.about-feature h3 { margin: 0 0 3px; font-size: 15.5px; color: #1e1b4b; }
-.about-feature p { margin: 0; font-size: 13.5px; line-height: 1.5; color: #64748b; }
-.about-foot { margin: 64px auto 0; color: #94a3b8; font-size: 14px; }
-.about-link { color: #7c3aed; font-weight: 600; }
-.about-link:hover { text-decoration: underline; }
-@media (max-width: 620px) { .about-features { grid-template-columns: 1fr; } }
+.about-doc h1 { font-size: 32px; font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; margin: 0 0 10px; }
+.about-doc .lead { font-size: 18.5px; color: #444; margin: 0; }
+.about-doc hr { border: 0; border-top: 1px solid #e2e0d8; margin: 26px 0; }
+.about-doc h2 { font-size: 19px; font-weight: 700; margin: 32px 0 10px; }
+.about-doc p { margin: 0 0 16px; }
+.about-doc a { color: #0645ad; text-decoration: underline; }
+.about-doc a:hover { color: #2a4fb7; }
+.about-doc dl { margin: 0; }
+.about-doc dt { font-weight: 700; margin-top: 15px; }
+.about-doc dd { margin: 1px 0 0; color: #333; }
+.about-doc .about-foot { color: #6b6b66; font-size: 15.5px; margin-top: 4px; }
+.about-doc .about-links { margin-top: 26px; }
 .set-section { margin-top: 22px; }
 .set-section:first-of-type { margin-top: 0; }
 .set-section-title {
