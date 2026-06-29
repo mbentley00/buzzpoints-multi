@@ -90,14 +90,14 @@ export function Landing() {
             Buzzpoints
           </Link>
           <nav className="nav">
-            <Link to="/about" className="nav-link">
-              About
-            </Link>
             <Link to="/new" className="nav-link active">
               + New tournament
             </Link>
-            <AuthNav />
+            <Link to="/about" className="nav-link">
+              About
+            </Link>
           </nav>
+          <div className="topbar-auth"><AuthNav /></div>
         </div>
       </header>
       <main className="content">
