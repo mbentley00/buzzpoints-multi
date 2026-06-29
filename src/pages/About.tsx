@@ -2,15 +2,13 @@ import { Link } from "react-router-dom";
 import { AuthNav } from "../components/Common";
 
 const FEATURES: [string, string][] = [
-  ["Self-serve hosting", "One site hosts every tournament; anyone can create one."],
-  ["Any scoring format", "ACF, mACF, PACE, or Super-power, with optional bonuses."],
+  ["Self-serve hosting", "This site hosts everything. No need for setting up local environments and vercel deployments."],
   ["Editions and versions", "Combine mirrors of a set and see how questions changed."],
-  ["Merged categories", "Group categories into your own custom buckets."],
-  ["Round phases", "Tag rounds and filter every page to a phase."],
+  ["Merged categories", "Group categories into your own custom buckets. For instance, create a 'Fine Arts - Other - Visual' that wasn't there in the original packets."],
+  ["Round phases", "Tag rounds to easily filter on playoffs, prelims, tiebreakers."],
   ["Buzz analysis", "Buzzer races, first-sentence buzzes, and first and top-3 tracking."],
-  ["Corrections", "Fix buzzes directly or review requests; stats rebuild instantly."],
-  ["Access control", "Public, invite-only, or private, with scheduled auto-publish."],
-  ["YellowFruit export", "Attach your .yft and download a corrected copy."],
+  ["Corrections", "Players can submit stat corrections directly in the site. Hosts can export corrected stats to YellowFruit"],
+  ["Access control", "Public, invite-only, or private, with scheduled auto-publish. Remember that buzz points expose the full question content of a set, so only should be made public once a set is clear."],
 ];
 
 export function About() {
@@ -32,19 +30,16 @@ export function About() {
         <article>
           <h1>About Buzzpoints</h1>
           <p className="lead">
-            Buzzpoints turns quizbowl packets and QBJ scoresheets into a fast, shareable stats
-            site for any tournament: buzz-point analysis, category breakdowns, and player and
-            team pages.
+            Buzzpoints is an all-in-one site for showing individual buzzpoints and bonus conversions for quizbowl tournaments.
+            It works with any tournament run via <a href="https://www.qbwiki.com/wiki/MODAQ">MODAQ</a>.
           </p>
 
           <hr />
 
           <h2>How it works</h2>
           <p>
-            Upload your packets (one per round) and QBJ match files, then choose a scoring format.
-            Buzzpoints precomputes everything: tossup conversion and buzz timing, bonus conversion,
-            category splits, buzzer races, and more. The result is a site you control, open to
-            everyone or limited to people you invite.
+            Upload your packets (one per round) and QBJ match files from MODAQ, then choose a scoring format.
+            You can then manage access and invites to the tournament and upload new stats for later mirrors.
           </p>
 
           <h2>What it does</h2>
@@ -59,9 +54,10 @@ export function About() {
 
           <h2>Credit</h2>
           <p className="about-foot">
-            Buzzpoints builds on the open-source{" "}
+            Buzzpoints.buzz is maintained by <a href="mailto:bentley.michael.j@gmail.com.">Mike Bentley</a>.
+            It builds on the open-source{" "}
             <a href="https://github.com/JemCasey/buzzpoints" target="_blank" rel="noreferrer">BuzzPoints</a>{" "}
-            project, reimagined as a self-serve app.
+            project by Jordan Brownstein and other contributors.
           </p>
 
           <p className="about-links">
