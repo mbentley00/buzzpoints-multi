@@ -45,8 +45,9 @@ export const correctionRequestBody = (requester: string, setName: string, summar
   wrap(`<p><strong>${esc(requester)}</strong> suggested an edit to <strong>${esc(setName)}</strong>.</p><p>${esc(summary)}</p>${desc ? `<p><strong>Note:</strong> ${esc(desc)}</p>` : ""}<p>Review and approve or reject it on the tournament's Requests page.</p>${btn(url, "Review edit")}`);
 
 // Sent to moderators/admins when a first-time poster submits a tournament.
-export const submissionPendingBody = (submitter: string, setName: string, url: string) =>
-  wrap(`<p><strong>${esc(submitter)}</strong> submitted their first tournament, <strong>${esc(setName)}</strong>, for review.</p><p>It won't be published until a moderator approves it.</p>${btn(url, "Review submission")}`);
+// `approveUrl` is a one-click approval link; `reviewUrl` opens the dashboard.
+export const submissionPendingBody = (submitter: string, setName: string, reviewUrl: string, approveUrl: string) =>
+  wrap(`<p><strong>${esc(submitter)}</strong> submitted their first tournament, <strong>${esc(setName)}</strong>, for review.</p><p>It won't be published until you approve it.</p>${btn(approveUrl, "Approve & publish")}<p style="font-size:13px;color:#555">Want to look first? <a href="${reviewUrl}">Review it in the dashboard</a>.</p>`);
 
 // Sent to the submitter once their first tournament is approved.
 export const submissionApprovedBody = (setName: string, url: string) =>

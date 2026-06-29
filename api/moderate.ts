@@ -5,7 +5,7 @@
 //     admin:     set-role(email, role) | set-blocklist(words)
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
-  currentUser, getRole, roleOf, normEmail, isAdminEmail, loadUsers, saveUsers, Role,
+  currentUser, getRole, roleOf, normEmail, isAdminEmail, loadUsers, saveUsers, readPurpose, Role,
 } from "./_lib/auth.js";
 import { createTournament, CreateError } from "./_lib/publish.js";
 import {
@@ -14,9 +14,66 @@ import {
 } from "./_lib/moderation.js";
 import { sendEmail, appUrl, submissionApprovedBody, submissionRejectedBody } from "./_lib/email.js";
 
+// A minimal HTML response for the email-link approval flow (clicked in a browser).
+function page(res: VercelResponse, status: number, title: string, body: string) {
+  res.statusCode = status;
+  res.setHeader("content-type", "text/html; charset=utf-8");
+  res.setHeader("cache-control", "no-store");
+  res.end(
+    `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>` +
+    `<div style="font-family:system-ui,Arial,sans-serif;max-width:520px;margin:64px auto;padding:0 20px;color:#1c2530;line-height:1.5">` +
+    `<h1 style="font-size:20px">${title}</h1>${body}</div>`
+  );
+}
+
+const esc = (s: string) => (s || "").replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]!));
+
+// Approve a queued first-post submission straight from the emailed link. The
+// signed token IS the authorization, so no login is required. A first GET only
+// shows a confirmation (so email link scanners/prefetchers can't auto-approve);
+// the actual approval happens on the confirmed (`&confirm=1`) request.
+async function approveByToken(token: string, confirmed: boolean, res: VercelResponse) {
+  const id = readPurpose(token, "approve-sub");
+  if (!id)
+    return page(res, 400, "Link expired", `<p>This approval link is invalid or has expired. Open the <a href="${appUrl()}/admin">moderation dashboard</a> to review pending submissions.</p>`);
+  const pending = await readPending();
+  const rec = pending.find((p) => p.id === id);
+  if (!rec)
+    return page(res, 200, "Already handled", `<p>This submission has already been approved or removed.</p><p><a href="${appUrl()}/admin">Open the dashboard</a></p>`);
+
+  if (!confirmed) {
+    const confirmUrl = `${appUrl()}/api/moderate?approve=${encodeURIComponent(token)}&confirm=1`;
+    return page(res, 200, "Approve submission?",
+      `<p><strong>${esc(rec.name)}</strong> submitted by ${esc(rec.byName)}.</p>` +
+      `<p><a href="${confirmUrl}" style="display:inline-block;background:#4b8bf5;color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:600">Approve &amp; publish</a></p>` +
+      `<p style="font-size:13px;color:#555">Or <a href="${appUrl()}/admin">review it in the dashboard</a> first.</p>`);
+  }
+
+  try {
+    const payload = await readPendingPayload(id);
+    if (!payload)
+      return page(res, 410, "Submission missing", `<p>The submission data is missing. Ask the submitter to upload it again.</p>`);
+    const { slug } = await createTournament(payload, rec.by);
+    await writePending(pending.filter((p) => p.id !== id));
+    await delPendingPayload(id);
+    await sendEmail({ to: rec.by, subject: `Approved — ${rec.name}`, html: submissionApprovedBody(rec.name, `${appUrl()}/set/${slug}`) });
+    res.statusCode = 302;
+    res.setHeader("Location", `${appUrl()}/set/${slug}`);
+    return res.end();
+  } catch (e) {
+    if (e instanceof CreateError) return page(res, e.status, "Approval failed", `<p>${esc(e.message)}</p>`);
+    return page(res, 500, "Approval failed", `<p>${esc((e as Error).message)}</p>`);
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const user = currentUser(req);
   res.setHeader("cache-control", "no-store");
+
+  // Approval link from the notification email (token-authorized; confirm step
+  // guards against link prefetchers).
+  if (req.method === "GET" && req.query.approve) return approveByToken(String(req.query.approve), req.query.confirm === "1", res);
+
   const role = await getRole(user);
   if (role === "user" || !user) return res.status(403).json({ error: "Moderator access required.", role: "user" });
   const isAdmin = role === "admin";

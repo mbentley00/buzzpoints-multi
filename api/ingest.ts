@@ -10,7 +10,7 @@ import crypto from "node:crypto";
 import { del } from "@vercel/blob";
 import { SCORINGS } from "./_lib/scoring.js";
 import { readBlobJson } from "./_lib/blob.js";
-import { currentUser, isAdminEmail, canModerate, loadUsers, moderatorEmails } from "./_lib/auth.js";
+import { currentUser, isAdminEmail, canModerate, loadUsers, moderatorEmails, signPurpose } from "./_lib/auth.js";
 import {
   readIndex, writeIndex, readSource, writeSource, writeCorrections, readCorrections,
   aggregateAndWrite, editionsOf, SetSource,
@@ -160,8 +160,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await writePending([rec, ...(await readPending()).filter((p) => p.id !== id)]);
 
       const reviewUrl = `${appUrl()}/admin`;
+      // 30-day, signed one-click approval link the admin can act on from the email.
+      const approveUrl = `${appUrl()}/api/moderate?approve=${encodeURIComponent(signPurpose(id, "approve-sub", 60 * 60 * 24 * 30))}`;
       for (const to of await moderatorEmails())
-        await sendEmail({ to, subject: `Tournament awaiting review — ${name}`, html: submissionPendingBody(`${byName} (${owner})`, name, reviewUrl) });
+        await sendEmail({ to, subject: `Approve tournament — ${name}`, html: submissionPendingBody(`${byName} (${owner})`, name, reviewUrl, approveUrl) });
 
       // The full JSON is now copied into the pending payload; drop the temp uploads.
       await cleanupTemp(tempPaths);
