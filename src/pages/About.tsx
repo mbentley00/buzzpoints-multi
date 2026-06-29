@@ -19,9 +19,8 @@ export function About() {
           <Link to="/" className="brand">Buzzpoints</Link>
           <nav className="nav">
             <Link to="/" className="nav-link">Tournaments</Link>
-            <Link to="/search" className="nav-link">Search</Link>
+            <Link to="/search" className="nav-link">Search across tournaments</Link>
             <Link to="/new" className="nav-link">+ New tournament</Link>
-            <Link to="/about" className="nav-link active">About</Link>
           </nav>
           <div className="topbar-auth"><AuthNav /></div>
         </div>

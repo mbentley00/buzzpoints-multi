@@ -132,6 +132,9 @@ export function CreateSet() {
           <Link to="/" className="brand">
             Buzzpoints
           </Link>
+          <nav className="nav">
+            <Link to="/search" className="nav-link">Search across tournaments</Link>
+          </nav>
           <div className="topbar-auth"><AuthNav /></div>
         </div>
       </header>

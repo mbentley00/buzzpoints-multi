@@ -53,9 +53,8 @@ export function Search() {
           <Link to="/" className="brand">Buzzpoints</Link>
           <nav className="nav">
             <Link to="/" className="nav-link">Tournaments</Link>
-            <Link to="/search" className="nav-link active">Search</Link>
+            <Link to="/search" className="nav-link active">Search across tournaments</Link>
             <Link to="/new" className="nav-link">+ New tournament</Link>
-            <Link to="/about" className="nav-link">About</Link>
           </nav>
           <div className="topbar-auth"><AuthNav /></div>
         </div>

@@ -99,6 +99,7 @@ export function SetLayout() {
               {meta.setName}
             </NavLink>
           )}
+          <Link to="/search" className="nav-link topbar-search">Search across tournaments</Link>
           <div className="topbar-auth"><AuthNav /></div>
           <nav className="nav nav-tabs">
             {meta &&

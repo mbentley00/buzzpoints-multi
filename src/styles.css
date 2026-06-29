@@ -96,6 +96,7 @@ a:hover { text-decoration: underline; }
 /* Set header: auth (username + log out) sits on the top row, right-aligned, so the
    tab row below has the full width. */
 .topbar-auth { margin-left: auto; }
+.topbar-search { white-space: nowrap; }
 /* Keep all tabs on one line; scroll horizontally instead of wrapping to a
    second row (the tab list grows as features are added). */
 .nav-tabs { flex-basis: 100%; padding-bottom: 6px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }

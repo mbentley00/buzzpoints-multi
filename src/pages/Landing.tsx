@@ -94,13 +94,10 @@ export function Landing() {
           </Link>
           <nav className="nav">
             <Link to="/search" className="nav-link">
-              Search
+              Search across tournaments
             </Link>
             <Link to="/new" className="nav-link active">
               + New tournament
-            </Link>
-            <Link to="/about" className="nav-link">
-              About
             </Link>
           </nav>
           <div className="topbar-auth"><AuthNav /></div>
@@ -109,7 +106,10 @@ export function Landing() {
       <main className="content">
         <div className="hero">
           <h1>Buzzpoints</h1>
-          <p>Upload packets and QBJ scoresheets to generate a quiz-bowl stats site for any tournament.</p>
+          <p>
+            Upload packets and QBJ scoresheets to generate a quiz-bowl stats site for any tournament.{" "}
+            <Link to="/about" className="link">Learn more</Link>.
+          </p>
         </div>
         <div className="page-header">
           <div>
