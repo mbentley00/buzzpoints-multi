@@ -15,7 +15,7 @@ import {
   readIndex, writeIndex, readSource, writeSource, writeCorrections, readCorrections,
   aggregateAndWrite, editionsOf, SetSource,
 } from "./_lib/sets.js";
-import { createTournament, createResultsTournament, parseFiles, CreateError, FileRef } from "./_lib/publish.js";
+import { createTournament, parseFiles, CreateError, FileRef } from "./_lib/publish.js";
 import { parseYellowFruit } from "./_lib/yellowfruit.js";
 import {
   readModConfig, findBlocked, readPending, writePending, writePendingPayload, PendingSubmission,
@@ -26,7 +26,7 @@ interface Body {
   name?: string; scoring?: string; hasBonuses?: boolean; packets?: FileRef[]; games?: FileRef[];
   visibility?: string; autoPublicAt?: string | null; editionOf?: string; edition?: string;
   editionId?: string; // when set with editionOf: append files to this existing edition
-  kind?: "buzz" | "results"; yf?: any; // results import: raw YellowFruit/QBJ JSON
+  yf?: any; // optional companion YellowFruit (.yft) JSON for corrected re-export
 }
 
 // Resolve a list of file refs to inline JSON. A ref uploaded directly to Blob
@@ -56,41 +56,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const body = (req.body || {}) as Body;
 
-  // ---- results import: a YellowFruit/QBJ box-score tournament ----
-  if (body.kind === "results") {
-    if (!body.yf || typeof body.yf !== "object") return res.status(400).json({ error: "Upload a YellowFruit (.yft) or QBJ file." });
-    let parsed;
-    try { parsed = parseYellowFruit(body.yf); }
-    catch (e) { return res.status(400).json({ error: (e as Error).message }); }
-    const rname = (body.name || "").trim() || parsed.name;
-    const { blocklist } = await readModConfig();
-    const blocked = findBlocked(rname, blocklist);
-    if (blocked) return res.status(400).json({ error: `Tournament name contains a disallowed word: "${blocked}".` });
-
-    const index = await readIndex();
-    const established = index.sets.some((s) => s.owner === owner);
-    const privileged = await canModerate(owner);
-    if (!established && !privileged) {
-      const id = crypto.randomBytes(9).toString("base64url");
-      await writePendingPayload(id, {
-        name: rname, scoring: parsed.scoringId, hasBonuses: parsed.hasBonuses,
-        visibility: body.visibility, autoPublicAt: body.autoPublicAt ?? null, kind: "results", yf: body.yf,
-      });
-      const byName = (await loadUsers())[owner]?.name || owner;
-      const rec: PendingSubmission = { id, by: owner, byName, name: rname, scoring: parsed.scoringId, at: new Date().toISOString() };
-      await writePending([rec, ...(await readPending()).filter((p) => p.id !== id)]);
-      const reviewUrl = `${appUrl()}/admin`;
-      for (const to of await moderatorEmails())
-        await sendEmail({ to, subject: `Tournament awaiting review — ${rname}`, html: submissionPendingBody(`${byName} (${owner})`, rname, reviewUrl) });
-      return res.status(202).json({ pending: true, message: "Your first tournament was submitted for review. You'll get an email when it's approved." });
-    }
-    try {
-      const { slug } = await createResultsTournament({ name: rname, yf: body.yf, visibility: body.visibility, autoPublicAt: body.autoPublicAt ?? null }, owner);
-      return res.status(200).json({ slug });
-    } catch (e) {
-      if (e instanceof CreateError) return res.status(e.status).json({ error: e.message });
-      return res.status(500).json({ error: (e as Error).message });
-    }
+  // Validate the optional companion YellowFruit file up front (so a first-post
+  // submission isn't queued with an unreadable file).
+  if (body.yf) {
+    try { parseYellowFruit(body.yf); }
+    catch (e) { return res.status(400).json({ error: `YellowFruit file: ${(e as Error).message}` }); }
   }
 
   const editionAppend = !!(body.editionOf || "").trim() && !!(body.editionId || "").trim();
@@ -183,6 +153,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         edition: body.edition,
         packets: body.packets!.map((r) => ({ name: r.name, json: r.json })),
         games: body.games!.map((r) => ({ name: r.name, json: r.json })),
+        ...(body.yf ? { yf: body.yf } : {}),
       });
       const byName = (await loadUsers())[owner]?.name || owner;
       const rec: PendingSubmission = { id, by: owner, byName, name, scoring: body.scoring!, at: new Date().toISOString() };

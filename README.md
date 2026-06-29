@@ -27,8 +27,9 @@ See the in-app **/about** page for a feature overview.
   requests for approval; the set re-aggregates automatically.
 - **Visibility & access control** — public / listed / private, invites, invite
   links, access requests, and scheduled auto-publish.
-- **YellowFruit results import/export** — create a results-only tournament from a
-  YellowFruit / QBJ box score.
+- **YellowFruit companion export** — optionally attach the `.yft` you scored from
+  when creating a tournament; download a copy with your buzz corrections applied,
+  ready to re-import into YellowFruit.
 
 ## How it works
 
@@ -79,8 +80,8 @@ columns appear (power / neg). Bonuses are toggled per tournament.
   bonuses: [...] }`); round taken from the filename.
 - **Games**: QBJ match files (`.json` / `.qbj`); round taken from `_round` or the
   filename.
-- **Results-only**: a YellowFruit `.yft` / QBJ box-score file (no packet/buzz
-  data required).
+- **YellowFruit (optional)**: the `.yft` you scored from, stored alongside the
+  packets/games so a corrections-applied copy can be re-exported.
 
 ## Deploy to Vercel
 

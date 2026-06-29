@@ -7,7 +7,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   currentUser, getRole, roleOf, normEmail, isAdminEmail, loadUsers, saveUsers, Role,
 } from "./_lib/auth.js";
-import { createTournament, createResultsTournament, CreateError } from "./_lib/publish.js";
+import { createTournament, CreateError } from "./_lib/publish.js";
 import {
   readPending, writePending, readPendingPayload, delPendingPayload,
   readModConfig, writeModConfig,
@@ -48,9 +48,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (op === "approve-submission") {
         const payload = await readPendingPayload(id);
         if (!payload) return res.status(410).json({ error: "Submission data is missing; reject it and ask the user to resubmit." });
-        const { slug } = payload.kind === "results"
-          ? await createResultsTournament({ name: payload.name, yf: payload.yf, visibility: payload.visibility, autoPublicAt: payload.autoPublicAt }, rec.by)
-          : await createTournament(payload, rec.by);
+        const { slug } = await createTournament(payload, rec.by);
         await writePending(pending.filter((p) => p.id !== id));
         await delPendingPayload(id);
         await sendEmail({ to: rec.by, subject: `Approved — ${rec.name}`, html: submissionApprovedBody(rec.name, `${appUrl()}/set/${slug}`) });

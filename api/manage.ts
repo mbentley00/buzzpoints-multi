@@ -11,7 +11,6 @@ import { currentUser, normEmail, canModerate, loadUsers } from "./_lib/auth.js";
 import {
   readIndex, writeIndex, readSource, readCorrections, aggregateAndWrite,
   readAccess, writeAccess, readLinks, writeLinks, canViewContent, InviteLink, Visibility, AccessRole,
-  readYf, readResultsCorrections, aggregateResultsAndWrite,
   writeVirtualCats, readRoundTags, writeRoundTags, DEFAULT_ROUND_TAGS, RoundTags,
 } from "./_lib/sets.js";
 import { VirtualCategory } from "./_lib/aggregate.js";
@@ -113,6 +112,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         visibility: entry.visibility ?? "listed",
         autoPublicAt: entry.autoPublicAt ?? null,
         invites: entry.invites ?? [],
+        hasYf: !!entry.hasYf,
         accessRequests: (await readAccess(slug)).filter((a) => a.status === "pending"),
         links: await readLinks(slug),
       });
@@ -131,14 +131,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       if (entry.visibility === "public") entry.autoPublicAt = null;
     } else if (op === "reaggregate") {
-      if (entry.kind === "results") {
-        const raw = await readYf(slug);
-        if (!raw) return res.status(500).json({ error: "Source YellowFruit file not found." });
-        const { meta } = await aggregateResultsAndWrite(slug, raw, await readResultsCorrections(slug));
-        Object.assign(entry, { numGames: meta.numGames, numTeams: meta.numTeams, numPlayers: meta.numPlayers, rounds: (meta.rounds || []).length });
-        await writeIndex(index);
-        return res.status(200).json({ ok: true, rebuilt: true });
-      }
       const source = await readSource(slug);
       if (!source) return res.status(500).json({ error: "Source data not found (set predates source storage; re-create it)." });
       const { meta, editions } = await aggregateAndWrite(slug, source, await readCorrections(slug));

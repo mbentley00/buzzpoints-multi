@@ -43,14 +43,13 @@ function plusYears(years: number): string {
 export function CreateSet() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
-  const [mode, setMode] = useState<"buzz" | "results">("buzz");
-  const [yfFile, setYfFile] = useState<FileList | null>(null);
   const [name, setName] = useState("");
   const [scoring, setScoring] = useState("mACF");
   const [detected, setDetected] = useState<string | null>(null);
   const [hasBonuses, setHasBonuses] = useState(true);
   const [packets, setPackets] = useState<FileList | null>(null);
   const [games, setGames] = useState<FileList | null>(null);
+  const [yfFile, setYfFile] = useState<FileList | null>(null);
   const [visibility, setVisibility] = useState<Visibility>("listed");
   const [autoPublish, setAutoPublish] = useState(true);
   const [autoPublishDate, setAutoPublishDate] = useState(plusYears(2));
@@ -72,36 +71,8 @@ export function CreateSet() {
     }
   }
 
-  async function submitResults() {
-    setError(null);
-    if (!yfFile?.length) return setError("Choose a YellowFruit (.yft) or QBJ file.");
-    setBusy(true);
-    try {
-      setStatus("Reading file…");
-      const parsed = await readFiles(yfFile);
-      const yf = parsed[0]?.json;
-      const autoPublicAt = visibility === "public" ? null : autoPublish ? new Date(autoPublishDate).toISOString() : null;
-      setStatus("Importing…");
-      const res = await fetch("/api/ingest", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ kind: "results", name: name.trim() || undefined, yf, visibility, autoPublicAt }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || `import failed (${res.status})`);
-      if (json.pending) { setSubmitted(json.message || "Submitted for review."); setBusy(false); setStatus(null); return; }
-      refreshIndex();
-      navigate(`/set/${json.slug}`);
-    } catch (err) {
-      setError(String((err as Error).message || err));
-      setBusy(false);
-      setStatus(null);
-    }
-  }
-
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (mode === "results") return submitResults();
     setError(null);
     if (!name.trim()) return setError("Enter a tournament name.");
     if (!packets?.length) return setError("Choose at least one packet file.");
@@ -112,6 +83,13 @@ export function CreateSet() {
       const packetRefs = await uploadFiles(packets, (d, t) => setStatus(`Uploading packets… ${d}/${t}`));
       const gameRefs = await uploadFiles(games, (d, t) => setStatus(`Uploading games… ${d}/${t}`));
 
+      let yf: any = undefined;
+      if (yfFile?.length) {
+        setStatus("Reading YellowFruit file…");
+        const parsedYf = await readFiles(yfFile);
+        yf = parsedYf[0]?.json;
+      }
+
       const autoPublicAt =
         visibility === "public" ? null : autoPublish ? new Date(autoPublishDate).toISOString() : null;
 
@@ -120,7 +98,8 @@ export function CreateSet() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          name: name.trim(), scoring, hasBonuses, visibility, autoPublicAt, packets: packetRefs, games: gameRefs,
+          name: name.trim(), scoring, hasBonuses, visibility, autoPublicAt,
+          packets: packetRefs, games: gameRefs, ...(yf ? { yf } : {}),
         }),
       });
       const json = await res.json();
@@ -178,33 +157,16 @@ export function CreateSet() {
         )}
         {!authLoading && user && !submitted && (
         <form className="create-form" onSubmit={submit}>
-          <label className="field">
-            <span>Data source</span>
-            <select value={mode} onChange={(e) => setMode(e.target.value as "buzz" | "results")}>
-              <option value="buzz">Buzz-level (packets + QBJ game files)</option>
-              <option value="results">Results only (YellowFruit / QBJ tournament file)</option>
-            </select>
-            <small className="muted">
-              {mode === "results"
-                ? "Imports standings, team & player stats, and box scores from a YellowFruit (.yft) export. No per-question buzz data."
-                : "Full buzz-level stats: per-question buzz charts, buzzer races, first-sentence, and word-index corrections."}
-            </small>
-          </label>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Upload packets and QBJ scoresheets for full buzz-level stats. Optionally attach the YellowFruit file you
+            scored from to export a corrected copy after editing buzzes.
+          </p>
 
           <label className="field">
-            <span>Tournament name{mode === "results" ? " (optional)" : ""}</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={mode === "results" ? "defaults to the file's tournament name" : "e.g. Spring Open 2026"} />
+            <span>Tournament name</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Spring Open 2026" />
           </label>
 
-          {mode === "results" && (
-            <label className="field">
-              <span>YellowFruit file (.yft or .qbj)</span>
-              <input type="file" accept=".yft,.json,.qbj" onChange={(e) => setYfFile(e.target.files)} />
-              <small className="muted">{yfFile?.length ? `${yfFile[0].name} selected` : "Scoring and bonuses are detected from the file."}</small>
-            </label>
-          )}
-
-          {mode === "buzz" && <>
           <label className="field">
             <span>Scoring format</span>
             <select value={scoring} onChange={(e) => { setScoring(e.target.value); setDetected(null); }}>
@@ -237,7 +199,16 @@ export function CreateSet() {
             <input type="file" multiple accept=".json,.qbj" onChange={(e) => onGames(e.target.files)} />
             <small className="muted">{games ? `${games.length} selected` : "QBJ match files (.json / .qbj)"}</small>
           </label>
-          </>}
+
+          <label className="field">
+            <span>YellowFruit file (optional)</span>
+            <input type="file" accept=".yft,.json,.qbj" onChange={(e) => setYfFile(e.target.files)} />
+            <small className="muted">
+              {yfFile?.length
+                ? `${yfFile[0].name} selected`
+                : "Attach the .yft you scored from to download a corrections-applied copy later."}
+            </small>
+          </label>
 
           <label className="field">
             <span>Visibility</span>

@@ -34,6 +34,7 @@ export interface SetEntry {
   invites?: string[]; // only present for the owner
   autoPublicAt?: string | null;
   tags?: TagSummary[]; // round-tag phases, if the owner has tagged rounds
+  hasYf?: boolean; // owner uploaded a companion YellowFruit file (corrected export available)
   numGames: number;
   numTeams: number;
   numPlayers: number;
@@ -100,20 +101,6 @@ export interface Meta {
   editions?: EditionSummary[];
   generatedAt: string;
 }
-
-// ---- "results" (YellowFruit/QBJ box-score) tournament shapes ----
-export interface ResultsTeam {
-  id: string; name: string; games: number; wins: number; losses: number; ties: number;
-  pct: number; pts: number; tuPts: number; bonusPts: number; powers: number; gets: number; negs: number;
-  tuh: number; ppg: number; pp20tuh: number; bonusesHeard: number; ppb: number | null; rank: number;
-}
-export interface ResultsPlayer {
-  id: string; name: string; team: string; teamId: string | null; games: number; tuh: number;
-  powers: number; gets: number; negs: number; pts: number; ppg: number; pp20tuh: number; ptsPerTuh: number;
-}
-export interface ResultsGamePlayer { name: string; tuh: number; powers: number; gets: number; negs: number; pts: number; }
-export interface ResultsGameTeam { team: string; points: number; bonusPoints: number; tuPts: number; players: ResultsGamePlayer[]; }
-export interface ResultsGame { phase: string; round: number; tiebreaker: boolean; tossupsRead: number; teams: ResultsGameTeam[]; }
 
 export interface TossupRow {
   id: string;

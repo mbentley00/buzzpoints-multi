@@ -29,6 +29,7 @@ export function Settings() {
   const [date, setDate] = useState("");
   const [invites, setInvites] = useState<string[]>([]);
   const [newInvite, setNewInvite] = useState("");
+  const [hasYf, setHasYf] = useState(false);
   const [accessRequests, setAccessRequests] = useState<{ email: string; name: string; at: string; role?: string; team?: string }[]>([]);
   const [links, setLinks] = useState<{ id: string; label: string; at: string; revoked?: boolean; uses: number }[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -46,6 +47,7 @@ export function Settings() {
         setAutoPublish(!!d.autoPublicAt);
         setDate(toDateInput(d.autoPublicAt) || new Date(Date.now() + 2 * 365 * 864e5).toISOString().slice(0, 10));
         setInvites(d.invites || []);
+        setHasYf(!!d.hasYf);
         setAccessRequests(d.accessRequests || []);
         setLinks(d.links || []);
       })
@@ -155,6 +157,19 @@ export function Settings() {
             round can carry more than one tag.
           </p>
           <RoundTagsEditor slug={slug} rounds={meta!.rounds} />
+        </>
+      )}
+
+      {hasYf && (
+        <>
+          <h2 style={{ marginTop: 28 }}>YellowFruit export</h2>
+          <p className="muted">
+            Download the uploaded YellowFruit file with your buzz corrections applied to its box scores, ready to
+            re-import into YellowFruit.
+          </p>
+          <a className="btn-primary" href={`/api/yf-export?slug=${encodeURIComponent(slug)}`}>
+            Download updated .yft
+          </a>
         </>
       )}
 
