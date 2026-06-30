@@ -83,7 +83,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (blocked) return res.status(400).json({ error: `Tournament name contains a disallowed word: "${blocked}".` });
     try {
       const { slug } = await createFromSource(result.source, owner, { name, visibility: body.visibility, autoPublicAt: body.autoPublicAt ?? null, level, tdLink });
-      return res.status(200).json({ slug, editions: result.editionCount });
+      return res.status(200).json({ slug, editions: result.editionCount, skipped: result.skipped, hasBonuses: result.hasBonuses });
     } catch (e) {
       if (e instanceof CreateError) return res.status(e.status).json({ error: e.message });
       return res.status(500).json({ error: (e as Error).message });

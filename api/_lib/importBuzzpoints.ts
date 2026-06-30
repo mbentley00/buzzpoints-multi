@@ -12,11 +12,15 @@
 import type { PacketFile, GameFile } from "./aggregate.js";
 import type { SetSource, Edition } from "./sets.js";
 
-const MAX_TOSSUPS = 1500;  // safety cap across all editions (keeps us within limits)
-const CONCURRENCY = 12;
+const MAX_PAGES = 800;    // cap on total pages fetched across editions, so a single
+                          // import stays within the function time budget (a huge
+                          // multi-mirror set imports whole editions until this is hit)
+const CONCURRENCY = 16;
 
 interface BuzzRec { player_name: string; team_name: string; opponent_name?: string; game_id: number; buzz_position: number; value: number; }
 interface ScrapedTossup { round: number; num: number; question: string; answer: string; metadata: string; buzzes: BuzzRec[]; }
+interface BonusPart { part?: string; answer?: string; leadin?: string; difficulty_modifier?: string; value?: number; metadata?: string; }
+interface BonusDirect { team_name: string; opponent_name?: string; part_one?: number; part_two?: number; part_three?: number; total?: number; }
 
 async function fetchText(url: string): Promise<string> {
   const r = await fetch(url, { headers: { "user-agent": "buzzpoints.buzz importer" } });
@@ -104,14 +108,15 @@ async function listEditions(origin: string): Promise<{ slug: string; name: strin
   return [...seen.entries()].map(([slug, name]) => ({ slug, name }));
 }
 
-async function scrapeEdition(origin: string, slug: string, budget: { left: number }): Promise<{ packets: PacketFile[]; games: GameFile[]; values: Set<number> }> {
-  const listHtml = await fetchText(`${origin}/tournament/${slug}/tossup`);
-  const pairKeys = [...new Set([...listHtml.matchAll(new RegExp(`/tournament/${slug}/tossup/(\\d+)/(\\d+)`, "g"))].map((m) => `${m[1]}|${m[2]}`))];
-  const pairs = pairKeys.map((k) => k.split("|").map(Number) as [number, number]);
-  if (pairs.length > budget.left) throw new Error(`This tournament is too large to import in one pass (${pairs.length} tossups). Try a smaller one.`);
-  budget.left -= pairs.length;
+const sortedKey = (round: number, a: string, b: string) => `${round}|${[a, b].sort().join("|")}`;
 
-  const scraped = await mapLimit(pairs, CONCURRENCY, async ([round, num]): Promise<ScrapedTossup> => {
+export async function scrapeEdition(origin: string, slug: string): Promise<{ packets: PacketFile[]; games: GameFile[]; values: Set<number>; pages: number; hasBonuses: boolean }> {
+  // ---- tossups ----
+  const tHtml = await fetchText(`${origin}/tournament/${slug}/tossup`);
+  const tPairs = [...new Set([...tHtml.matchAll(new RegExp(`/tournament/${slug}/tossup/(\\d+)/(\\d+)`, "g"))].map((m) => `${m[1]}|${m[2]}`))]
+    .map((k) => k.split("|").map(Number) as [number, number]);
+
+  const scraped = await mapLimit(tPairs, CONCURRENCY, async ([round, num]): Promise<ScrapedTossup> => {
     const f = parseFlight(await fetchText(`${origin}/tournament/${slug}/tossup/${round}/${num}`));
     const buzzAt = f.indexOf('"buzzes":[');
     return {
@@ -132,17 +137,6 @@ async function scrapeEdition(origin: string, slug: string, budget: { left: numbe
     for (const b of t.buzzes) values.add(b.value);
   }
 
-  // packets: one per round, tossups in order (gaps filled with blanks)
-  const packets: PacketFile[] = [...roundSize.keys()].sort((a, b) => a - b).map((round) => {
-    const size = roundSize.get(round)!;
-    const tossups = [];
-    for (let n = 1; n <= size; n++) {
-      const t = byKey.get(`${round}-${n}`);
-      tossups.push({ question: t?.question || "", answer: t?.answer || "", metadata: t?.metadata || "" });
-    }
-    return { round, tossups, bonuses: [] };
-  });
-
   // games: group buzzes by game_id (each game is one round between two teams)
   type G = { round: number; teams: Set<string>; q: Map<number, any[]>; players: Map<string, Set<string>> };
   const games = new Map<number, G>();
@@ -160,6 +154,7 @@ async function scrapeEdition(origin: string, slug: string, budget: { left: numbe
   }
 
   const gameFiles: GameFile[] = [];
+  const gameByKey = new Map<string, GameFile>();
   for (const g of games.values()) {
     const size = roundSize.get(g.round) || Math.max(0, ...g.q.keys());
     const teams = [...g.teams];
@@ -172,27 +167,86 @@ async function scrapeEdition(origin: string, slug: string, budget: { left: numbe
       };
     });
     const match_questions = [];
-    for (let n = 1; n <= size; n++) match_questions.push({ tossup_question: { question_number: n }, buzzes: g.q.get(n) || [] });
-    gameFiles.push({ round: g.round, match_teams, match_questions });
+    for (let n = 1; n <= size; n++) match_questions.push({ tossup_question: { question_number: n }, buzzes: g.q.get(n) || [] } as any);
+    const gf: GameFile = { round: g.round, match_teams, match_questions };
+    gameFiles.push(gf);
+    if (teams.length === 2) gameByKey.set(sortedKey(g.round, teams[0], teams[1]), gf);
   }
 
-  return { packets, games: gameFiles, values };
+  // ---- bonuses (optional): parts (packet defn) + directs (per-game results) ----
+  const bHtml = await fetchText(`${origin}/tournament/${slug}/bonus`);
+  const bPairs = [...new Set([...bHtml.matchAll(new RegExp(`/tournament/${slug}/bonus/(\\d+)/(\\d+)`, "g"))].map((m) => `${m[1]}|${m[2]}`))]
+    .map((k) => k.split("|").map(Number) as [number, number]);
+  const bonusDefs = new Map<string, { leadin: string; parts: string[]; answers: string[]; difficultyModifiers: string[]; metadata: string }>();
+  let hasBonuses = false;
+  if (bPairs.length) {
+    const bscraped = await mapLimit(bPairs, CONCURRENCY, async ([round, num]) => {
+      const f = parseFlight(await fetchText(`${origin}/tournament/${slug}/bonus/${round}/${num}`));
+      return { round, num, parts: jsonArrayField(f, "parts") as BonusPart[], directs: jsonArrayField(f, "directs") as BonusDirect[] };
+    });
+    for (const b of bscraped) {
+      if (!b.parts.length) continue;
+      hasBonuses = true;
+      bonusDefs.set(`${b.round}-${b.num}`, {
+        leadin: b.parts[0]?.leadin || "",
+        parts: b.parts.map((p) => p.part || ""),
+        answers: b.parts.map((p) => p.answer || ""),
+        difficultyModifiers: b.parts.map((p) => (p.difficulty_modifier || "m").toLowerCase()),
+        metadata: b.parts[0]?.metadata || "",
+      });
+      roundSize.set(b.round, Math.max(roundSize.get(b.round) || 0, b.num));
+      // attach per-game results
+      for (const d of b.directs) {
+        if (!d.opponent_name) continue;
+        const gf = gameByKey.get(sortedKey(b.round, d.team_name, d.opponent_name));
+        if (!gf) continue;
+        const mq = (gf.match_questions || [])[b.num - 1] as any;
+        if (!mq) continue;
+        const pts = [d.part_one, d.part_two, d.part_three].slice(0, b.parts.length).map((v) => v || 0);
+        mq.bonus = { question: { question_number: b.num }, parts: pts.map((v) => ({ controlled_points: v, bounceback_points: 0 })) };
+        const mt = (gf.match_teams || []).find((t: any) => t.team?.name === d.team_name) as any;
+        if (mt) mt.bonus_points = (mt.bonus_points || 0) + (d.total || 0);
+      }
+    }
+  }
+
+  // packets: one per round, tossups + bonuses in order (gaps filled with blanks)
+  const packets: PacketFile[] = [...roundSize.keys()].sort((a, b) => a - b).map((round) => {
+    const size = roundSize.get(round)!;
+    const tossups = [], bonuses = [];
+    for (let n = 1; n <= size; n++) {
+      const t = byKey.get(`${round}-${n}`);
+      tossups.push({ question: t?.question || "", answer: t?.answer || "", metadata: t?.metadata || "" });
+      const bd = bonusDefs.get(`${round}-${n}`);
+      bonuses.push(bd ? { leadin: bd.leadin, parts: bd.parts, answers: bd.answers, difficultyModifiers: bd.difficultyModifiers, metadata: bd.metadata } : {});
+    }
+    return { round, tossups, bonuses };
+  });
+
+  return { packets, games: gameFiles, values, pages: tPairs.length + bPairs.length, hasBonuses };
 }
 
-export interface ImportResult { name: string; scoring: string; hasBonuses: boolean; source: SetSource; editionCount: number; }
+export interface ImportResult { name: string; scoring: string; hasBonuses: boolean; source: SetSource; editionCount: number; skipped: string[]; }
 
 export async function importBuzzpoints(input: string): Promise<ImportResult> {
   const origin = originOf(input);
   const eds = await listEditions(origin);
   if (!eds.length) throw new Error("No tournaments found at that URL. Make sure it's a Buzzpoints site and the link is correct.");
 
-  const budget = { left: MAX_TOSSUPS };
   const editions: Edition[] = [];
+  const skipped: string[] = [];
   const values = new Set<number>();
-  for (let i = 0; i < eds.length; i++) {
-    const { packets, games, values: v } = await scrapeEdition(origin, eds[i].slug, budget);
+  let hasBonuses = false;
+  let pagesUsed = 0;
+  for (const ed of eds) {
+    // Stop importing further editions once the page budget is spent (very large
+    // multi-mirror sets can't be scraped in one request); keep whole editions only.
+    if (editions.length && pagesUsed >= MAX_PAGES) { skipped.push(ed.name || ed.slug); continue; }
+    const { packets, games, values: v, pages, hasBonuses: hb } = await scrapeEdition(origin, ed.slug);
+    pagesUsed += pages;
+    if (hb) hasBonuses = true;
     v.forEach((x) => values.add(x));
-    editions.push({ id: `e${i}`, label: eds[i].name || eds[i].slug, packets, games });
+    editions.push({ id: `e${editions.length}`, label: ed.name || ed.slug, packets, games });
   }
   if (!editions.some((e) => e.games.length)) throw new Error("Couldn't read any game data from that site.");
 
@@ -200,11 +254,6 @@ export async function importBuzzpoints(input: string): Promise<ImportResult> {
   // shortest edition name (editions are usually the base name plus a qualifier
   // like "Online", so the shortest is the cleanest base name).
   const name = eds.map((e) => e.name || e.slug).sort((a, b) => a.length - b.length || a.localeCompare(b))[0];
-  return {
-    name,
-    scoring: scoringFor(values),
-    hasBonuses: false, // bonuses aren't reconstructed from these sites yet
-    source: { name, scoring: scoringFor(values), hasBonuses: false, editions },
-    editionCount: editions.length,
-  };
+  const scoring = scoringFor(values);
+  return { name, scoring, hasBonuses, source: { name, scoring, hasBonuses, editions }, editionCount: editions.length, skipped };
 }

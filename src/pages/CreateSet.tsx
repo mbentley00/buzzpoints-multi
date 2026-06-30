@@ -60,6 +60,7 @@ export function CreateSet() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<string | null>(null);
+  const [importedSlug, setImportedSlug] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function onGames(files: FileList | null) {
@@ -91,6 +92,18 @@ export function CreateSet() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `import failed (${res.status})`);
       refreshIndex();
+      if (json.skipped?.length) {
+        // Very large multi-mirror sites can't be scraped in one pass; tell the user
+        // which editions were left out rather than silently importing a subset.
+        setImportedSlug(json.slug);
+        setSubmitted(
+          `Imported ${json.editions} edition${json.editions === 1 ? "" : "s"}${json.hasBonuses ? " (with bonuses)" : ""}. ` +
+          `${json.skipped.length} edition${json.skipped.length === 1 ? " was" : "s were"} skipped because the site is too large to import in one pass: ${json.skipped.join(", ")}.`
+        );
+        setBusy(false);
+        setStatus(null);
+        return;
+      }
       navigate(`/set/${json.slug}`);
     } catch (err) {
       setError(String((err as Error).message || err));
@@ -180,9 +193,11 @@ export function CreateSet() {
         )}
         {!authLoading && user && submitted && (
           <div className="caveat" role="status">
-            <strong>Submitted for review.</strong> {submitted}
+            {importedSlug ? <strong>Imported.</strong> : <strong>Submitted for review.</strong>} {submitted}
             <div style={{ marginTop: 10 }}>
-              <Link to="/" className="link">← Back to tournaments</Link>
+              {importedSlug
+                ? <Link to={`/set/${importedSlug}`} className="link">Open the tournament →</Link>
+                : <Link to="/" className="link">← Back to tournaments</Link>}
             </div>
           </div>
         )}
