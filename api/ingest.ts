@@ -17,7 +17,7 @@ import {
 } from "./_lib/sets.js";
 import { createTournament, createFromSource, parseFiles, validLevel, cleanTdLink, CreateError, FileRef } from "./_lib/publish.js";
 import { parseYellowFruit } from "./_lib/yellowfruit.js";
-import { scrapeEdition, listEditions, parseTarget, slugToName, scoringFor, setNameFrom } from "./_lib/importBuzzpoints.js";
+import { scrapeEdition, listEditions, listSets, parseTarget, slugToName, scoringFor, setNameFrom } from "./_lib/importBuzzpoints.js";
 import {
   readModConfig, findBlocked, readPending, writePending, writePendingPayload, PendingSubmission,
 } from "./_lib/moderation.js";
@@ -32,6 +32,14 @@ const edPath = (id: string, i: number) => `imports/${id}-e${i}.json`;
 const writeJson = (path: string, obj: unknown) => put(path, JSON.stringify(obj), { access: "private", contentType: "application/json", addRandomSuffix: false, allowOverwrite: true });
 
 async function handleImport(body: any, owner: string, res: VercelResponse) {
+  // discover every set at a Buzzpoints base URL (for the admin bulk import)
+  if (body.op === "import-sets") {
+    let base: string, sets: { slug: string; name: string }[];
+    try { base = parseTarget(String(body.importUrl || "")).base; sets = await listSets(base); }
+    catch (e) { return res.status(400).json({ error: (e as Error).message }); }
+    return res.status(200).json({ base, sets });
+  }
+
   // start: figure out which editions to import and open a job
   if (body.op === "import-start") {
     let base: string, eds: { slug: string; name: string }[];

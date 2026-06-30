@@ -4,6 +4,7 @@ import { useAuth, Role } from "../auth";
 import { refreshIndex } from "../data";
 import { Visibility } from "../types";
 import { Loading, AuthNav } from "../components/Common";
+import { BulkImport } from "../components/BulkImport";
 import { formatDate } from "../util";
 
 interface AdminSet {
@@ -171,6 +172,14 @@ export function Admin() {
                   </tbody>
                 </table>
               </div>
+            )}
+
+            {/* ---- bulk import (admin only) ---- */}
+            {isAdmin && (
+              <>
+                <h2 style={{ marginTop: 28 }}>Bulk import</h2>
+                <BulkImport />
+              </>
             )}
 
             {/* ---- users (admin only) ---- */}

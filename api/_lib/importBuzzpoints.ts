@@ -154,6 +154,16 @@ export async function listEditions(base: string, listPath: string): Promise<{ sl
   return [...seen.entries()].map(([slug, name]) => ({ slug, name }));
 }
 
+// Every question SET listed at <base>/set (used by the admin bulk import). Each
+// set groups the mirror tournaments that are its editions.
+export async function listSets(base: string): Promise<{ slug: string; name: string }[]> {
+  const html = await fetchText(`${base}/set`);
+  const seen = new Map<string, string>();
+  for (const m of html.matchAll(/href="[^"]*?\/set\/([a-z0-9-]+)"[^>]*>([^<]+)</g))
+    if (!seen.has(m[1])) seen.set(m[1], m[2].trim().replace(/&amp;/g, "&"));
+  return [...seen.entries()].map(([slug, name]) => ({ slug, name }));
+}
+
 const sortedKey = (round: number, a: string, b: string) => `${round}|${[a, b].sort().join("|")}`;
 
 export async function scrapeEdition(base: string, slug: string): Promise<{ packets: PacketFile[]; games: GameFile[]; values: Set<number>; pages: number; hasBonuses: boolean }> {
