@@ -17,7 +17,7 @@ import {
 } from "./_lib/sets.js";
 import { createTournament, createFromSource, parseFiles, validLevel, cleanTdLink, CreateError, FileRef } from "./_lib/publish.js";
 import { parseYellowFruit } from "./_lib/yellowfruit.js";
-import { scrapeEdition, listEditions, listSets, parseTarget, slugToName, scoringFor, setNameFrom } from "./_lib/importBuzzpoints.js";
+import { scrapeEdition, listEditions, listSets, setEditions, parseTarget, slugToName, scoringFor, setNameFrom } from "./_lib/importBuzzpoints.js";
 import {
   readModConfig, findBlocked, readPending, writePending, writePendingPayload, PendingSubmission,
 } from "./_lib/moderation.js";
@@ -47,7 +47,8 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
       const t = parseTarget(String(body.importUrl || ""));
       base = t.base;
       if (t.kind === "tournament") eds = [{ slug: t.slug!, name: slugToName(t.slug!) }];
-      else eds = await listEditions(base, t.kind === "set" ? `/set/${t.slug}` : "/tournament");
+      else if (t.kind === "set") eds = await setEditions(base, t.slug!);
+      else eds = await listEditions(base, "/tournament");
     } catch (e) { return res.status(400).json({ error: (e as Error).message }); }
     if (!eds.length) return res.status(400).json({ error: "No tournaments found at that URL. Make sure it's a Buzzpoints link." });
     const jobId = crypto.randomBytes(9).toString("base64url");
@@ -84,9 +85,11 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     const editions: any[] = [];
     for (let i = 0; i < job.editions.length; i++) {
       const ed = await readBlobJson<{ packets: any[]; games: any[] }>(edPath(jobId, i), false);
-      if (ed) editions.push({ id: `e${editions.length}`, label: job.editions[i].name || job.editions[i].slug, packets: ed.packets, games: ed.games });
+      // Skip editions with no game data (e.g. an unplayed/empty tournament) so we
+      // never create an empty set.
+      if (ed && Array.isArray(ed.games) && ed.games.length) editions.push({ id: `e${editions.length}`, label: job.editions[i].name || job.editions[i].slug, packets: ed.packets, games: ed.games });
     }
-    if (!editions.length) return res.status(400).json({ error: "Nothing was imported." });
+    if (!editions.length) return res.status(400).json({ error: "No game data found at that link." });
     const name = (body.name || "").trim() || setNameFrom(job.editions.map((e) => e.name || e.slug));
     const { blocklist } = await readModConfig();
     const blocked = findBlocked(name, blocklist);

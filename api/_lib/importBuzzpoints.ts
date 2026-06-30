@@ -164,6 +164,18 @@ export async function listSets(base: string): Promise<{ slug: string; name: stri
   return [...seen.entries()].map(([slug, name]) => ({ slug, name }));
 }
 
+// The editions (mirror tournaments) of a set. The set page is set-level stats and
+// doesn't list its tournaments, so we take the full tournament index and keep the
+// ones whose slug is the set slug or a "<set>-<site>" descendant of it.
+export async function setEditions(base: string, setSlug: string): Promise<{ slug: string; name: string }[]> {
+  const all = await listEditions(base, "/tournament");
+  const matched = all.filter((t) => t.slug === setSlug || t.slug.startsWith(setSlug + "-"));
+  if (matched.length) return matched;
+  // Single-edition sets aren't always in the /tournament index, and use a doubled
+  // slug (<set>-<set>); scrapeEdition fails gracefully if this guess is wrong.
+  return [{ slug: `${setSlug}-${setSlug}`, name: slugToName(setSlug) }];
+}
+
 const sortedKey = (round: number, a: string, b: string) => `${round}|${[a, b].sort().join("|")}`;
 
 export async function scrapeEdition(base: string, slug: string): Promise<{ packets: PacketFile[]; games: GameFile[]; values: Set<number>; pages: number; hasBonuses: boolean }> {
