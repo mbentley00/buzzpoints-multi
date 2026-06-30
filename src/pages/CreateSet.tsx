@@ -43,6 +43,8 @@ function plusYears(years: number): string {
 export function CreateSet() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
+  const [mode, setMode] = useState<"upload" | "import">("upload");
+  const [importUrl, setImportUrl] = useState("");
   const [name, setName] = useState("");
   const [level, setLevel] = useState("");
   const [tdLink, setTdLink] = useState("");
@@ -73,8 +75,33 @@ export function CreateSet() {
     }
   }
 
+  async function submitImport() {
+    setError(null);
+    if (!importUrl.trim()) return setError("Enter the URL of a Buzzpoints site.");
+    if (!level) return setError("Choose a tournament type.");
+    setBusy(true);
+    try {
+      const autoPublicAt = visibility === "public" ? null : autoPublish ? new Date(autoPublishDate).toISOString() : null;
+      setStatus("Importing… reading every question from the source site. This can take up to a minute.");
+      const res = await fetch("/api/ingest", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ importUrl: importUrl.trim(), name: name.trim() || undefined, level, tdLink: tdLink.trim() || undefined, visibility, autoPublicAt }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `import failed (${res.status})`);
+      refreshIndex();
+      navigate(`/set/${json.slug}`);
+    } catch (err) {
+      setError(String((err as Error).message || err));
+      setBusy(false);
+      setStatus(null);
+    }
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (mode === "import") return submitImport();
     setError(null);
     if (!name.trim()) return setError("Enter a tournament name.");
     if (!level) return setError("Choose a tournament type.");
@@ -161,14 +188,29 @@ export function CreateSet() {
         )}
         {!authLoading && user && !submitted && (
         <form className="create-form" onSubmit={submit}>
-          <p className="muted" style={{ marginTop: 0 }}>
-            Upload packets and QBJ scoresheets for full buzz-level stats. Optionally attach the YellowFruit file you
-            scored from to export a corrected copy after editing buzzes.
-          </p>
+          <label className="field">
+            <span>How do you want to add this tournament?</span>
+            <select value={mode} onChange={(e) => setMode(e.target.value as "upload" | "import")}>
+              <option value="upload">Upload packets &amp; QBJ scoresheets</option>
+              <option value="import">Import from an existing Buzzpoints site</option>
+            </select>
+            <small className="muted">
+              {mode === "upload"
+                ? "Upload your files for full buzz-level stats. Optionally attach the YellowFruit file you scored from."
+                : "Paste the link to another Buzzpoints site (e.g. one deployed on Vercel). Every edition listed there is imported as one tournament."}
+            </small>
+          </label>
+
+          {mode === "import" && (
+            <label className="field">
+              <span>Buzzpoints site URL</span>
+              <input type="url" value={importUrl} onChange={(e) => setImportUrl(e.target.value)} placeholder="https://your-tournament.vercel.app" />
+            </label>
+          )}
 
           <label className="field">
-            <span>Tournament name</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Spring Open 2026" />
+            <span>Tournament name{mode === "import" ? " (optional)" : ""}</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={mode === "import" ? "defaults to the imported name" : "e.g. Spring Open 2026"} />
           </label>
 
           <label className="field">
@@ -187,6 +229,7 @@ export function CreateSet() {
             <small className="muted">Link to this tournament's entry on the hsquizbowl Tournament Database, if it has one.</small>
           </label>
 
+          {mode === "upload" && <>
           <label className="field">
             <span>Scoring format</span>
             <select value={scoring} onChange={(e) => { setScoring(e.target.value); setDetected(null); }}>
@@ -229,6 +272,7 @@ export function CreateSet() {
                 : "Attach the .yft you scored from to download a corrections-applied copy later."}
             </small>
           </label>
+          </>}
 
           <label className="field">
             <span>Visibility</span>
@@ -264,7 +308,7 @@ export function CreateSet() {
           {status && <div className="caveat">{status}</div>}
 
           <button className="btn-primary" type="submit" disabled={busy}>
-            {busy ? "Working…" : "Create tournament"}
+            {busy ? "Working…" : mode === "import" ? "Import tournament" : "Create tournament"}
           </button>
         </form>
         )}

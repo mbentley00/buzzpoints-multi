@@ -107,3 +107,46 @@ export async function createTournament(body: CreateBody, owner: string): Promise
   await writeIndex({ sets: [entry, ...index.sets.filter((s) => s.slug !== slug)] });
   return { slug };
 }
+
+// Create a tournament from an already-built SetSource (used by the Buzzpoints
+// import, which reconstructs editions/packets/games itself). Mirrors the tail of
+// createTournament but skips file parsing.
+export async function createFromSource(
+  source: SetSource,
+  owner: string,
+  opts: { name?: string; visibility?: string; autoPublicAt?: string | null; level?: string; tdLink?: string }
+): Promise<{ slug: string }> {
+  const name = (opts.name || source.name || "").trim();
+  if (!name) throw new CreateError(400, "Tournament name is required.");
+  const level = validLevel(opts.level);
+  const tdLink = cleanTdLink(opts.tdLink);
+  source.name = name;
+
+  const visibility: Visibility = VISIBILITIES.has(opts.visibility as Visibility) ? (opts.visibility as Visibility) : "listed";
+  const createdAt = new Date().toISOString();
+  let autoPublicAt: string | null = null;
+  if (visibility !== "public") {
+    if (opts.autoPublicAt === null) autoPublicAt = null;
+    else if (typeof opts.autoPublicAt === "string" && !Number.isNaN(Date.parse(opts.autoPublicAt))) autoPublicAt = new Date(opts.autoPublicAt).toISOString();
+    else autoPublicAt = new Date(Date.now() + TWO_YEARS_MS).toISOString();
+  }
+
+  const index = await readIndex();
+  const taken = new Set(index.sets.map((s) => s.slug));
+  let slug = slugify(name);
+  if (taken.has(slug)) { let n = 2; while (taken.has(`${slug}-${n}`)) n++; slug = `${slug}-${n}`; }
+
+  await writeSource(slug, source);
+  await writeCorrections(slug, []);
+  await writeRequests(slug, []);
+  const { meta, editions } = await aggregateAndWrite(slug, source, []);
+
+  const entry: SetEntry = {
+    slug, name, scoring: source.scoring, hasBonuses: source.hasBonuses, owner, editions,
+    visibility, invites: [], autoPublicAt, level, ...(tdLink ? { tdLink } : {}),
+    numGames: meta.numGames, numTeams: meta.numTeams, numPlayers: meta.numPlayers,
+    numTossups: meta.numTossups, rounds: meta.rounds.length, createdAt,
+  };
+  await writeIndex({ sets: [entry, ...index.sets.filter((s) => s.slug !== slug)] });
+  return { slug };
+}

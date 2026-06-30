@@ -15,8 +15,12 @@ import {
   readIndex, writeIndex, readSource, writeSource, writeCorrections, readCorrections,
   aggregateAndWrite, editionsOf, SetSource,
 } from "./_lib/sets.js";
-import { createTournament, parseFiles, validLevel, cleanTdLink, CreateError, FileRef } from "./_lib/publish.js";
+import { createTournament, createFromSource, parseFiles, validLevel, cleanTdLink, CreateError, FileRef } from "./_lib/publish.js";
 import { parseYellowFruit } from "./_lib/yellowfruit.js";
+import { importBuzzpoints } from "./_lib/importBuzzpoints.js";
+
+// Importing scrapes many pages from the source site; give it room.
+export const config = { maxDuration: 60 };
 import {
   readModConfig, findBlocked, readPending, writePending, writePendingPayload, PendingSubmission,
 } from "./_lib/moderation.js";
@@ -28,6 +32,7 @@ interface Body {
   editionId?: string; // when set with editionOf: append files to this existing edition
   yf?: any; // optional companion YellowFruit (.yft) JSON for corrected re-export
   level?: string; tdLink?: string; // tournament type + optional Tournament Database link
+  importUrl?: string; // import all editions from another Buzzpoints site at this URL
 }
 
 // Resolve a list of file refs to inline JSON. A ref uploaded directly to Blob
@@ -62,6 +67,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (body.yf) {
     try { parseYellowFruit(body.yf); }
     catch (e) { return res.status(400).json({ error: `YellowFruit file: ${(e as Error).message}` }); }
+  }
+
+  // ---- import from another Buzzpoints site (all editions at the link) ----
+  if (body.importUrl) {
+    let level: string, tdLink: string | undefined;
+    try { level = validLevel(body.level); tdLink = cleanTdLink(body.tdLink); }
+    catch (e) { if (e instanceof CreateError) return res.status(e.status).json({ error: e.message }); throw e; }
+    let result;
+    try { result = await importBuzzpoints(String(body.importUrl)); }
+    catch (e) { return res.status(400).json({ error: (e as Error).message }); }
+    const name = (body.name || "").trim() || result.name;
+    const { blocklist } = await readModConfig();
+    const blocked = findBlocked(name, blocklist);
+    if (blocked) return res.status(400).json({ error: `Tournament name contains a disallowed word: "${blocked}".` });
+    try {
+      const { slug } = await createFromSource(result.source, owner, { name, visibility: body.visibility, autoPublicAt: body.autoPublicAt ?? null, level, tdLink });
+      return res.status(200).json({ slug, editions: result.editionCount });
+    } catch (e) {
+      if (e instanceof CreateError) return res.status(e.status).json({ error: e.message });
+      return res.status(500).json({ error: (e as Error).message });
+    }
   }
 
   const editionAppend = !!(body.editionOf || "").trim() && !!(body.editionId || "").trim();
