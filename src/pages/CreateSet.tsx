@@ -60,7 +60,6 @@ export function CreateSet() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<string | null>(null);
-  const [importedSlug, setImportedSlug] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function onGames(files: FileList | null) {
@@ -76,35 +75,40 @@ export function CreateSet() {
     }
   }
 
+  // The browser drives the import across many requests so each one (a single
+  // edition scrape) stays within the function time limit. Large multi-mirror
+  // tournaments (e.g. 17 editions) import fully, edition by edition.
+  async function importPost(b: any) {
+    let lastErr: Error | null = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const r = await fetch("/api/ingest", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) return d;
+      lastErr = new Error(d.error || `Failed (${r.status})`);
+      if (r.status < 500) break; // only retry transient server/timeout errors
+    }
+    throw lastErr;
+  }
+
   async function submitImport() {
     setError(null);
     if (!importUrl.trim()) return setError("Enter the URL of a Buzzpoints site.");
     if (!level) return setError("Choose a tournament type.");
     setBusy(true);
     try {
-      const autoPublicAt = visibility === "public" ? null : autoPublish ? new Date(autoPublishDate).toISOString() : null;
-      setStatus("Importing… reading every question from the source site. This can take up to a minute.");
-      const res = await fetch("/api/ingest", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ importUrl: importUrl.trim(), name: name.trim() || undefined, level, tdLink: tdLink.trim() || undefined, visibility, autoPublicAt }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || `import failed (${res.status})`);
-      refreshIndex();
-      if (json.skipped?.length) {
-        // Very large multi-mirror sites can't be scraped in one pass; tell the user
-        // which editions were left out rather than silently importing a subset.
-        setImportedSlug(json.slug);
-        setSubmitted(
-          `Imported ${json.editions} edition${json.editions === 1 ? "" : "s"}${json.hasBonuses ? " (with bonuses)" : ""}. ` +
-          `${json.skipped.length} edition${json.skipped.length === 1 ? " was" : "s were"} skipped because the site is too large to import in one pass: ${json.skipped.join(", ")}.`
-        );
-        setBusy(false);
-        setStatus(null);
-        return;
+      setStatus("Reading the source site…");
+      const start = await importPost({ op: "import-start", importUrl: importUrl.trim() });
+      const total: number = start.total;
+      const eds: { name: string }[] = start.editions || [];
+      for (let i = 0; i < total; i++) {
+        setStatus(`Importing edition ${i + 1} of ${total}${eds[i]?.name ? `: ${eds[i].name}` : ""}…`);
+        await importPost({ op: "import-edition", jobId: start.jobId, index: i });
       }
-      navigate(`/set/${json.slug}`);
+      setStatus("Building the tournament…");
+      const autoPublicAt = visibility === "public" ? null : autoPublish ? new Date(autoPublishDate).toISOString() : null;
+      const fin = await importPost({ op: "import-finish", jobId: start.jobId, name: name.trim() || undefined, level, tdLink: tdLink.trim() || undefined, visibility, autoPublicAt });
+      refreshIndex();
+      navigate(`/set/${fin.slug}`);
     } catch (err) {
       setError(String((err as Error).message || err));
       setBusy(false);
@@ -193,11 +197,9 @@ export function CreateSet() {
         )}
         {!authLoading && user && submitted && (
           <div className="caveat" role="status">
-            {importedSlug ? <strong>Imported.</strong> : <strong>Submitted for review.</strong>} {submitted}
+            <strong>Submitted for review.</strong> {submitted}
             <div style={{ marginTop: 10 }}>
-              {importedSlug
-                ? <Link to={`/set/${importedSlug}`} className="link">Open the tournament →</Link>
-                : <Link to="/" className="link">← Back to tournaments</Link>}
+              <Link to="/" className="link">← Back to tournaments</Link>
             </div>
           </div>
         )}

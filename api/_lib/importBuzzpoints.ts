@@ -10,11 +10,7 @@
 // From the buzzes (which carry game_id + opponent) we rebuild this app's QBJ-style
 // games, so the normal aggregation produces full buzz-level stats.
 import type { PacketFile, GameFile } from "./aggregate.js";
-import type { SetSource, Edition } from "./sets.js";
 
-const MAX_PAGES = 800;    // cap on total pages fetched across editions, so a single
-                          // import stays within the function time budget (a huge
-                          // multi-mirror set imports whole editions until this is hit)
 const CONCURRENCY = 16;
 
 interface BuzzRec { player_name: string; team_name: string; opponent_name?: string; game_id: number; buzz_position: number; value: number; }
@@ -68,7 +64,7 @@ function jsonArrayField(s: string, key: string): any[] {
   try { return JSON.parse(s.slice(start, i)); } catch { return []; }
 }
 
-function originOf(input: string): string {
+export function originOf(input: string): string {
   let u: URL;
   try { u = new URL(input.trim()); } catch { throw new Error("Enter the full URL of a Buzzpoints site (e.g. https://example.vercel.app)."); }
   if (!/^https?:$/.test(u.protocol)) throw new Error("The import URL must be http(s).");
@@ -76,7 +72,7 @@ function originOf(input: string): string {
 }
 
 // Map the distinct buzz values to one of this app's scoring formats.
-function scoringFor(values: Set<number>): string {
+export function scoringFor(values: Set<number>): string {
   const hasNeg = [...values].some((v) => v < 0);
   const maxPos = Math.max(0, ...[...values].filter((v) => v > 0));
   if (values.has(20) && values.has(15)) return "SUPERPOWER";
@@ -98,7 +94,7 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R
 }
 
 // The tournament slugs + display names on the site's /tournament page.
-async function listEditions(origin: string): Promise<{ slug: string; name: string }[]> {
+export async function listEditions(origin: string): Promise<{ slug: string; name: string }[]> {
   const html = await fetchText(`${origin}/tournament`);
   const seen = new Map<string, string>();
   for (const m of html.matchAll(/href="\/tournament\/([a-z0-9-]+)"[^>]*>([^<]+)</g))
@@ -226,34 +222,8 @@ export async function scrapeEdition(origin: string, slug: string): Promise<{ pac
   return { packets, games: gameFiles, values, pages: tPairs.length + bPairs.length, hasBonuses };
 }
 
-export interface ImportResult { name: string; scoring: string; hasBonuses: boolean; source: SetSource; editionCount: number; skipped: string[]; }
-
-export async function importBuzzpoints(input: string): Promise<ImportResult> {
-  const origin = originOf(input);
-  const eds = await listEditions(origin);
-  if (!eds.length) throw new Error("No tournaments found at that URL. Make sure it's a Buzzpoints site and the link is correct.");
-
-  const editions: Edition[] = [];
-  const skipped: string[] = [];
-  const values = new Set<number>();
-  let hasBonuses = false;
-  let pagesUsed = 0;
-  for (const ed of eds) {
-    // Stop importing further editions once the page budget is spent (very large
-    // multi-mirror sets can't be scraped in one request); keep whole editions only.
-    if (editions.length && pagesUsed >= MAX_PAGES) { skipped.push(ed.name || ed.slug); continue; }
-    const { packets, games, values: v, pages, hasBonuses: hb } = await scrapeEdition(origin, ed.slug);
-    pagesUsed += pages;
-    if (hb) hasBonuses = true;
-    v.forEach((x) => values.add(x));
-    editions.push({ id: `e${editions.length}`, label: ed.name || ed.slug, packets, games });
-  }
-  if (!editions.some((e) => e.games.length)) throw new Error("Couldn't read any game data from that site.");
-
-  // A link only ever hosts editions of one tournament. Name the set after the
-  // shortest edition name (editions are usually the base name plus a qualifier
-  // like "Online", so the shortest is the cleanest base name).
-  const name = eds.map((e) => e.name || e.slug).sort((a, b) => a.length - b.length || a.localeCompare(b))[0];
-  const scoring = scoringFor(values);
-  return { name, scoring, hasBonuses, source: { name, scoring, hasBonuses, editions }, editionCount: editions.length, skipped };
+// Pick the cleanest set name from the edition names (the shortest is usually the
+// base name without an "Online"/"at <site>" qualifier).
+export function setNameFrom(names: string[]): string {
+  return names.filter(Boolean).sort((a, b) => a.length - b.length || a.localeCompare(b))[0] || "Imported tournament";
 }

@@ -7,7 +7,7 @@
 // immediately. A name blocklist is enforced for everyone.
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import crypto from "node:crypto";
-import { del } from "@vercel/blob";
+import { put, del } from "@vercel/blob";
 import { SCORINGS } from "./_lib/scoring.js";
 import { readBlobJson } from "./_lib/blob.js";
 import { currentUser, isAdminEmail, canModerate, loadUsers, moderatorEmails, signPurpose } from "./_lib/auth.js";
@@ -17,13 +17,82 @@ import {
 } from "./_lib/sets.js";
 import { createTournament, createFromSource, parseFiles, validLevel, cleanTdLink, CreateError, FileRef } from "./_lib/publish.js";
 import { parseYellowFruit } from "./_lib/yellowfruit.js";
-import { importBuzzpoints } from "./_lib/importBuzzpoints.js";
-
-// Importing scrapes many pages from the source site; give it room.
-export const config = { maxDuration: 60 };
+import { scrapeEdition, listEditions, originOf, scoringFor, setNameFrom } from "./_lib/importBuzzpoints.js";
 import {
   readModConfig, findBlocked, readPending, writePending, writePendingPayload, PendingSubmission,
 } from "./_lib/moderation.js";
+
+// A single edition scrape (hundreds of page fetches) needs room within the limit.
+export const config = { maxDuration: 60 };
+
+// ---- async import job state (driven across many requests by the browser) ----
+interface ImportJob { origin: string; by: string; editions: { slug: string; name: string }[]; imported: number[]; values: number[]; hasBonuses: boolean; createdAt: string; }
+const jobPath = (id: string) => `imports/${id}.json`;
+const edPath = (id: string, i: number) => `imports/${id}-e${i}.json`;
+const writeJson = (path: string, obj: unknown) => put(path, JSON.stringify(obj), { access: "private", contentType: "application/json", addRandomSuffix: false, allowOverwrite: true });
+
+async function handleImport(body: any, owner: string, res: VercelResponse) {
+  // start: discover the editions at the link and open a job
+  if (body.op === "import-start") {
+    let origin: string, eds: { slug: string; name: string }[];
+    try { origin = originOf(String(body.importUrl || "")); eds = await listEditions(origin); }
+    catch (e) { return res.status(400).json({ error: (e as Error).message }); }
+    if (!eds.length) return res.status(400).json({ error: "No tournaments found at that URL. Make sure it's a Buzzpoints site." });
+    const jobId = crypto.randomBytes(9).toString("base64url");
+    const job: ImportJob = { origin, by: owner, editions: eds, imported: [], values: [], hasBonuses: false, createdAt: new Date().toISOString() };
+    await writeJson(jobPath(jobId), job);
+    return res.status(200).json({ jobId, editions: eds.map((e) => ({ name: e.name })), total: eds.length });
+  }
+
+  const jobId = String(body.jobId || "");
+  const job = await readBlobJson<ImportJob>(jobPath(jobId), false);
+  if (!job) return res.status(404).json({ error: "Import session not found or expired. Start over." });
+  if (job.by !== owner) return res.status(403).json({ error: "This import belongs to another account." });
+
+  // edition: scrape one edition and stash it
+  if (body.op === "import-edition") {
+    const i = Number(body.index);
+    if (!Number.isInteger(i) || i < 0 || i >= job.editions.length) return res.status(400).json({ error: "Invalid edition index." });
+    let scraped;
+    try { scraped = await scrapeEdition(job.origin, job.editions[i].slug); }
+    catch (e) { return res.status(400).json({ error: (e as Error).message }); }
+    await writeJson(edPath(jobId, i), { packets: scraped.packets, games: scraped.games });
+    if (!job.imported.includes(i)) job.imported.push(i);
+    job.values = [...new Set([...job.values, ...scraped.values])];
+    if (scraped.hasBonuses) job.hasBonuses = true;
+    await writeJson(jobPath(jobId), job);
+    return res.status(200).json({ index: i, name: job.editions[i].name, imported: job.imported.length, total: job.editions.length });
+  }
+
+  // finish: assemble every scraped edition into one tournament
+  if (body.op === "import-finish") {
+    let level: string, tdLink: string | undefined;
+    try { level = validLevel(body.level); tdLink = cleanTdLink(body.tdLink); }
+    catch (e) { if (e instanceof CreateError) return res.status(e.status).json({ error: e.message }); throw e; }
+    const editions: any[] = [];
+    for (let i = 0; i < job.editions.length; i++) {
+      const ed = await readBlobJson<{ packets: any[]; games: any[] }>(edPath(jobId, i), false);
+      if (ed) editions.push({ id: `e${editions.length}`, label: job.editions[i].name || job.editions[i].slug, packets: ed.packets, games: ed.games });
+    }
+    if (!editions.length) return res.status(400).json({ error: "Nothing was imported." });
+    const name = (body.name || "").trim() || setNameFrom(job.editions.map((e) => e.name || e.slug));
+    const { blocklist } = await readModConfig();
+    const blocked = findBlocked(name, blocklist);
+    if (blocked) return res.status(400).json({ error: `Tournament name contains a disallowed word: "${blocked}".` });
+    const scoring = scoringFor(new Set(job.values));
+    const source: SetSource = { name, scoring, hasBonuses: job.hasBonuses, editions };
+    try {
+      const { slug } = await createFromSource(source, owner, { name, visibility: body.visibility, autoPublicAt: body.autoPublicAt ?? null, level, tdLink });
+      await del([jobPath(jobId), ...job.editions.map((_, i) => edPath(jobId, i))]).catch(() => {});
+      return res.status(200).json({ slug, editions: editions.length });
+    } catch (e) {
+      if (e instanceof CreateError) return res.status(e.status).json({ error: e.message });
+      return res.status(500).json({ error: (e as Error).message });
+    }
+  }
+
+  return res.status(400).json({ error: "Unknown import op." });
+}
 import { sendEmail, appUrl, submissionPendingBody } from "./_lib/email.js";
 
 interface Body {
@@ -32,7 +101,8 @@ interface Body {
   editionId?: string; // when set with editionOf: append files to this existing edition
   yf?: any; // optional companion YellowFruit (.yft) JSON for corrected re-export
   level?: string; tdLink?: string; // tournament type + optional Tournament Database link
-  importUrl?: string; // import all editions from another Buzzpoints site at this URL
+  importUrl?: string; // import-start: the Buzzpoints site to import
+  op?: string; jobId?: string; index?: number; // async import: import-start | import-edition | import-finish
 }
 
 // Resolve a list of file refs to inline JSON. A ref uploaded directly to Blob
@@ -62,32 +132,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const body = (req.body || {}) as Body;
 
+  // Async import from another Buzzpoints site (browser drives start/edition/finish).
+  if (typeof body.op === "string" && body.op.startsWith("import-")) return handleImport(body, owner, res);
+
   // Validate the optional companion YellowFruit file up front (so a first-post
   // submission isn't queued with an unreadable file).
   if (body.yf) {
     try { parseYellowFruit(body.yf); }
     catch (e) { return res.status(400).json({ error: `YellowFruit file: ${(e as Error).message}` }); }
-  }
-
-  // ---- import from another Buzzpoints site (all editions at the link) ----
-  if (body.importUrl) {
-    let level: string, tdLink: string | undefined;
-    try { level = validLevel(body.level); tdLink = cleanTdLink(body.tdLink); }
-    catch (e) { if (e instanceof CreateError) return res.status(e.status).json({ error: e.message }); throw e; }
-    let result;
-    try { result = await importBuzzpoints(String(body.importUrl)); }
-    catch (e) { return res.status(400).json({ error: (e as Error).message }); }
-    const name = (body.name || "").trim() || result.name;
-    const { blocklist } = await readModConfig();
-    const blocked = findBlocked(name, blocklist);
-    if (blocked) return res.status(400).json({ error: `Tournament name contains a disallowed word: "${blocked}".` });
-    try {
-      const { slug } = await createFromSource(result.source, owner, { name, visibility: body.visibility, autoPublicAt: body.autoPublicAt ?? null, level, tdLink });
-      return res.status(200).json({ slug, editions: result.editionCount, skipped: result.skipped, hasBonuses: result.hasBonuses });
-    } catch (e) {
-      if (e instanceof CreateError) return res.status(e.status).json({ error: e.message });
-      return res.status(500).json({ error: (e as Error).message });
-    }
   }
 
   const editionAppend = !!(body.editionOf || "").trim() && !!(body.editionId || "").trim();
