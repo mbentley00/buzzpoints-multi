@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { useIndex, refreshIndex } from "../data";
+import { refreshIndex } from "../data";
 import { TOURNAMENT_LEVELS, Visibility } from "../types";
 
 async function post(b: any) {
@@ -13,25 +13,30 @@ async function post(b: any) {
 // one set (and within it, one edition) per request, driven from the browser so
 // each request stays within the function time limit.
 export function BulkImport() {
-  const { data: index } = useIndex();
   const [baseUrl, setBaseUrl] = useState("https://quizbowlstats.com/buzzpoints");
   const [level, setLevel] = useState("college");
   const [visibility, setVisibility] = useState<Visibility>("public");
   const [base, setBase] = useState("");
   const [sets, setSets] = useState<{ slug: string; name: string }[] | null>(null);
+  const [existing, setExisting] = useState<Set<string>>(new Set());
   const [running, setRunning] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const [err, setErr] = useState("");
   const stop = useRef(false);
 
-  const existing = new Set((index?.sets ?? []).map((s) => s.name.toLowerCase()));
   const pending = (sets ?? []).filter((s) => !existing.has(s.name.toLowerCase()));
   const addLog = (m: string) => setLog((l) => [...l.slice(-400), m]);
 
   async function discover() {
     setErr(""); setSets(null);
     try {
-      const d = await post({ op: "import-sets", importUrl: baseUrl.trim() });
+      // Read the live index fresh each time so already-imported sets are skipped
+      // even on a re-run in the same tab (no reload needed).
+      const [d, idx] = await Promise.all([
+        post({ op: "import-sets", importUrl: baseUrl.trim() }),
+        fetch("/api/index").then((r) => r.json()).catch(() => ({ sets: [] })),
+      ]);
+      setExisting(new Set((idx.sets ?? []).map((s: any) => String(s.name || "").toLowerCase())));
       setBase(d.base);
       setSets(d.sets);
       addLog(`Found ${d.sets.length} sets at ${d.base}.`);
