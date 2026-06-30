@@ -17,7 +17,7 @@ import {
 } from "./_lib/sets.js";
 import { createTournament, createFromSource, parseFiles, validLevel, cleanTdLink, CreateError, FileRef } from "./_lib/publish.js";
 import { parseYellowFruit } from "./_lib/yellowfruit.js";
-import { scrapeEdition, listEditions, originOf, scoringFor, setNameFrom } from "./_lib/importBuzzpoints.js";
+import { scrapeEdition, listEditions, parseTarget, slugToName, scoringFor, setNameFrom } from "./_lib/importBuzzpoints.js";
 import {
   readModConfig, findBlocked, readPending, writePending, writePendingPayload, PendingSubmission,
 } from "./_lib/moderation.js";
@@ -26,20 +26,24 @@ import {
 export const config = { maxDuration: 60 };
 
 // ---- async import job state (driven across many requests by the browser) ----
-interface ImportJob { origin: string; by: string; editions: { slug: string; name: string }[]; imported: number[]; values: number[]; hasBonuses: boolean; createdAt: string; }
+interface ImportJob { base: string; by: string; editions: { slug: string; name: string }[]; imported: number[]; values: number[]; hasBonuses: boolean; createdAt: string; }
 const jobPath = (id: string) => `imports/${id}.json`;
 const edPath = (id: string, i: number) => `imports/${id}-e${i}.json`;
 const writeJson = (path: string, obj: unknown) => put(path, JSON.stringify(obj), { access: "private", contentType: "application/json", addRandomSuffix: false, allowOverwrite: true });
 
 async function handleImport(body: any, owner: string, res: VercelResponse) {
-  // start: discover the editions at the link and open a job
+  // start: figure out which editions to import and open a job
   if (body.op === "import-start") {
-    let origin: string, eds: { slug: string; name: string }[];
-    try { origin = originOf(String(body.importUrl || "")); eds = await listEditions(origin); }
-    catch (e) { return res.status(400).json({ error: (e as Error).message }); }
-    if (!eds.length) return res.status(400).json({ error: "No tournaments found at that URL. Make sure it's a Buzzpoints site." });
+    let base: string, eds: { slug: string; name: string }[];
+    try {
+      const t = parseTarget(String(body.importUrl || ""));
+      base = t.base;
+      if (t.kind === "tournament") eds = [{ slug: t.slug!, name: slugToName(t.slug!) }];
+      else eds = await listEditions(base, t.kind === "set" ? `/set/${t.slug}` : "/tournament");
+    } catch (e) { return res.status(400).json({ error: (e as Error).message }); }
+    if (!eds.length) return res.status(400).json({ error: "No tournaments found at that URL. Make sure it's a Buzzpoints link." });
     const jobId = crypto.randomBytes(9).toString("base64url");
-    const job: ImportJob = { origin, by: owner, editions: eds, imported: [], values: [], hasBonuses: false, createdAt: new Date().toISOString() };
+    const job: ImportJob = { base, by: owner, editions: eds, imported: [], values: [], hasBonuses: false, createdAt: new Date().toISOString() };
     await writeJson(jobPath(jobId), job);
     return res.status(200).json({ jobId, editions: eds.map((e) => ({ name: e.name })), total: eds.length });
   }
@@ -54,7 +58,7 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     const i = Number(body.index);
     if (!Number.isInteger(i) || i < 0 || i >= job.editions.length) return res.status(400).json({ error: "Invalid edition index." });
     let scraped;
-    try { scraped = await scrapeEdition(job.origin, job.editions[i].slug); }
+    try { scraped = await scrapeEdition(job.base, job.editions[i].slug); }
     catch (e) { return res.status(400).json({ error: (e as Error).message }); }
     await writeJson(edPath(jobId, i), { packets: scraped.packets, games: scraped.games });
     if (!job.imported.includes(i)) job.imported.push(i);

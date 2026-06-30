@@ -11,17 +11,41 @@
 // games, so the normal aggregation produces full buzz-level stats.
 import type { PacketFile, GameFile } from "./aggregate.js";
 
-const CONCURRENCY = 16;
+const CONCURRENCY = 8;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// Some sources sit behind Cloudflare and throttle non-browser user-agents heavily,
+// so present as a browser and accept gzip.
+const HEADERS = {
+  "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36",
+  accept: "text/html,application/xhtml+xml",
+  "accept-encoding": "gzip, deflate, br",
+};
 
-interface BuzzRec { player_name: string; team_name: string; opponent_name?: string; game_id: number; buzz_position: number; value: number; }
+interface BuzzRec { player_name: string; team_name: string; opponent_name?: string; game_id: string; buzz_position: number; value: number; }
 interface ScrapedTossup { round: number; num: number; question: string; answer: string; metadata: string; buzzes: BuzzRec[]; }
 interface BonusPart { part?: string; answer?: string; leadin?: string; difficulty_modifier?: string; value?: number; metadata?: string; }
 interface BonusDirect { team_name: string; opponent_name?: string; part_one?: number; part_two?: number; part_three?: number; total?: number; }
 
-async function fetchText(url: string): Promise<string> {
-  const r = await fetch(url, { headers: { "user-agent": "buzzpoints.buzz importer" } });
-  if (!r.ok) throw new Error(`Couldn't read ${url} (HTTP ${r.status}).`);
-  return r.text();
+// Fetch with retries on transient errors (timeouts / rate limits), since large
+// imports hit hundreds of pages on shared sites that occasionally 5xx.
+async function fetchText(url: string, tries = 4, timeoutMs = 25000): Promise<string> {
+  let lastErr: Error = new Error(`Couldn't read ${url}.`);
+  for (let i = 0; i < tries; i++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs); // bound any single hung request
+    try {
+      const r = await fetch(url, { headers: HEADERS, signal: ctrl.signal });
+      if (r.ok) return r.text();
+      lastErr = new Error(`Couldn't read ${url} (HTTP ${r.status}).`);
+      if (![429, 500, 502, 503, 504].includes(r.status)) throw lastErr; // don't retry 404 etc.
+    } catch (e) {
+      lastErr = e as Error;
+    } finally {
+      clearTimeout(timer);
+    }
+    if (i < tries - 1) await sleep(300 * (i + 1));
+  }
+  throw lastErr;
 }
 
 // Concatenate the page's React Flight chunks into one decoded string.
@@ -64,11 +88,36 @@ function jsonArrayField(s: string, key: string): any[] {
   try { return JSON.parse(s.slice(start, i)); } catch { return []; }
 }
 
-export function originOf(input: string): string {
+// Parse an import URL into the Buzzpoints app's base (origin + any subpath like
+// "/buzzpoints") and what to import:
+//   .../tournament/<slug>  -> that one tournament (a shared site hosts many, so we
+//                             must NOT import everything)
+//   .../set/<slug>         -> all editions/mirrors of that set
+//   root / .../tournament  -> every tournament listed there (per-deployment sites,
+//                             whose "tournaments" are editions of one)
+export interface ImportTarget { base: string; kind: "tournament" | "set" | "list"; slug?: string }
+export function parseTarget(input: string): ImportTarget {
   let u: URL;
-  try { u = new URL(input.trim()); } catch { throw new Error("Enter the full URL of a Buzzpoints site (e.g. https://example.vercel.app)."); }
+  try { u = new URL(input.trim()); } catch { throw new Error("Enter the full URL of a Buzzpoints page (e.g. https://example.vercel.app or https://quizbowlstats.com/buzzpoints/tournament/<slug>)."); }
   if (!/^https?:$/.test(u.protocol)) throw new Error("The import URL must be http(s).");
-  return `${u.protocol}//${u.host}`;
+  const path = u.pathname.replace(/\/+$/, "");
+  let m = path.match(/^(.*)\/tournament\/([^/]+)$/) || path.match(/^(.*)\/tournament\/([^/]+)\//);
+  if (m) return { base: u.origin + m[1], kind: "tournament", slug: m[2] };
+  m = path.match(/^(.*)\/set\/([^/]+)/);
+  if (m) return { base: u.origin + m[1], kind: "set", slug: m[2] };
+  m = path.match(/^(.*)\/tournament\/?$/);
+  if (m) return { base: u.origin + m[1], kind: "list" };
+  return { base: u.origin + path, kind: "list" };
+}
+
+// Title-case a tournament slug for a display name, upper-casing common quizbowl
+// acronyms. Used when importing a single tournament by URL (the user can override
+// the name on the import form).
+const ACRONYMS = new Set(["acf", "pace", "nsc", "scop", "hsapq", "ncsa", "eft", "rmp", "ll", "act", "sat"]);
+export function slugToName(slug: string): string {
+  return slug.split("-").map((w) =>
+    /^\d+$/.test(w) ? w : ACRONYMS.has(w.toLowerCase()) ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1)
+  ).join(" ");
 }
 
 // Map the distinct buzz values to one of this app's scoring formats.
@@ -93,35 +142,42 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R
   return out;
 }
 
-// The tournament slugs + display names on the site's /tournament page.
-export async function listEditions(origin: string): Promise<{ slug: string; name: string }[]> {
-  const html = await fetchText(`${origin}/tournament`);
+// The tournament slugs + display names listed at `listPath` under `base`
+// (a /tournament index for per-deployment sites, or a /set/<slug> page for a set).
+// Handles hrefs with a base-path prefix (e.g. /buzzpoints/tournament/<slug>).
+export async function listEditions(base: string, listPath: string): Promise<{ slug: string; name: string }[]> {
+  const html = await fetchText(`${base}${listPath}`);
   const seen = new Map<string, string>();
-  for (const m of html.matchAll(/href="\/tournament\/([a-z0-9-]+)"[^>]*>([^<]+)</g))
+  for (const m of html.matchAll(/href="[^"]*?\/tournament\/([a-z0-9-]+)"[^>]*>([^<]+)</g))
     if (!seen.has(m[1])) seen.set(m[1], m[2].trim());
-  // fallback: links without adjacent text
-  for (const m of html.matchAll(/\/tournament\/([a-z0-9-]+)"/g)) if (!seen.has(m[1])) seen.set(m[1], m[1]);
+  for (const m of html.matchAll(/href="[^"]*?\/tournament\/([a-z0-9-]+)"/g)) if (!seen.has(m[1])) seen.set(m[1], m[1]);
   return [...seen.entries()].map(([slug, name]) => ({ slug, name }));
 }
 
 const sortedKey = (round: number, a: string, b: string) => `${round}|${[a, b].sort().join("|")}`;
 
-export async function scrapeEdition(origin: string, slug: string): Promise<{ packets: PacketFile[]; games: GameFile[]; values: Set<number>; pages: number; hasBonuses: boolean }> {
+export async function scrapeEdition(base: string, slug: string): Promise<{ packets: PacketFile[]; games: GameFile[]; values: Set<number>; pages: number; hasBonuses: boolean }> {
   // ---- tossups ----
-  const tHtml = await fetchText(`${origin}/tournament/${slug}/tossup`);
+  const tHtml = await fetchText(`${base}/tournament/${slug}/tossup`);
   const tPairs = [...new Set([...tHtml.matchAll(new RegExp(`/tournament/${slug}/tossup/(\\d+)/(\\d+)`, "g"))].map((m) => `${m[1]}|${m[2]}`))]
     .map((k) => k.split("|").map(Number) as [number, number]);
 
   const scraped = await mapLimit(tPairs, CONCURRENCY, async ([round, num]): Promise<ScrapedTossup> => {
-    const f = parseFlight(await fetchText(`${origin}/tournament/${slug}/tossup/${round}/${num}`));
-    const buzzAt = f.indexOf('"buzzes":[');
-    return {
-      round, num,
-      question: strField(f, "question", buzzAt >= 0 ? buzzAt : undefined) ?? "",
-      answer: strField(f, "answer", buzzAt >= 0 ? buzzAt : undefined) ?? strField(f, "answer_primary") ?? "",
-      metadata: strField(f, "metadata", buzzAt >= 0 ? buzzAt : undefined) ?? "",
-      buzzes: (jsonArrayField(f, "buzzes") as BuzzRec[]).filter((b) => b && typeof b.game_id === "number"),
-    };
+    try {
+      const f = parseFlight(await fetchText(`${base}/tournament/${slug}/tossup/${round}/${num}`));
+      const buzzAt = f.indexOf('"buzzes":[');
+      return {
+        round, num,
+        question: strField(f, "question", buzzAt >= 0 ? buzzAt : undefined) ?? "",
+        answer: strField(f, "answer", buzzAt >= 0 ? buzzAt : undefined) ?? strField(f, "answer_primary") ?? "",
+        metadata: strField(f, "metadata", buzzAt >= 0 ? buzzAt : undefined) ?? "",
+        // game_id / value come through as numbers on some sites and strings on
+        // others (quizbowlstats), so normalize them.
+        buzzes: (jsonArrayField(f, "buzzes") as any[])
+          .filter((b) => b && b.game_id != null && b.game_id !== "")
+          .map((b): BuzzRec => ({ player_name: b.player_name, team_name: b.team_name, opponent_name: b.opponent_name, game_id: String(b.game_id), buzz_position: Number(b.buzz_position), value: Number(b.value) })),
+      };
+    } catch { return { round, num, question: "", answer: "", metadata: "", buzzes: [] }; } // skip an unreadable tossup, don't fail the import
   });
 
   const values = new Set<number>();
@@ -135,7 +191,7 @@ export async function scrapeEdition(origin: string, slug: string): Promise<{ pac
 
   // games: group buzzes by game_id (each game is one round between two teams)
   type G = { round: number; teams: Set<string>; q: Map<number, any[]>; players: Map<string, Set<string>> };
-  const games = new Map<number, G>();
+  const games = new Map<string, G>();
   for (const t of scraped) {
     for (const b of t.buzzes) {
       let g = games.get(b.game_id);
@@ -170,17 +226,38 @@ export async function scrapeEdition(origin: string, slug: string): Promise<{ pac
   }
 
   // ---- bonuses (optional): parts (packet defn) + directs (per-game results) ----
-  const bHtml = await fetchText(`${origin}/tournament/${slug}/bonus`);
-  const bPairs = [...new Set([...bHtml.matchAll(new RegExp(`/tournament/${slug}/bonus/(\\d+)/(\\d+)`, "g"))].map((m) => `${m[1]}|${m[2]}`))]
-    .map((k) => k.split("|").map(Number) as [number, number]);
+  // Some shared sites (e.g. quizbowlstats) compute bonus pages with an expensive
+  // query (~10s each), so 200+ of them can't be fetched within the time budget.
+  // Probe one page's latency: if the source serves bonuses slowly, import
+  // tossup-only rather than partially (which would skew PPB).
+  let bPairs: [number, number][] = [];
+  try {
+    // Short timeout: if the bonus index is slow to render, skip bonuses fast.
+    const bHtml = await fetchText(`${base}/tournament/${slug}/bonus`, 1, 9000);
+    bPairs = [...new Set([...bHtml.matchAll(new RegExp(`/tournament/${slug}/bonus/(\\d+)/(\\d+)`, "g"))].map((m) => `${m[1]}|${m[2]}`))]
+      .map((k) => k.split("|").map(Number) as [number, number]);
+  } catch { /* no readable bonus index -> import tossup-only */ }
   const bonusDefs = new Map<string, { leadin: string; parts: string[]; answers: string[]; difficultyModifiers: string[]; metadata: string }>();
   let hasBonuses = false;
+  let bonusFast = false;
   if (bPairs.length) {
+    const t0 = Date.now();
+    try { await fetchText(`${base}/tournament/${slug}/bonus/${bPairs[0][0]}/${bPairs[0][1]}`, 1, 5000); bonusFast = Date.now() - t0 < 3500; }
+    catch { bonusFast = false; }
+  }
+  if (bPairs.length && bonusFast) {
+    const deadline = Date.now() + 20000; // hard budget for the whole bonus scrape
     const bscraped = await mapLimit(bPairs, CONCURRENCY, async ([round, num]) => {
-      const f = parseFlight(await fetchText(`${origin}/tournament/${slug}/bonus/${round}/${num}`));
-      return { round, num, parts: jsonArrayField(f, "parts") as BonusPart[], directs: jsonArrayField(f, "directs") as BonusDirect[] };
+      if (Date.now() > deadline) return { round, num, parts: [] as BonusPart[], directs: [] as BonusDirect[] };
+      try {
+        // Fail fast per page (no long retries) so slow bonus pages don't blow the budget.
+        const f = parseFlight(await fetchText(`${base}/tournament/${slug}/bonus/${round}/${num}`, 1, 6000));
+        return { round, num, parts: jsonArrayField(f, "parts") as BonusPart[], directs: jsonArrayField(f, "directs") as BonusDirect[] };
+      } catch { return { round, num, parts: [] as BonusPart[], directs: [] as BonusDirect[] }; }
     });
-    for (const b of bscraped) {
+    // Only keep bonuses if we actually got (nearly) all of them.
+    const got = bscraped.filter((b) => b.parts.length).length;
+    if (got >= bPairs.length * 0.9) for (const b of bscraped) {
       if (!b.parts.length) continue;
       hasBonuses = true;
       bonusDefs.set(`${b.round}-${b.num}`, {
@@ -198,10 +275,10 @@ export async function scrapeEdition(origin: string, slug: string): Promise<{ pac
         if (!gf) continue;
         const mq = (gf.match_questions || [])[b.num - 1] as any;
         if (!mq) continue;
-        const pts = [d.part_one, d.part_two, d.part_three].slice(0, b.parts.length).map((v) => v || 0);
+        const pts = [d.part_one, d.part_two, d.part_three].slice(0, b.parts.length).map((v) => Number(v) || 0);
         mq.bonus = { question: { question_number: b.num }, parts: pts.map((v) => ({ controlled_points: v, bounceback_points: 0 })) };
         const mt = (gf.match_teams || []).find((t: any) => t.team?.name === d.team_name) as any;
-        if (mt) mt.bonus_points = (mt.bonus_points || 0) + (d.total || 0);
+        if (mt) mt.bonus_points = (mt.bonus_points || 0) + (Number(d.total) || 0);
       }
     }
   }
