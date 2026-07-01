@@ -4,6 +4,7 @@ import { refreshIndex } from "../data";
 import { useSetCtx } from "../components/Layout";
 import { PageHeader, Loading, ErrorBox } from "../components/Common";
 import { uploadFiles } from "../upload";
+import { FileDrop } from "../components/FileDrop";
 
 type Seg = { op: "eq" | "del" | "add"; text: string };
 // Word-level LCS diff producing a unified inline change (A → B).
@@ -77,16 +78,16 @@ export function Editions() {
 
   // add-edition form
   const [label, setLabel] = useState("");
-  const [packets, setPackets] = useState<FileList | null>(null);
-  const [games, setGames] = useState<FileList | null>(null);
+  const [packets, setPackets] = useState<File[]>([]);
+  const [games, setGames] = useState<File[]>([]);
   const [addStatus, setAddStatus] = useState<string | null>(null);
   const [addErr, setAddErr] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
   // add-files-to-existing-edition form
   const [intoId, setIntoId] = useState(editions[0]?.id ?? "");
-  const [intoPackets, setIntoPackets] = useState<FileList | null>(null);
-  const [intoGames, setIntoGames] = useState<FileList | null>(null);
+  const [intoPackets, setIntoPackets] = useState<File[]>([]);
+  const [intoGames, setIntoGames] = useState<File[]>([]);
   const [intoStatus, setIntoStatus] = useState<string | null>(null);
   const [intoErr, setIntoErr] = useState<string | null>(null);
   const [intoBusy, setIntoBusy] = useState(false);
@@ -98,8 +99,8 @@ export function Editions() {
     if (!intoPackets?.length && !intoGames?.length) { setIntoErr("Choose packet and/or game files to add."); return; }
     setIntoBusy(true);
     try {
-      const packetRefs = intoPackets ? await uploadFiles(intoPackets, (d, t) => setIntoStatus(`Uploading packets… ${d}/${t}`)) : [];
-      const gameRefs = intoGames ? await uploadFiles(intoGames, (d, t) => setIntoStatus(`Uploading games… ${d}/${t}`)) : [];
+      const packetRefs = intoPackets.length ? await uploadFiles(intoPackets, (d, t) => setIntoStatus(`Uploading packets… ${d}/${t}`)) : [];
+      const gameRefs = intoGames.length ? await uploadFiles(intoGames, (d, t) => setIntoStatus(`Uploading games… ${d}/${t}`)) : [];
       setIntoStatus("Aggregating…");
       const r = await fetch("/api/ingest", {
         method: "POST", headers: { "content-type": "application/json" },
@@ -210,16 +211,14 @@ export function Editions() {
                 {editions.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
               </select>
             </label>
-            <label className="field">
+            <div className="field">
               <span>Packet files <span className="muted">(optional)</span></span>
-              <input type="file" multiple accept=".json" onChange={(e) => setIntoPackets(e.target.files)} />
-              <small className="muted">{intoPackets ? `${intoPackets.length} selected` : "One JSON per round"}</small>
-            </label>
-            <label className="field">
+              <FileDrop accept=".json" value={intoPackets} onChange={setIntoPackets} hint="One JSON per round" />
+            </div>
+            <div className="field">
               <span>Game files (QBJ) <span className="muted">(optional)</span></span>
-              <input type="file" multiple accept=".json,.qbj" onChange={(e) => setIntoGames(e.target.files)} />
-              <small className="muted">{intoGames ? `${intoGames.length} selected` : "QBJ match files"}</small>
-            </label>
+              <FileDrop accept=".json,.qbj" value={intoGames} onChange={setIntoGames} hint="QBJ match files" />
+            </div>
             {intoErr && <div className="error-box">{intoErr}</div>}
             {intoStatus && <div className="caveat">{intoStatus}</div>}
             <button className="btn-primary" type="submit" disabled={intoBusy}>{intoBusy ? "Working…" : "Add files"}</button>
@@ -236,16 +235,14 @@ export function Editions() {
               <span>Edition label <span className="muted">(optional)</span></span>
               <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder={`e.g. Mirror ${editions.length + 1}, Online`} />
             </label>
-            <label className="field">
+            <div className="field">
               <span>Packet files</span>
-              <input type="file" multiple accept=".json" onChange={(e) => setPackets(e.target.files)} />
-              <small className="muted">{packets ? `${packets.length} selected` : "One JSON per round"}</small>
-            </label>
-            <label className="field">
+              <FileDrop accept=".json" value={packets} onChange={setPackets} hint="One JSON per round" />
+            </div>
+            <div className="field">
               <span>Game files (QBJ)</span>
-              <input type="file" multiple accept=".json,.qbj" onChange={(e) => setGames(e.target.files)} />
-              <small className="muted">{games ? `${games.length} selected` : "QBJ match files"}</small>
-            </label>
+              <FileDrop accept=".json,.qbj" value={games} onChange={setGames} hint="QBJ match files" />
+            </div>
             {addErr && <div className="error-box">{addErr}</div>}
             {addStatus && <div className="caveat">{addStatus}</div>}
             <button className="btn-primary" type="submit" disabled={adding}>{adding ? "Working…" : "Add edition"}</button>

@@ -5,6 +5,7 @@ import { useAuth } from "../auth";
 import { AuthNav } from "../components/Common";
 import { detectScoring } from "../detectScoring";
 import { uploadFiles } from "../upload";
+import { FileDrop } from "../components/FileDrop";
 import { Visibility, TOURNAMENT_LEVELS } from "../types";
 
 const SCORING_OPTIONS = [
@@ -20,9 +21,9 @@ const VISIBILITY_OPTIONS: { id: Visibility; label: string; desc: string }[] = [
   { id: "public", label: "Public (open to all)", desc: "Shown in the list and viewable by anyone, no login required." },
 ];
 
-async function readFiles(files: FileList) {
+async function readFiles(files: File[]) {
   const out: { name: string; json: any }[] = [];
-  for (const f of Array.from(files)) {
+  for (const f of files) {
     const text = await f.text();
     try {
       out.push({ name: f.name, json: JSON.parse(text) });
@@ -51,9 +52,9 @@ export function CreateSet() {
   const [scoring, setScoring] = useState("mACF");
   const [detected, setDetected] = useState<string | null>(null);
   const [hasBonuses, setHasBonuses] = useState(true);
-  const [packets, setPackets] = useState<FileList | null>(null);
-  const [games, setGames] = useState<FileList | null>(null);
-  const [yfFile, setYfFile] = useState<FileList | null>(null);
+  const [packets, setPackets] = useState<File[]>([]);
+  const [games, setGames] = useState<File[]>([]);
+  const [yfFile, setYfFile] = useState<File[]>([]);
   const [visibility, setVisibility] = useState<Visibility>("listed");
   const [autoPublish, setAutoPublish] = useState(true);
   const [autoPublishDate, setAutoPublishDate] = useState(plusYears(2));
@@ -62,10 +63,10 @@ export function CreateSet() {
   const [submitted, setSubmitted] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function onGames(files: FileList | null) {
+  async function onGames(files: File[]) {
     setGames(files);
     setDetected(null);
-    if (!files?.length) return;
+    if (!files.length) return;
     try {
       const parsed = await readFiles(files);
       const id = detectScoring(parsed);
@@ -268,27 +269,26 @@ export function CreateSet() {
             <span>This format has bonuses</span>
           </label>
 
-          <label className="field">
+          <div className="field">
             <span>Packet files (one JSON per round)</span>
-            <input type="file" multiple accept=".json" onChange={(e) => setPackets(e.target.files)} />
-            <small className="muted">{packets ? `${packets.length} selected` : "Standard packet-parser JSON"}</small>
-          </label>
+            <FileDrop accept=".json" value={packets} onChange={setPackets} hint="Standard packet-parser JSON" />
+          </div>
 
-          <label className="field">
+          <div className="field">
             <span>Game files (QBJ scoresheets)</span>
-            <input type="file" multiple accept=".json,.qbj" onChange={(e) => onGames(e.target.files)} />
-            <small className="muted">{games ? `${games.length} selected` : "QBJ match files (.json / .qbj)"}</small>
-          </label>
+            <FileDrop accept=".json,.qbj" value={games} onChange={onGames} hint="QBJ match files (.json / .qbj)" />
+          </div>
 
-          <label className="field">
+          <div className="field">
             <span>YellowFruit file (optional)</span>
-            <input type="file" accept=".yft,.json,.qbj" onChange={(e) => setYfFile(e.target.files)} />
-            <small className="muted">
-              {yfFile?.length
-                ? `${yfFile[0].name} selected`
-                : "Attach the .yft you scored from to download a corrections-applied copy later."}
-            </small>
-          </label>
+            <FileDrop
+              accept=".yft,.json,.qbj"
+              multiple={false}
+              value={yfFile}
+              onChange={setYfFile}
+              hint="Attach the .yft you scored from to download a corrections-applied copy later."
+            />
+          </div>
           </>}
 
           <label className="field">

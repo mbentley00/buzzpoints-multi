@@ -49,9 +49,20 @@ export function FirstSentence() {
   const [round, setRound] = useState<number | "all">("all");
   const [q, setQ] = useState("");
   const [minBuzz, setMinBuzz] = useState(0);
+  const [correctOnly, setCorrectOnly] = useState(false);
 
   const rows = useMemo(() => {
     let r = data ?? [];
+    // "Correct only": drop the incorrect (neg) buzzes, recount, and hide any
+    // tossup whose only first-sentence buzzes were negs.
+    if (correctOnly) {
+      r = r
+        .map((x) => {
+          const buzzers = x.buzzers.filter((b) => b.value > 0);
+          return { ...x, buzzers, buzzCount: buzzers.length, incorrect: 0 };
+        })
+        .filter((x) => x.buzzCount > 0);
+    }
     if (round !== "all") r = r.filter((x) => x.round === round);
     if (minBuzz > 0) r = r.filter((x) => x.buzzCount >= minBuzz);
     if (q.trim()) {
@@ -59,7 +70,7 @@ export function FirstSentence() {
       r = r.filter((x) => x.sentenceWords.join(" ").toLowerCase().includes(n) || x.category.toLowerCase().includes(n) || x.buzzers.some((b) => b.player.toLowerCase().includes(n) || b.team.toLowerCase().includes(n)));
     }
     return r;
-  }, [data, round, q, minBuzz]);
+  }, [data, round, q, minBuzz, correctOnly]);
 
   const totalBuzzes = rows.reduce((a, x) => a + x.buzzCount, 0);
 
@@ -70,6 +81,9 @@ export function FirstSentence() {
         <label className="filter">
           Min buzzes:{" "}
           <input className="num-input" type="number" min={0} value={minBuzz === 0 ? "" : minBuzz} placeholder="0" onChange={(e) => setMinBuzz(Math.max(0, Number(e.target.value) || 0))} />
+        </label>
+        <label className="filter">
+          <input type="checkbox" checked={correctOnly} onChange={(e) => setCorrectOnly(e.target.checked)} /> Correct only
         </label>
         <SearchInput value={q} onChange={setQ} placeholder="Search clue / player / team" />
       </PageHeader>
