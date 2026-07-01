@@ -237,7 +237,7 @@ export function CreateSet() {
               </label>
               <label className="field-inline">
                 <input type="checkbox" checked={importBonuses} onChange={(e) => setImportBonuses(e.target.checked)} />
-                <span>Import per-team bonus data (slow — scrapes each bonus page; some may be unavailable)</span>
+                <span>Import full bonus data — question text + per-team results (slow; scrapes every bonus page, some may 504)</span>
               </label>
             </>
           )}

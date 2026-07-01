@@ -244,10 +244,10 @@ export async function scrapeEdition(base: string, slug: string): Promise<{ packe
   // ---- bonuses (optional) ----
   // The bonus INDEX page carries, in ONE cheap request, every bonus's
   // pre-aggregated per-part conversion, ppb, heard count, category, and answer
-  // parts (but NO question/leadin text — the source doesn't store it). We always
-  // import those aggregate stats. Per-team results live only on the (slow, often
-  // 504) per-bonus detail pages; those are scraped separately + optionally by
-  // scrapeBonusResults so the aggregate stats work even when detail pages fail.
+  // parts. We always import those aggregate stats. The question TEXT (leadin +
+  // prompts) and per-team results live only on the (slow, often 504) per-bonus
+  // detail pages, scraped separately + optionally by scrapeBonusResults — so the
+  // aggregate stats still work even when the detail pages fail.
   const bonusDefs = new Map<string, { metadata: string; parts: string[]; answers: string[]; difficultyModifiers: string[]; stats: { heard: number; got: number[]; points: number } }>();
   let hasBonuses = false;
   try {
@@ -298,13 +298,15 @@ export function setNameFrom(names: string[]): string {
   return names.filter(Boolean).sort((a, b) => a.length - b.length || a.localeCompare(b))[0] || "Imported tournament";
 }
 
-/* ----------------------------- per-team bonus results ----------------------------- */
-// Per-team bonus results live only on the per-bonus detail pages, which are slow
-// (cold ~5-15s) and 504 on the largest fields. They're scraped OPTIONALLY, in
-// chunks driven by the browser so each request stays within the function limit.
+/* ----------------------------- bonus detail (text + per-team results) ----------------------------- */
+// The per-bonus detail pages hold the question text (leadin + prompts + answers)
+// AND the per-team results table — but are slow (cold ~5-15s) and 504 on the
+// largest fields. They're scraped OPTIONALLY, in chunks driven by the browser so
+// each request stays within the function limit.
 const BONUS_CONCURRENCY = 3; // higher tends to 504 the source
 export interface BonusResultRow { team: string; opp: string; pts: number[]; total: number }
-export interface BonusPageResult { round: number; num: number; rows: BonusResultRow[] }
+export interface BonusText { leadin: string; parts: string[]; answers: string[] }
+export interface BonusPageResult { round: number; num: number; rows: BonusResultRow[]; text: BonusText | null }
 
 // Parse the per-team results table (`data` array following the part_one column)
 // out of a bonus detail page's flight payload.
@@ -314,6 +316,21 @@ function parseBonusRows(f: string): BonusResultRow[] {
   return (jsonArrayField(f, "data", p) as any[])
     .map((r) => ({ team: r.team_name, opp: r.opponent_name, pts: [Number(r.part_one) || 0, Number(r.part_two) || 0, Number(r.part_three) || 0], total: Number(r.total) || 0 }))
     .filter((r) => r.team && r.opp);
+}
+
+// The bonus question text is rendered as ordered `__html` chunks (via
+// dangerouslySetInnerHTML): the leadin first, then a (prompt, answer) pair per
+// part in reading order. Extract them into leadin + parts[] + answers[].
+function parseBonusText(f: string): BonusText | null {
+  const htmls: string[] = [];
+  const re = /"__html":"((?:[^"\\]|\\.)*)"/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(f))) { try { htmls.push(JSON.parse('"' + m[1] + '"')); } catch { /* skip */ } }
+  // Expect 1 leadin + an even number of prompt/answer chunks (>=1 part).
+  if (htmls.length < 3 || htmls.length % 2 === 0) return null;
+  const parts: string[] = [], answers: string[] = [];
+  for (let i = 1; i + 1 < htmls.length; i += 2) { parts.push(htmls[i]); answers.push(htmls[i + 1]); }
+  return { leadin: htmls[0], parts, answers };
 }
 
 // Scrape per-team results for a slice of bonus pairs, stopping at `deadline` (so
@@ -335,12 +352,29 @@ export async function scrapeBonusResults(
       try {
         const f = parseFlight(await fetchText(`${base}/tournament/${slug}/bonus/${round}/${num}`, 1, 20000));
         const rows = parseBonusRows(f);
-        if (rows.length) results.push({ round, num, rows });
+        const text = parseBonusText(f);
+        if (rows.length || text) results.push({ round, num, rows, text });
       } catch { /* 504/timeout -> no per-team data for this bonus */ }
     }
   }
   await Promise.all(Array.from({ length: Math.min(BONUS_CONCURRENCY, pairs.length) }, worker));
   return { results, attempted };
+}
+
+// Fill in the bonus question text (leadin + part prompts + answers) scraped from
+// the detail pages onto the packet bonus definitions. The text is identical
+// across mirrors, so any edition that reads a page contributes it.
+export function applyBonusText(packets: PacketFile[], results: BonusPageResult[]): void {
+  const byRound = new Map<number, PacketFile>();
+  for (const p of packets) byRound.set(p.round, p);
+  for (const r of results) {
+    if (!r.text) continue;
+    const b = byRound.get(r.round)?.bonuses?.[r.num - 1] as any;
+    if (!b) continue;
+    b.leadin = r.text.leadin || b.leadin || "";
+    if (r.text.parts.length) b.parts = r.text.parts;
+    if (r.text.answers.length) b.answers = r.text.answers;
+  }
 }
 
 // Attach scraped per-team bonus results onto reconstructed games (QBJ shape), so

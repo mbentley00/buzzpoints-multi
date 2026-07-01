@@ -17,7 +17,7 @@ import {
 } from "./_lib/sets.js";
 import { createTournament, createFromSource, updateFromSource, parseFiles, validLevel, cleanTdLink, CreateError, FileRef } from "./_lib/publish.js";
 import { parseYellowFruit } from "./_lib/yellowfruit.js";
-import { scrapeEdition, scrapeBonusResults, applyBonusResults, listEditions, listSets, setEditions, parseTarget, slugToName, scoringFor, setNameFrom } from "./_lib/importBuzzpoints.js";
+import { scrapeEdition, scrapeBonusResults, applyBonusResults, applyBonusText, listEditions, listSets, setEditions, parseTarget, slugToName, scoringFor, setNameFrom } from "./_lib/importBuzzpoints.js";
 import {
   readModConfig, findBlocked, readPending, writePending, writePendingPayload, PendingSubmission,
 } from "./_lib/moderation.js";
@@ -79,9 +79,10 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     return res.status(200).json({ index: i, name: job.editions[i].name, imported: job.imported.length, total: job.editions.length, bonusTotal: scraped.bonusPairs.length });
   }
 
-  // bonus chunk (optional): scrape per-team results for the next slice of this
-  // edition's bonus pages and bake them into the stashed games. Repeatable until
-  // done; each call stays within the function limit via an internal deadline.
+  // bonus chunk (optional): scrape the next slice of this edition's bonus detail
+  // pages for per-team results AND the question text (leadin + prompts), baking
+  // them into the stashed games + packets. Repeatable until done; each call stays
+  // within the function limit via an internal deadline.
   if (body.op === "import-bonus-chunk") {
     const i = Number(body.index);
     if (!Number.isInteger(i) || i < 0 || i >= job.editions.length) return res.status(400).json({ error: "Invalid edition index." });
@@ -94,6 +95,7 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     const deadline = Date.now() + 50000; // leave headroom under the 60s limit
     const { results, attempted } = await scrapeBonusResults(job.base, job.editions[i].slug, pairs.slice(cursor, cursor + CHUNK), deadline);
     applyBonusResults(ed.games as any, results);
+    applyBonusText(ed.packets as any, results);
     ed.bonusCursor = cursor + Math.max(1, attempted); // always advance so we can't loop forever
     await writeJson(edPath(jobId, i), ed);
     return res.status(200).json({ index: i, cursor: ed.bonusCursor, total: pairs.length, done: ed.bonusCursor >= pairs.length });

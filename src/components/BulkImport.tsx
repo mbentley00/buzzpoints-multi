@@ -128,7 +128,7 @@ export function BulkImport() {
         {sets && (
           <label className="field-inline">
             <input type="checkbox" checked={bonusResults} onChange={(e) => setBonusResults(e.target.checked)} disabled={running} />
-            <span>Import per-team bonus data (slow — scrapes each bonus page; some may be unavailable)</span>
+            <span>Import full bonus data — question text + per-team results (slow; scrapes every bonus page, some may 504)</span>
           </label>
         )}
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
