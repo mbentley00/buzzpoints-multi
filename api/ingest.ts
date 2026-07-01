@@ -40,6 +40,70 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     return res.status(200).json({ base, sets });
   }
 
+  // ---- local folder import (native packet + QBJ files, uploaded by the browser;
+  //      no scraping). Same edition-by-edition job pattern as the URL import. ----
+  if (body.op === "local-start") {
+    const jobId = crypto.randomBytes(9).toString("base64url");
+    await writeJson(jobPath(jobId), { local: true, by: owner, createdAt: new Date().toISOString() });
+    return res.status(200).json({ jobId });
+  }
+  if (body.op === "local-edition" || body.op === "local-finish") {
+    const jobId = String(body.jobId || "");
+    const job = await readBlobJson<any>(jobPath(jobId), false);
+    if (!job || !job.local) return res.status(404).json({ error: "Import session not found or expired. Start over." });
+    if (job.by !== owner) return res.status(403).json({ error: "This import belongs to another account." });
+
+    // stash one edition (mirror): resolve the uploaded packet+QBJ refs to JSON,
+    // parse into packets (round from filename) + games (round from _round).
+    if (body.op === "local-edition") {
+      const i = Number(body.index);
+      if (!Number.isInteger(i) || i < 0) return res.status(400).json({ error: "Invalid edition index." });
+      const tempPaths: string[] = [];
+      try {
+        const packets = await resolveRefs(body.packets, tempPaths);
+        const games = await resolveRefs(body.games, tempPaths);
+        const parsed = parseFiles({ packets, games });
+        await writeJson(edPath(jobId, i), { label: String(body.label || `Mirror ${i + 1}`), packets: parsed.packets, games: parsed.games });
+        await cleanupTemp(tempPaths);
+      } catch (e) {
+        await cleanupTemp(tempPaths);
+        if (e instanceof CreateError) return res.status(e.status).json({ error: e.message });
+        return res.status(500).json({ error: (e as Error).message });
+      }
+      return res.status(200).json({ index: i });
+    }
+
+    // assemble every stashed edition into one set; create it or refresh in place.
+    const count = Number(body.editionCount) || 0;
+    const editions: any[] = [];
+    for (let i = 0; i < count; i++) {
+      const ed = await readBlobJson<{ label: string; packets: any[]; games: any[] }>(edPath(jobId, i), false);
+      if (ed && Array.isArray(ed.games) && ed.games.length) editions.push({ id: `e${editions.length}`, label: ed.label, packets: ed.packets, games: ed.games });
+    }
+    if (!editions.length) return res.status(400).json({ error: "No editions with game data." });
+    const name = String(body.name || "").trim();
+    if (!name) return res.status(400).json({ error: "Set name is required." });
+    if (!body.scoring || !(body.scoring in SCORINGS)) return res.status(400).json({ error: "Unknown scoring format." });
+    const source: SetSource = { name, scoring: body.scoring, hasBonuses: !!body.hasBonuses, editions };
+    const cleanup = () => del([jobPath(jobId), ...Array.from({ length: count }, (_, i) => edPath(jobId, i))]).catch(() => {});
+    const refreshSlug = String(body.refreshSlug || "").trim();
+    try {
+      let result: { slug: string; editions?: number };
+      if (refreshSlug) result = await updateFromSource(source, refreshSlug, owner, await canModerate(owner));
+      else {
+        const { blocklist } = await readModConfig();
+        const blocked = findBlocked(name, blocklist);
+        if (blocked) return res.status(400).json({ error: `Set name contains a disallowed word: "${blocked}".` });
+        result = await createFromSource(source, owner, { name, level: validLevel(body.level), visibility: body.visibility, autoPublicAt: body.autoPublicAt ?? null });
+      }
+      await cleanup();
+      return res.status(200).json({ slug: result.slug, editions: editions.length, refreshed: !!refreshSlug });
+    } catch (e) {
+      if (e instanceof CreateError) return res.status(e.status).json({ error: e.message });
+      return res.status(500).json({ error: (e as Error).message });
+    }
+  }
+
   // start: figure out which editions to import and open a job
   if (body.op === "import-start") {
     let base: string, eds: { slug: string; name: string }[];
@@ -190,8 +254,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const body = (req.body || {}) as Body;
 
-  // Async import from another Buzzpoints site (browser drives start/edition/finish).
-  if (typeof body.op === "string" && body.op.startsWith("import-")) return handleImport(body, owner, res);
+  // Async import from another Buzzpoints site, or a local native-file import
+  // (browser drives start/edition/finish).
+  if (typeof body.op === "string" && (body.op.startsWith("import-") || body.op.startsWith("local-"))) return handleImport(body, owner, res);
 
   // Validate the optional companion YellowFruit file up front (so a first-post
   // submission isn't queued with an unreadable file).

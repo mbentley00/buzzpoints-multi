@@ -5,6 +5,7 @@ import { refreshIndex } from "../data";
 import { Visibility } from "../types";
 import { Loading, AuthNav } from "../components/Common";
 import { BulkImport } from "../components/BulkImport";
+import { LocalImport } from "../components/LocalImport";
 import { formatDate } from "../util";
 
 interface AdminSet {
@@ -203,7 +204,10 @@ export function Admin() {
             {/* ---- bulk import (admin only) ---- */}
             {isAdmin && (
               <>
-                <h2 style={{ marginTop: 28 }}>Bulk import</h2>
+                <h2 style={{ marginTop: 28 }}>Import from local files (recommended)</h2>
+                <LocalImport />
+
+                <h2 style={{ marginTop: 28 }}>Bulk import (scrape from a Buzzpoints site)</h2>
                 <BulkImport />
               </>
             )}
