@@ -26,6 +26,9 @@ export function TeamDetailPage() {
   const { data: all, error, loading } = useScopedJson<Record<string, TeamDetail>>("teams_detail.json");
   const [view, setView] = useState<"main" | "bonus">("main");
   const d = all?.[id];
+  // Per-team bonus stats are unavailable for imports that only carry aggregate
+  // bonus conversion; hide the team-level bonus UI while keeping tossup stats.
+  const teamBonus = meta.hasBonuses && meta.hasTeamBonuses !== false;
 
   if (loading) return <Loading />;
   if (error) return <ErrorBox error={error} />;
@@ -69,7 +72,7 @@ export function TeamDetailPage() {
           <h1>{d.name}</h1>
           <p className="subtitle">{d.wins}-{d.losses}{d.ties ? `-${d.ties}` : ""} · {d.games} games</p>
         </div>
-        {meta.hasBonuses && (
+        {teamBonus && (
           <button className="btn-primary" onClick={() => setView(view === "main" ? "bonus" : "main")}>
             {view === "main" ? "View Bonuses" : "View Tossup Stats"}
           </button>
@@ -78,7 +81,7 @@ export function TeamDetailPage() {
 
       <div className="stat-row">
         <Stat label="PPG" value={num(d.ppg)} />
-        {meta.hasBonuses && <Stat label="PPB" value={num(d.ppb, 2)} />}
+        {teamBonus && <Stat label="PPB" value={num(d.ppb, 2)} />}
         <Stat label="PP20TUH" value={num(d.pp20tuh)} />
         {meta.hasPower && <Stat label="Powers" value={String(d.powers)} />}
         <Stat label="Correct" value={String(d.gets)} />
@@ -86,7 +89,7 @@ export function TeamDetailPage() {
         <Stat label="Top 3" value={String(d.top3Buzzes)} />
       </div>
 
-      {view === "main" || !meta.hasBonuses ? (
+      {view === "main" || !teamBonus ? (
         <>
           <h2>Roster</h2>
           <DataTable rows={d.roster} columns={rosterCols} initialSort="pts" initialDir="desc" rowKey={(p) => p.id} />

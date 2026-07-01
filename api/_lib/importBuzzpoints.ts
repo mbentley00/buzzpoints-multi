@@ -23,8 +23,6 @@ const HEADERS = {
 
 interface BuzzRec { player_name: string; team_name: string; opponent_name?: string; game_id: string; buzz_position: number; value: number; }
 interface ScrapedTossup { round: number; num: number; question: string; answer: string; metadata: string; buzzes: BuzzRec[]; }
-interface BonusPart { part?: string; answer?: string; leadin?: string; difficulty_modifier?: string; value?: number; metadata?: string; }
-interface BonusDirect { team_name: string; opponent_name?: string; part_one?: number; part_two?: number; part_three?: number; total?: number; }
 
 // Fetch with retries on transient errors (timeouts / rate limits), since large
 // imports hit hundreds of pages on shared sites that occasionally 5xx.
@@ -176,8 +174,6 @@ export async function setEditions(base: string, setSlug: string): Promise<{ slug
   return [{ slug: `${setSlug}-${setSlug}`, name: slugToName(setSlug) }];
 }
 
-const sortedKey = (round: number, a: string, b: string) => `${round}|${[a, b].sort().join("|")}`;
-
 export async function scrapeEdition(base: string, slug: string): Promise<{ packets: PacketFile[]; games: GameFile[]; values: Set<number>; pages: number; hasBonuses: boolean }> {
   // ---- tossups ----
   const tHtml = await fetchText(`${base}/tournament/${slug}/tossup`);
@@ -228,7 +224,6 @@ export async function scrapeEdition(base: string, slug: string): Promise<{ packe
   }
 
   const gameFiles: GameFile[] = [];
-  const gameByKey = new Map<string, GameFile>();
   for (const g of games.values()) {
     const size = roundSize.get(g.round) || Math.max(0, ...g.q.keys());
     const teams = [...g.teams];
@@ -244,66 +239,41 @@ export async function scrapeEdition(base: string, slug: string): Promise<{ packe
     for (let n = 1; n <= size; n++) match_questions.push({ tossup_question: { question_number: n }, buzzes: g.q.get(n) || [] } as any);
     const gf: GameFile = { round: g.round, match_teams, match_questions };
     gameFiles.push(gf);
-    if (teams.length === 2) gameByKey.set(sortedKey(g.round, teams[0], teams[1]), gf);
   }
 
-  // ---- bonuses (optional): parts (packet defn) + directs (per-game results) ----
-  // Some shared sites (e.g. quizbowlstats) compute bonus pages with an expensive
-  // query (~10s each), so 200+ of them can't be fetched within the time budget.
-  // Probe one page's latency: if the source serves bonuses slowly, import
-  // tossup-only rather than partially (which would skew PPB).
-  let bPairs: [number, number][] = [];
-  try {
-    // Short timeout: if the bonus index is slow to render, skip bonuses fast.
-    const bHtml = await fetchText(`${base}/tournament/${slug}/bonus`, 1, 9000);
-    bPairs = [...new Set([...bHtml.matchAll(new RegExp(`/tournament/${slug}/bonus/(\\d+)/(\\d+)`, "g"))].map((m) => `${m[1]}|${m[2]}`))]
-      .map((k) => k.split("|").map(Number) as [number, number]);
-  } catch { /* no readable bonus index -> import tossup-only */ }
-  const bonusDefs = new Map<string, { leadin: string; parts: string[]; answers: string[]; difficultyModifiers: string[]; metadata: string }>();
+  // ---- bonuses (optional) ----
+  // The per-bonus DETAIL pages (which hold per-game results) are computed with an
+  // expensive query on shared sites like quizbowlstats and simply time out (504),
+  // so they can't be scraped. But the bonus INDEX page carries, in ONE cheap
+  // request, every bonus's pre-aggregated per-part conversion, ppb, and heard
+  // count. We import those aggregate stats (no per-team/per-game split is
+  // possible) so bonus conversion, ppb, and category breakdowns are available.
+  const bonusDefs = new Map<string, { metadata: string; parts: string[]; answers: string[]; difficultyModifiers: string[]; stats: { heard: number; got: number[]; points: number } }>();
   let hasBonuses = false;
-  let bonusFast = false;
-  if (bPairs.length) {
-    const t0 = Date.now();
-    try { await fetchText(`${base}/tournament/${slug}/bonus/${bPairs[0][0]}/${bPairs[0][1]}`, 1, 5000); bonusFast = Date.now() - t0 < 3500; }
-    catch { bonusFast = false; }
-  }
-  if (bPairs.length && bonusFast) {
-    const deadline = Date.now() + 20000; // hard budget for the whole bonus scrape
-    const bscraped = await mapLimit(bPairs, CONCURRENCY, async ([round, num]) => {
-      if (Date.now() > deadline) return { round, num, parts: [] as BonusPart[], directs: [] as BonusDirect[] };
-      try {
-        // Fail fast per page (no long retries) so slow bonus pages don't blow the budget.
-        const f = parseFlight(await fetchText(`${base}/tournament/${slug}/bonus/${round}/${num}`, 1, 6000));
-        return { round, num, parts: jsonArrayField(f, "parts") as BonusPart[], directs: jsonArrayField(f, "directs") as BonusDirect[] };
-      } catch { return { round, num, parts: [] as BonusPart[], directs: [] as BonusDirect[] }; }
-    });
-    // Only keep bonuses if we actually got (nearly) all of them.
-    const got = bscraped.filter((b) => b.parts.length).length;
-    if (got >= bPairs.length * 0.9) for (const b of bscraped) {
-      if (!b.parts.length) continue;
-      hasBonuses = true;
-      bonusDefs.set(`${b.round}-${b.num}`, {
-        leadin: b.parts[0]?.leadin || "",
-        parts: b.parts.map((p) => p.part || ""),
-        answers: b.parts.map((p) => p.answer || ""),
-        difficultyModifiers: b.parts.map((p) => (p.difficulty_modifier || "m").toLowerCase()),
-        metadata: b.parts[0]?.metadata || "",
+  try {
+    const f = parseFlight(await fetchText(`${base}/tournament/${slug}/bonus`, 3, 15000));
+    for (const b of jsonArrayField(f, "bonuses") as any[]) {
+      const round = Number(b.round), num = Number(b.question_number);
+      if (!Number.isInteger(round) || !Number.isInteger(num)) continue;
+      const heard = Number(b.heard) || 0;
+      // Order the three parts by their position in the packet (the index labels
+      // parts by difficulty, not by reading order).
+      const slots = [
+        { pos: Number(b.easy_part_number), diff: "e", ans: b.easy_part || "", conv: Number(b.easy_conversion) || 0 },
+        { pos: Number(b.medium_part_number), diff: "m", ans: b.medium_part || "", conv: Number(b.medium_conversion) || 0 },
+        { pos: Number(b.hard_part_number), diff: "h", ans: b.hard_part || "", conv: Number(b.hard_conversion) || 0 },
+      ].sort((x, y) => (x.pos || 0) - (y.pos || 0));
+      bonusDefs.set(`${round}-${num}`, {
+        metadata: b.category || "",
+        parts: slots.map(() => ""), // part prompts aren't exposed by the index
+        answers: slots.map((s) => s.ans),
+        difficultyModifiers: slots.map((s) => s.diff),
+        stats: { heard, got: slots.map((s) => Math.round(s.conv * heard)), points: Math.round((Number(b.ppb) || 0) * heard) },
       });
-      roundSize.set(b.round, Math.max(roundSize.get(b.round) || 0, b.num));
-      // attach per-game results
-      for (const d of b.directs) {
-        if (!d.opponent_name) continue;
-        const gf = gameByKey.get(sortedKey(b.round, d.team_name, d.opponent_name));
-        if (!gf) continue;
-        const mq = (gf.match_questions || [])[b.num - 1] as any;
-        if (!mq) continue;
-        const pts = [d.part_one, d.part_two, d.part_three].slice(0, b.parts.length).map((v) => Number(v) || 0);
-        mq.bonus = { question: { question_number: b.num }, parts: pts.map((v) => ({ controlled_points: v, bounceback_points: 0 })) };
-        const mt = (gf.match_teams || []).find((t: any) => t.team?.name === d.team_name) as any;
-        if (mt) mt.bonus_points = (mt.bonus_points || 0) + (Number(d.total) || 0);
-      }
+      roundSize.set(round, Math.max(roundSize.get(round) || 0, num));
+      hasBonuses = true;
     }
-  }
+  } catch { /* no readable bonus index -> import tossup-only */ }
 
   // packets: one per round, tossups + bonuses in order (gaps filled with blanks)
   const packets: PacketFile[] = [...roundSize.keys()].sort((a, b) => a - b).map((round) => {
@@ -313,12 +283,12 @@ export async function scrapeEdition(base: string, slug: string): Promise<{ packe
       const t = byKey.get(`${round}-${n}`);
       tossups.push({ question: t?.question || "", answer: t?.answer || "", metadata: t?.metadata || "" });
       const bd = bonusDefs.get(`${round}-${n}`);
-      bonuses.push(bd ? { leadin: bd.leadin, parts: bd.parts, answers: bd.answers, difficultyModifiers: bd.difficultyModifiers, metadata: bd.metadata } : {});
+      bonuses.push(bd ? { leadin: "", parts: bd.parts, answers: bd.answers, difficultyModifiers: bd.difficultyModifiers, metadata: bd.metadata, stats: bd.stats } : {});
     }
     return { round, tossups, bonuses };
   });
 
-  return { packets, games: gameFiles, values, pages: tPairs.length + bPairs.length, hasBonuses };
+  return { packets, games: gameFiles, values, pages: tPairs.length + (hasBonuses ? 1 : 0), hasBonuses };
 }
 
 // Pick the cleanest set name from the edition names (the shortest is usually the

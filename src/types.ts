@@ -104,6 +104,9 @@ export interface Meta {
   hasPower: boolean;
   hasNeg: boolean;
   hasBonuses: boolean;
+  // Whether per-team/per-player bonus data exists. Absent on older sets => treat
+  // as true. False for imports that only carry aggregate bonus conversion.
+  hasTeamBonuses?: boolean;
   kind?: "buzz" | "results";
   numGames: number;
   numTeams: number;

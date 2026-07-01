@@ -16,6 +16,10 @@ export interface PacketFile {
     values?: number[];
     difficultyModifiers?: string[];
     metadata?: string;
+    // Pre-aggregated per-part results (imports whose source only exposes bonus
+    // conversion in aggregate, not per game). `got[i]` = hearings that earned
+    // part i; `points` = total bonus points; `heard` = times the bonus was heard.
+    stats?: { heard: number; got: number[]; points: number };
   }[];
 }
 
@@ -234,6 +238,13 @@ function buildVirtualNode<A>(
   const main = fin(mainAcc);
   return { category: name, ...main, heard: Number(main.heard) || 0, subs, virtual: true } as TreeNode;
 }
+
+/* ----------------------------- bonus category helpers ----------------------------- */
+const DIFF_NAME: Record<string, string> = { e: "Easy", m: "Medium", h: "Hard" };
+const diffPct = (parts: Map<string, [number, number]>, d: string) => { const [g, t] = parts.get(d) || [0, 0]; return pct(g, t); };
+const bnFin = (a: CatBnAcc) => ({ heard: a.heard, ppb: a.heard ? Math.round((100 * a.pts) / a.heard) / 100 : 0, easyPct: diffPct(a.parts, "e"), medPct: diffPct(a.parts, "m"), hardPct: diffPct(a.parts, "h") });
+const bnAdd = (a: CatBnAcc, s: CatBnAcc) => { a.main = a.main || s.main; a.heard += s.heard; a.pts += s.pts; for (const [d, gt] of s.parts) { const slot = a.parts.get(d) || [0, 0]; slot[0] += gt[0]; slot[1] += gt[1]; a.parts.set(d, slot); } };
+const bnNew = (): CatBnAcc => ({ main: "", heard: 0, pts: 0, parts: new Map() });
 
 /* ----------------------------- accumulators ----------------------------- */
 interface TUStat { round: number; num: number; questionHtml: string; answer: string; category: string; subcategory: string; categoryMid: string; words: string[]; wordCount: number; powerIndex: number | null; }
@@ -534,11 +545,6 @@ export function aggregate(
   files["tossups_detail.json"] = tuDetail;
 
   /* ----------------------------- bonuses + detail ----------------------------- */
-  const DIFF_NAME: Record<string, string> = { e: "Easy", m: "Medium", h: "Hard" };
-  const diffPct = (parts: Map<string, [number, number]>, d: string) => { const [g, t] = parts.get(d) || [0, 0]; return pct(g, t); };
-  const bnFin = (a: CatBnAcc) => ({ heard: a.heard, ppb: a.heard ? Math.round((100 * a.pts) / a.heard) / 100 : 0, easyPct: diffPct(a.parts, "e"), medPct: diffPct(a.parts, "m"), hardPct: diffPct(a.parts, "h") });
-  const bnAdd = (a: CatBnAcc, s: CatBnAcc) => { a.main = a.main || s.main; a.heard += s.heard; a.pts += s.pts; for (const [d, gt] of s.parts) { const slot = a.parts.get(d) || [0, 0]; slot[0] += gt[0]; slot[1] += gt[1]; a.parts.set(d, slot); } };
-  const bnNew = (): CatBnAcc => ({ main: "", heard: 0, pts: 0, parts: new Map() });
   if (cfg.hasBonuses) {
     const bnSumm: Record<string, unknown>[] = [];
     const bnDetail: Record<string, unknown> = {};
@@ -836,6 +842,10 @@ export function aggregate(
   files["meta.json"] = {
     setName: cfg.name, setSlug: cfg.slug, scoring: scoring.id, scoringLabel: scoring.label,
     hasPower: scoring.hasPower, hasNeg: scoring.hasNeg, hasBonuses: cfg.hasBonuses,
+    // Whether per-team/per-player bonus breakdowns exist. False for imports that
+    // only expose aggregate bonus conversion (no per-game results), so the client
+    // hides team-level PPB while still showing tournament/category bonus stats.
+    hasTeamBonuses: bnResults.size > 0,
     numGames: games.length, numTeams: tm.size, numPlayers: pl.size,
     numTossups: tossups.size, numBonuses: cfg.hasBonuses ? bonuses.size : 0,
     rounds: [...new Set([...tossups.values()].map((t) => t.round))].sort((a, b) => a - b),
@@ -843,4 +853,76 @@ export function aggregate(
   };
 
   return files;
+}
+
+/* ----------------------------- imported (pre-aggregated) bonuses ----------------------------- */
+// A bonus whose per-part results are already aggregated by the source (e.g. the
+// quizbowlstats bonus index gives per-difficulty conversion + ppb + heard, but
+// its per-game pages are too slow to scrape). `got[i]`/`points`/`heard` are
+// summed across every edition/mirror that carries the same bonus.
+export interface ImportedBonus {
+  round: number;
+  num: number;
+  category: string;            // e.g. "Science - Physics"
+  parts: string[];             // part prompts (usually unknown for imports -> "")
+  answers: string[];           // answer line per part (HTML), in packet order
+  difficultyModifiers: string[]; // per part: "e" | "m" | "h"
+  heard: number;
+  got: number[];               // per part: hearings that earned it
+  points: number;              // total bonus points across all hearings
+}
+
+// Build bonuses.json / bonuses_detail.json / categories_bonus.json from
+// pre-aggregated bonus data, matching the shapes aggregate() emits so the UI is
+// identical. Entries with the same round-num (across mirrors) are summed. No
+// per-team/per-game breakdown is possible from this data.
+export function bonusFilesFromImported(list: ImportedBonus[], virtualCats: VirtualCategory[] = []): Record<string, unknown> {
+  // merge by position id (round-num), summing counts across editions
+  const merged = new Map<string, ImportedBonus>();
+  for (const b of list) {
+    const id = `${b.round}-${b.num}`;
+    const m = merged.get(id);
+    if (!m) { merged.set(id, { ...b, got: [...b.got] }); continue; }
+    m.heard += b.heard;
+    m.points += b.points;
+    for (let i = 0; i < b.got.length; i++) m.got[i] = (m.got[i] || 0) + (b.got[i] || 0);
+  }
+
+  const bnSumm: Record<string, unknown>[] = [];
+  const bnDetail: Record<string, unknown> = {};
+  const catBnSub = new Map<string, CatBnAcc>();
+  for (const [id, b] of [...merged.entries()].sort()) {
+    const [main, sub] = parseCategory(b.category);
+    const heard = b.heard;
+    const totalPts = b.points;
+    const ppb = heard ? Math.round((100 * totalPts) / heard) / 100 : 0;
+    const partConv: Record<string, unknown>[] = [];
+    const byDiff: Record<string, { answer: string; convPct: number }> = {};
+    let cb = catBnSub.get(sub);
+    if (!cb) { cb = bnNew(); cb.main = main; catBnSub.set(sub, cb); }
+    for (let i = 0; i < b.answers.length; i++) {
+      const got = b.got[i] || 0;
+      const diff = b.difficultyModifiers[i] || "m";
+      const row = { idx: i, difficulty: diff, difficultyName: DIFF_NAME[diff] || "Medium", answer: b.answers[i] || "", part: b.parts[i] || "", convPct: pct(got, heard), convCount: got };
+      partConv.push(row);
+      if (!byDiff[diff]) byDiff[diff] = { answer: row.answer, convPct: row.convPct };
+      const slot = cb.parts.get(diff) || [0, 0]; slot[0] += got; slot[1] += heard; cb.parts.set(diff, slot);
+    }
+    cb.main = main; cb.heard += heard; cb.pts += totalPts;
+    bnSumm.push({
+      id, round: b.round, num: b.num, category: main, subcategory: sub, heard, ppb,
+      easyPct: byDiff.e?.convPct ?? null, medPct: byDiff.m?.convPct ?? null, hardPct: byDiff.h?.convPct ?? null,
+      easyAnswer: byDiff.e?.answer ?? null, medAnswer: byDiff.m?.answer ?? null, hardAnswer: byDiff.h?.answer ?? null,
+    });
+    bnDetail[id] = {
+      id, round: b.round, num: b.num, category: main, subcategory: sub, leadin: "",
+      parts: b.parts, answers: b.answers, difficultyModifiers: b.difficultyModifiers, heard, ppb, totalPts, partConv, results: [],
+    };
+  }
+  const bnTree = buildCategoryTree<CatBnAcc>(catBnSub, bnNew, bnAdd, bnFin);
+  for (const v of virtualCats) {
+    const node = buildVirtualNode<CatBnAcc>(v.name, v.members, catBnSub, bnNew, bnAdd, bnFin);
+    if (node) bnTree.push(node);
+  }
+  return { "bonuses.json": bnSumm, "bonuses_detail.json": bnDetail, "categories_bonus.json": bnTree };
 }

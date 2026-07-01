@@ -2,7 +2,7 @@
 // re-aggregation helper used by ingest and the edit endpoints.
 import { put, del } from "@vercel/blob";
 import { readBlobJson } from "./blob.js";
-import { aggregate, PacketFile, GameFile, Correction, VirtualCategory } from "./aggregate.js";
+import { aggregate, bonusFilesFromImported, ImportedBonus, PacketFile, GameFile, Correction, VirtualCategory } from "./aggregate.js";
 import { getScoring } from "./scoring.js";
 
 export interface Edition {
@@ -226,6 +226,27 @@ function combinedPackets(editions: Edition[]): PacketFile[] {
   }));
 }
 
+// Gather pre-aggregated (index-derived) bonus stats from editions' packets, for
+// the given scope (all rounds, or a filtered subset for a phase tag). Returns []
+// for tournaments whose bonuses came from per-game QBJ data (those keep the
+// game-derived bonus files from aggregate()).
+function collectImportedBonuses(editions: Edition[], roundFilter?: Set<number>): ImportedBonus[] {
+  const out: ImportedBonus[] = [];
+  for (const e of editions)
+    for (const p of e.packets || []) {
+      if (roundFilter && !roundFilter.has(p.round)) continue;
+      (p.bonuses || []).forEach((b: any, i) => {
+        if (!b || !b.stats) return;
+        out.push({
+          round: p.round, num: i + 1, category: b.metadata || "",
+          parts: b.parts || [], answers: b.answers || [], difficultyModifiers: b.difficultyModifiers || [],
+          heard: b.stats.heard || 0, got: b.stats.got || [], points: b.stats.points || 0,
+        });
+      });
+    }
+  return out;
+}
+
 const stripTxt = (s: string) => (s || "").replace(/<[^>]+>/g, "").replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
 
 // A compact comparison token for a tossup answer line: the primary answer only
@@ -343,9 +364,19 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   const multi = editions.length > 1;
   const virtualCats = await readVirtualCats(slug);
 
+  // Bonuses imported as aggregate-only stats (no per-game data): rebuild the
+  // bonus files from those stats, overriding aggregate()'s empty game-derived
+  // ones. A no-op for uploaded tournaments (which carry real per-game bonuses).
+  const hasImportedBonuses = collectImportedBonuses(editions).length > 0;
+  const overrideBonuses = (out: Record<string, unknown>, eds: Edition[], roundFilter?: Set<number>) => {
+    if (!hasImportedBonuses) return;
+    Object.assign(out, bonusFilesFromImported(collectImportedBonuses(eds, roundFilter), virtualCats));
+  };
+
   const editionSummaries: EditionSummary[] = [];
   for (const ed of editions) {
     const out = aggregate(ed.packets, ed.games, cfg, corrections, virtualCats);
+    overrideBonuses(out, [ed]);
     const m = out["meta.json"] as any;
     editionSummaries.push({ id: ed.id, label: ed.label, numGames: m.numGames, numTeams: m.numTeams, numPlayers: m.numPlayers, numTossups: m.numTossups, rounds: m.rounds.length });
     if (multi) await writeFiles(`sets/${slug}/editions/${ed.id}/`, out);
@@ -355,6 +386,7 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   const combinedGames = editions.flatMap((e) => e.games || []);
   const combined = combinedPackets(editions);
   const out = aggregate(combined, combinedGames, cfg, corrections, virtualCats);
+  overrideBonuses(out, editions);
   (out["meta.json"] as any).editions = editionSummaries;
   if (multi) attachVersions(out, editions);
   await writeFiles(`sets/${slug}/`, out);
@@ -378,6 +410,7 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
     if (!gm.length) continue;
     const pk = combined.filter((p) => roundsSet.has(p.round));
     const tout = aggregate(pk, gm, cfg, corrections, virtualCats);
+    overrideBonuses(tout, editions, roundsSet);
     const slugT = tagSlug(name);
     await writeFiles(`sets/${slug}/tags/${slugT}/`, tout);
     const tm = tout["meta.json"] as any;

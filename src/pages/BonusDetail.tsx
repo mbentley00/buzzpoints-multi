@@ -105,17 +105,19 @@ export function BonusDetailPage() {
           </div>
         </div>
 
-        <div className="tu-right">
-          <h2 style={{ marginTop: 0 }}>Conversion ({d.results.length})</h2>
-          <DataTable
-            rows={d.results}
-            columns={columns}
-            initialSort="total"
-            initialDir="desc"
-            rowKey={(r, i) => `${r.team}-${i}`}
-            rowClass={(r) => rowClass(r, parts)}
-          />
-        </div>
+        {d.results.length > 0 && (
+          <div className="tu-right">
+            <h2 style={{ marginTop: 0 }}>Conversion ({d.results.length})</h2>
+            <DataTable
+              rows={d.results}
+              columns={columns}
+              initialSort="total"
+              initialDir="desc"
+              rowKey={(r, i) => `${r.team}-${i}`}
+              rowClass={(r) => rowClass(r, parts)}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
