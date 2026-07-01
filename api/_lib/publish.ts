@@ -4,7 +4,7 @@
 import { PacketFile, GameFile } from "./aggregate.js";
 import { SCORINGS } from "./scoring.js";
 import {
-  readIndex, writeIndex, writeSource, writeCorrections, writeRequests,
+  readIndex, writeIndex, writeSource, writeCorrections, writeRequests, readCorrections,
   aggregateAndWrite, SetSource, SetEntry, Visibility, writeYf, TOURNAMENT_LEVELS,
 } from "./sets.js";
 import { parseYellowFruit } from "./yellowfruit.js";
@@ -106,6 +106,35 @@ export async function createTournament(body: CreateBody, owner: string): Promise
   };
   await writeIndex({ sets: [entry, ...index.sets.filter((s) => s.slug !== slug)] });
   return { slug };
+}
+
+// Refresh an EXISTING tournament in place from a freshly re-scraped source
+// (used by the Buzzpoints re-import). Keeps the slug, owner, visibility, level,
+// invites, TD link, and corrections; replaces the editions/packets/games and
+// recomputes stats. Only the owner or an admin/moderator may refresh.
+export async function updateFromSource(
+  source: SetSource,
+  slug: string,
+  owner: string,
+  isPrivileged: boolean
+): Promise<{ slug: string; editions: number }> {
+  const index = await readIndex();
+  const entry = index.sets.find((s) => s.slug === slug);
+  if (!entry) throw new CreateError(404, "Tournament to refresh not found.");
+  if (entry.owner !== owner && !isPrivileged) throw new CreateError(403, "Only the tournament's owner can refresh it.");
+
+  // Keep the existing display name; only the underlying data is refreshed.
+  source.name = entry.name || source.name;
+  await writeSource(slug, source);
+  const { meta, editions } = await aggregateAndWrite(slug, source, await readCorrections(slug));
+
+  Object.assign(entry, {
+    scoring: source.scoring, hasBonuses: source.hasBonuses, editions,
+    numGames: meta.numGames, numTeams: meta.numTeams, numPlayers: meta.numPlayers,
+    numTossups: meta.numTossups, rounds: meta.rounds.length,
+  });
+  await writeIndex(index);
+  return { slug, editions: editions.length };
 }
 
 // Create a tournament from an already-built SetSource (used by the Buzzpoints

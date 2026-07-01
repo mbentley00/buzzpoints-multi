@@ -15,7 +15,7 @@ import {
   readIndex, writeIndex, readSource, writeSource, writeCorrections, readCorrections,
   aggregateAndWrite, editionsOf, SetSource,
 } from "./_lib/sets.js";
-import { createTournament, createFromSource, parseFiles, validLevel, cleanTdLink, CreateError, FileRef } from "./_lib/publish.js";
+import { createTournament, createFromSource, updateFromSource, parseFiles, validLevel, cleanTdLink, CreateError, FileRef } from "./_lib/publish.js";
 import { parseYellowFruit } from "./_lib/yellowfruit.js";
 import { scrapeEdition, listEditions, listSets, setEditions, parseTarget, slugToName, scoringFor, setNameFrom } from "./_lib/importBuzzpoints.js";
 import {
@@ -77,11 +77,9 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     return res.status(200).json({ index: i, name: job.editions[i].name, imported: job.imported.length, total: job.editions.length });
   }
 
-  // finish: assemble every scraped edition into one tournament
+  // finish: assemble every scraped edition into one tournament (or refresh an
+  // existing one in place when refreshSlug is given)
   if (body.op === "import-finish") {
-    let level: string, tdLink: string | undefined;
-    try { level = validLevel(body.level); tdLink = cleanTdLink(body.tdLink); }
-    catch (e) { if (e instanceof CreateError) return res.status(e.status).json({ error: e.message }); throw e; }
     const editions: any[] = [];
     for (let i = 0; i < job.editions.length; i++) {
       const ed = await readBlobJson<{ packets: any[]; games: any[] }>(edPath(jobId, i), false);
@@ -90,15 +88,35 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
       if (ed && Array.isArray(ed.games) && ed.games.length) editions.push({ id: `e${editions.length}`, label: job.editions[i].name || job.editions[i].slug, packets: ed.packets, games: ed.games });
     }
     if (!editions.length) return res.status(400).json({ error: "No game data found at that link." });
+    const scoring = scoringFor(new Set(job.values));
+    const cleanupJob = () => del([jobPath(jobId), ...job.editions.map((_, i) => edPath(jobId, i))]).catch(() => {});
+
+    // Refresh an existing tournament in place: keep its slug/owner/visibility/
+    // level/invites/corrections, replace only the re-scraped data.
+    const refreshSlug = String(body.refreshSlug || "").trim();
+    if (refreshSlug) {
+      const source: SetSource = { name: "", scoring, hasBonuses: job.hasBonuses, editions };
+      try {
+        const r = await updateFromSource(source, refreshSlug, owner, await canModerate(owner));
+        await cleanupJob();
+        return res.status(200).json({ slug: r.slug, editions: r.editions, refreshed: true });
+      } catch (e) {
+        if (e instanceof CreateError) return res.status(e.status).json({ error: e.message });
+        return res.status(500).json({ error: (e as Error).message });
+      }
+    }
+
+    let level: string, tdLink: string | undefined;
+    try { level = validLevel(body.level); tdLink = cleanTdLink(body.tdLink); }
+    catch (e) { if (e instanceof CreateError) return res.status(e.status).json({ error: e.message }); throw e; }
     const name = (body.name || "").trim() || setNameFrom(job.editions.map((e) => e.name || e.slug));
     const { blocklist } = await readModConfig();
     const blocked = findBlocked(name, blocklist);
     if (blocked) return res.status(400).json({ error: `Tournament name contains a disallowed word: "${blocked}".` });
-    const scoring = scoringFor(new Set(job.values));
     const source: SetSource = { name, scoring, hasBonuses: job.hasBonuses, editions };
     try {
       const { slug } = await createFromSource(source, owner, { name, visibility: body.visibility, autoPublicAt: body.autoPublicAt ?? null, level, tdLink });
-      await del([jobPath(jobId), ...job.editions.map((_, i) => edPath(jobId, i))]).catch(() => {});
+      await cleanupJob();
       return res.status(200).json({ slug, editions: editions.length });
     } catch (e) {
       if (e instanceof CreateError) return res.status(e.status).json({ error: e.message });
@@ -118,6 +136,7 @@ interface Body {
   level?: string; tdLink?: string; // tournament type + optional Tournament Database link
   importUrl?: string; // import-start: the Buzzpoints site to import
   op?: string; jobId?: string; index?: number; // async import: import-start | import-edition | import-finish
+  refreshSlug?: string; // import-finish: refresh this existing set in place instead of creating one
 }
 
 // Resolve a list of file refs to inline JSON. A ref uploaded directly to Blob

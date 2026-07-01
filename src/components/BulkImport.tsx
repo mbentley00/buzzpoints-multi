@@ -18,25 +18,31 @@ export function BulkImport() {
   const [visibility, setVisibility] = useState<Visibility>("public");
   const [base, setBase] = useState("");
   const [sets, setSets] = useState<{ slug: string; name: string }[] | null>(null);
-  const [existing, setExisting] = useState<Set<string>>(new Set());
+  // name (lowercased) -> existing set slug here, for skip/refresh decisions.
+  const [existing, setExisting] = useState<Map<string, string>>(new Map());
+  const [refreshExisting, setRefreshExisting] = useState(false);
   const [running, setRunning] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const [err, setErr] = useState("");
   const stop = useRef(false);
 
-  const pending = (sets ?? []).filter((s) => !existing.has(s.name.toLowerCase()));
+  const slugFor = (s: { name: string }) => existing.get(s.name.toLowerCase());
+  const fresh = (sets ?? []).filter((s) => !slugFor(s));
+  const present = (sets ?? []).filter((s) => slugFor(s));
+  // What "Import all" will process: new sets always; existing ones only in refresh mode.
+  const todoCount = refreshExisting ? (sets ?? []).length : fresh.length;
   const addLog = (m: string) => setLog((l) => [...l.slice(-400), m]);
 
   async function discover() {
     setErr(""); setSets(null);
     try {
       // Read the live index fresh each time so already-imported sets are skipped
-      // even on a re-run in the same tab (no reload needed).
+      // (or refreshed) even on a re-run in the same tab (no reload needed).
       const [d, idx] = await Promise.all([
         post({ op: "import-sets", importUrl: baseUrl.trim() }),
         fetch("/api/index").then((r) => r.json()).catch(() => ({ sets: [] })),
       ]);
-      setExisting(new Set((idx.sets ?? []).map((s: any) => String(s.name || "").toLowerCase())));
+      setExisting(new Map((idx.sets ?? []).map((s: any) => [String(s.name || "").toLowerCase(), s.slug] as const)));
       setBase(d.base);
       setSets(d.sets);
       addLog(`Found ${d.sets.length} sets at ${d.base}.`);
@@ -46,14 +52,16 @@ export function BulkImport() {
   async function importAll() {
     if (!sets) return;
     setErr(""); setRunning(true); stop.current = false;
-    const todo = sets.filter((s) => !existing.has(s.name.toLowerCase()));
-    addLog(`Importing ${todo.length} set${todo.length === 1 ? "" : "s"} (${sets.length - todo.length} already present, skipped)…`);
+    const todo = refreshExisting ? sets : fresh;
+    const nRefresh = refreshExisting ? present.length : 0;
+    addLog(`Processing ${todo.length} set${todo.length === 1 ? "" : "s"} (${fresh.length} new${nRefresh ? `, ${nRefresh} refreshed in place` : `, ${present.length} already present skipped`})…`);
     let i = 0;
     for (const s of todo) {
       if (stop.current) { addLog("Stopped."); break; }
       i++;
+      const refreshSlug = slugFor(s); // set => refresh in place, keeping settings
       try {
-        addLog(`[${i}/${todo.length}] ${s.name}: reading editions…`);
+        addLog(`[${i}/${todo.length}] ${s.name}${refreshSlug ? " (refresh)" : ""}: reading editions…`);
         const start = await post({ op: "import-start", importUrl: `${base}/set/${s.slug}` });
         for (let e = 0; e < start.total; e++) {
           if (stop.current) break;
@@ -61,8 +69,8 @@ export function BulkImport() {
           await post({ op: "import-edition", jobId: start.jobId, index: e });
         }
         if (stop.current) { addLog("Stopped."); break; }
-        const fin = await post({ op: "import-finish", jobId: start.jobId, name: s.name, level, visibility, autoPublicAt: null });
-        addLog(`  ✓ ${s.name} → /set/${fin.slug} (${fin.editions} editions)`);
+        const fin = await post({ op: "import-finish", jobId: start.jobId, name: s.name, level, visibility, autoPublicAt: null, ...(refreshSlug ? { refreshSlug } : {}) });
+        addLog(`  ✓ ${s.name} → /set/${fin.slug} (${fin.editions} editions)${fin.refreshed ? " — refreshed" : ""}`);
         refreshIndex();
       } catch (e) {
         addLog(`  ✗ ${s.name}: ${String((e as Error).message || e)}`);
@@ -76,8 +84,9 @@ export function BulkImport() {
     <div className="bulk-import">
       <p className="muted">
         Discover every set at another Buzzpoints site and import them. Each set becomes one tournament (its mirror sites
-        are editions), tossup-only. Sets whose name already exists here are skipped. Keep this tab open — a full run can
-        take a while.
+        are editions). Sets whose name already exists here are skipped — or, with <em>Refresh existing</em> on, re-imported
+        in place (keeping their slug, visibility, and corrections) to pick up bonuses and fixes. Keep this tab open — a
+        full run can take a while.
       </p>
       <div className="create-form" style={{ maxWidth: 560 }}>
         <label className="field">
@@ -100,10 +109,16 @@ export function BulkImport() {
             </select>
           </label>
         </div>
+        {sets && present.length > 0 && (
+          <label className="field-inline">
+            <input type="checkbox" checked={refreshExisting} onChange={(e) => setRefreshExisting(e.target.checked)} disabled={running} />
+            <span>Refresh the {present.length} set{present.length === 1 ? "" : "s"} already here (re-import in place)</span>
+          </label>
+        )}
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <button className="btn-secondary" onClick={discover} disabled={running}>Discover sets</button>
-          {sets && <button className="btn-primary" onClick={importAll} disabled={running || pending.length === 0}>
-            {running ? "Importing…" : `Import all (${pending.length})`}
+          {sets && <button className="btn-primary" onClick={importAll} disabled={running || todoCount === 0}>
+            {running ? "Importing…" : refreshExisting ? `Import + refresh (${todoCount})` : `Import all (${todoCount})`}
           </button>}
           {running && <button className="btn-link danger" onClick={() => { stop.current = true; }}>Stop</button>}
         </div>
