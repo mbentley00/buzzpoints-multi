@@ -364,12 +364,15 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   const multi = editions.length > 1;
   const virtualCats = await readVirtualCats(slug);
 
-  // Bonuses imported as aggregate-only stats (no per-game data): rebuild the
-  // bonus files from those stats, overriding aggregate()'s empty game-derived
-  // ones. A no-op for uploaded tournaments (which carry real per-game bonuses).
+  // Bonuses imported as aggregate-only stats: rebuild the bonus files from those
+  // stats when there's no per-game bonus data. If per-team results WERE scraped
+  // (games carry bonus results), aggregate() already produced full per-team
+  // bonus files, so we keep those. A no-op for uploaded tournaments.
   const hasImportedBonuses = collectImportedBonuses(editions).length > 0;
   const overrideBonuses = (out: Record<string, unknown>, eds: Edition[], roundFilter?: Set<number>) => {
     if (!hasImportedBonuses) return;
+    const b = out["bonuses.json"] as { heard?: number }[] | undefined;
+    if (b && b.some((r) => (r.heard || 0) > 0)) return; // real per-game bonus data present; keep it
     Object.assign(out, bonusFilesFromImported(collectImportedBonuses(eds, roundFilter), virtualCats));
   };
 

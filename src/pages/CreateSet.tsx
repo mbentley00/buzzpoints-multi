@@ -46,6 +46,7 @@ export function CreateSet() {
   const { user, loading: authLoading } = useAuth();
   const [mode, setMode] = useState<"upload" | "import">("upload");
   const [importUrl, setImportUrl] = useState("");
+  const [importBonuses, setImportBonuses] = useState(false);
   const [name, setName] = useState("");
   const [level, setLevel] = useState("");
   const [tdLink, setTdLink] = useState("");
@@ -103,7 +104,16 @@ export function CreateSet() {
       const eds: { name: string }[] = start.editions || [];
       for (let i = 0; i < total; i++) {
         setStatus(`Importing edition ${i + 1} of ${total}${eds[i]?.name ? `: ${eds[i].name}` : ""}…`);
-        await importPost({ op: "import-edition", jobId: start.jobId, index: i });
+        const ed = await importPost({ op: "import-edition", jobId: start.jobId, index: i });
+        // Optional: scrape per-team bonus results in chunks (slow; some pages 504).
+        if (importBonuses && ed.bonusTotal > 0) {
+          let done = false;
+          while (!done) {
+            const r = await importPost({ op: "import-bonus-chunk", jobId: start.jobId, index: i });
+            setStatus(`Bonus results, edition ${i + 1} of ${total}: ${Math.min(r.cursor, r.total)}/${r.total}…`);
+            done = r.done;
+          }
+        }
       }
       setStatus("Building the tournament…");
       const autoPublicAt = visibility === "public" ? null : autoPublish ? new Date(autoPublishDate).toISOString() : null;
@@ -220,10 +230,16 @@ export function CreateSet() {
           </label>
 
           {mode === "import" && (
-            <label className="field">
-              <span>Buzzpoints site URL</span>
-              <input type="url" value={importUrl} onChange={(e) => setImportUrl(e.target.value)} placeholder="https://your-tournament.vercel.app" />
-            </label>
+            <>
+              <label className="field">
+                <span>Buzzpoints site URL</span>
+                <input type="url" value={importUrl} onChange={(e) => setImportUrl(e.target.value)} placeholder="https://your-tournament.vercel.app" />
+              </label>
+              <label className="field-inline">
+                <input type="checkbox" checked={importBonuses} onChange={(e) => setImportBonuses(e.target.checked)} />
+                <span>Import per-team bonus data (slow — scrapes each bonus page; some may be unavailable)</span>
+              </label>
+            </>
           )}
 
           <label className="field">

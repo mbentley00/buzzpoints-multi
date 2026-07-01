@@ -65,10 +65,10 @@ function strField(s: string, key: string, before = s.length): string | null {
   return null;
 }
 
-// Extract the JSON array that follows `"key":[`, scanning with string/bracket
-// awareness so values containing brackets don't end it early.
-function jsonArrayField(s: string, key: string): any[] {
-  const at = s.indexOf(`"${key}":[`);
+// Extract the JSON array that follows `"key":[` (at or after `from`), scanning
+// with string/bracket awareness so values containing brackets don't end it early.
+function jsonArrayField(s: string, key: string, from = 0): any[] {
+  const at = s.indexOf(`"${key}":[`, from);
   if (at < 0) return [];
   let i = at + key.length + 3; // position of '['
   const start = i;
@@ -174,7 +174,7 @@ export async function setEditions(base: string, setSlug: string): Promise<{ slug
   return [{ slug: `${setSlug}-${setSlug}`, name: slugToName(setSlug) }];
 }
 
-export async function scrapeEdition(base: string, slug: string): Promise<{ packets: PacketFile[]; games: GameFile[]; values: Set<number>; pages: number; hasBonuses: boolean }> {
+export async function scrapeEdition(base: string, slug: string): Promise<{ packets: PacketFile[]; games: GameFile[]; values: Set<number>; pages: number; hasBonuses: boolean; bonusPairs: [number, number][] }> {
   // ---- tossups ----
   const tHtml = await fetchText(`${base}/tournament/${slug}/tossup`);
   const tPairs = [...new Set([...tHtml.matchAll(new RegExp(`/tournament/${slug}/tossup/(\\d+)/(\\d+)`, "g"))].map((m) => `${m[1]}|${m[2]}`))]
@@ -242,12 +242,12 @@ export async function scrapeEdition(base: string, slug: string): Promise<{ packe
   }
 
   // ---- bonuses (optional) ----
-  // The per-bonus DETAIL pages (which hold per-game results) are computed with an
-  // expensive query on shared sites like quizbowlstats and simply time out (504),
-  // so they can't be scraped. But the bonus INDEX page carries, in ONE cheap
-  // request, every bonus's pre-aggregated per-part conversion, ppb, and heard
-  // count. We import those aggregate stats (no per-team/per-game split is
-  // possible) so bonus conversion, ppb, and category breakdowns are available.
+  // The bonus INDEX page carries, in ONE cheap request, every bonus's
+  // pre-aggregated per-part conversion, ppb, heard count, category, and answer
+  // parts (but NO question/leadin text — the source doesn't store it). We always
+  // import those aggregate stats. Per-team results live only on the (slow, often
+  // 504) per-bonus detail pages; those are scraped separately + optionally by
+  // scrapeBonusResults so the aggregate stats work even when detail pages fail.
   const bonusDefs = new Map<string, { metadata: string; parts: string[]; answers: string[]; difficultyModifiers: string[]; stats: { heard: number; got: number[]; points: number } }>();
   let hasBonuses = false;
   try {
@@ -288,11 +288,78 @@ export async function scrapeEdition(base: string, slug: string): Promise<{ packe
     return { round, tossups, bonuses };
   });
 
-  return { packets, games: gameFiles, values, pages: tPairs.length + (hasBonuses ? 1 : 0), hasBonuses };
+  const bonusPairs = [...bonusDefs.keys()].map((k) => k.split("-").map(Number) as [number, number]);
+  return { packets, games: gameFiles, values, pages: tPairs.length + (hasBonuses ? 1 : 0), hasBonuses, bonusPairs };
 }
 
 // Pick the cleanest set name from the edition names (the shortest is usually the
 // base name without an "Online"/"at <site>" qualifier).
 export function setNameFrom(names: string[]): string {
   return names.filter(Boolean).sort((a, b) => a.length - b.length || a.localeCompare(b))[0] || "Imported tournament";
+}
+
+/* ----------------------------- per-team bonus results ----------------------------- */
+// Per-team bonus results live only on the per-bonus detail pages, which are slow
+// (cold ~5-15s) and 504 on the largest fields. They're scraped OPTIONALLY, in
+// chunks driven by the browser so each request stays within the function limit.
+const BONUS_CONCURRENCY = 3; // higher tends to 504 the source
+export interface BonusResultRow { team: string; opp: string; pts: number[]; total: number }
+export interface BonusPageResult { round: number; num: number; rows: BonusResultRow[] }
+
+// Parse the per-team results table (`data` array following the part_one column)
+// out of a bonus detail page's flight payload.
+function parseBonusRows(f: string): BonusResultRow[] {
+  const p = f.indexOf('"part_one"');
+  if (p < 0) return [];
+  return (jsonArrayField(f, "data", p) as any[])
+    .map((r) => ({ team: r.team_name, opp: r.opponent_name, pts: [Number(r.part_one) || 0, Number(r.part_two) || 0, Number(r.part_three) || 0], total: Number(r.total) || 0 }))
+    .filter((r) => r.team && r.opp);
+}
+
+// Scrape per-team results for a slice of bonus pairs, stopping at `deadline` (so
+// the caller stays within the function time limit). Pages that 504/timeout are
+// skipped (that bonus keeps its index-derived aggregate). Returns the results
+// gathered and how many pairs were attempted (the caller advances its cursor by
+// that many, whether each succeeded or not).
+export async function scrapeBonusResults(
+  base: string, slug: string, pairs: [number, number][], deadline: number
+): Promise<{ results: BonusPageResult[]; attempted: number }> {
+  const results: BonusPageResult[] = [];
+  let attempted = 0, next = 0;
+  async function worker() {
+    while (Date.now() < deadline) {
+      const i = next++;
+      if (i >= pairs.length) return;
+      attempted++;
+      const [round, num] = pairs[i];
+      try {
+        const f = parseFlight(await fetchText(`${base}/tournament/${slug}/bonus/${round}/${num}`, 1, 20000));
+        const rows = parseBonusRows(f);
+        if (rows.length) results.push({ round, num, rows });
+      } catch { /* 504/timeout -> no per-team data for this bonus */ }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(BONUS_CONCURRENCY, pairs.length) }, worker));
+  return { results, attempted };
+}
+
+// Attach scraped per-team bonus results onto reconstructed games (QBJ shape), so
+// the normal aggregation produces full per-team bonus stats. Matches each result
+// row to its game by (round, {team, opponent}).
+export function applyBonusResults(games: GameFile[], results: BonusPageResult[]): void {
+  const idx = new Map<string, GameFile>();
+  for (const g of games) {
+    const names = (g.match_teams || []).map((t) => t.team?.name).filter(Boolean) as string[];
+    if (names.length === 2) idx.set(`${g.round}|${[names[0], names[1]].sort().join("|")}`, g);
+  }
+  for (const bp of results)
+    for (const row of bp.rows) {
+      const gf = idx.get(`${bp.round}|${[row.team, row.opp].sort().join("|")}`);
+      if (!gf) continue;
+      const mq = (gf.match_questions || [])[bp.num - 1] as any;
+      if (!mq) continue;
+      mq.bonus = { question: { question_number: bp.num }, parts: row.pts.map((v) => ({ controlled_points: v, bounceback_points: 0 })) };
+      const mt = (gf.match_teams || []).find((t: any) => t.team?.name === row.team) as any;
+      if (mt) mt.bonus_points = (mt.bonus_points || 0) + row.total;
+    }
 }

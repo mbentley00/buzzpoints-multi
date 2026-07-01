@@ -17,7 +17,7 @@ import {
 } from "./_lib/sets.js";
 import { createTournament, createFromSource, updateFromSource, parseFiles, validLevel, cleanTdLink, CreateError, FileRef } from "./_lib/publish.js";
 import { parseYellowFruit } from "./_lib/yellowfruit.js";
-import { scrapeEdition, listEditions, listSets, setEditions, parseTarget, slugToName, scoringFor, setNameFrom } from "./_lib/importBuzzpoints.js";
+import { scrapeEdition, scrapeBonusResults, applyBonusResults, listEditions, listSets, setEditions, parseTarget, slugToName, scoringFor, setNameFrom } from "./_lib/importBuzzpoints.js";
 import {
   readModConfig, findBlocked, readPending, writePending, writePendingPayload, PendingSubmission,
 } from "./_lib/moderation.js";
@@ -62,19 +62,41 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
   if (!job) return res.status(404).json({ error: "Import session not found or expired. Start over." });
   if (job.by !== owner) return res.status(403).json({ error: "This import belongs to another account." });
 
-  // edition: scrape one edition and stash it
+  // edition: scrape one edition (tossups, games, bonus index) and stash it
   if (body.op === "import-edition") {
     const i = Number(body.index);
     if (!Number.isInteger(i) || i < 0 || i >= job.editions.length) return res.status(400).json({ error: "Invalid edition index." });
     let scraped;
     try { scraped = await scrapeEdition(job.base, job.editions[i].slug); }
     catch (e) { return res.status(400).json({ error: (e as Error).message }); }
-    await writeJson(edPath(jobId, i), { packets: scraped.packets, games: scraped.games });
+    // Stash the bonus (round,num) pairs + a cursor so per-team bonus results can
+    // be scraped later in browser-driven chunks (import-bonus-chunk).
+    await writeJson(edPath(jobId, i), { packets: scraped.packets, games: scraped.games, bonusPairs: scraped.bonusPairs, bonusCursor: 0 });
     if (!job.imported.includes(i)) job.imported.push(i);
     job.values = [...new Set([...job.values, ...scraped.values])];
     if (scraped.hasBonuses) job.hasBonuses = true;
     await writeJson(jobPath(jobId), job);
-    return res.status(200).json({ index: i, name: job.editions[i].name, imported: job.imported.length, total: job.editions.length });
+    return res.status(200).json({ index: i, name: job.editions[i].name, imported: job.imported.length, total: job.editions.length, bonusTotal: scraped.bonusPairs.length });
+  }
+
+  // bonus chunk (optional): scrape per-team results for the next slice of this
+  // edition's bonus pages and bake them into the stashed games. Repeatable until
+  // done; each call stays within the function limit via an internal deadline.
+  if (body.op === "import-bonus-chunk") {
+    const i = Number(body.index);
+    if (!Number.isInteger(i) || i < 0 || i >= job.editions.length) return res.status(400).json({ error: "Invalid edition index." });
+    const ed = await readBlobJson<{ packets: any[]; games: any[]; bonusPairs: [number, number][]; bonusCursor: number }>(edPath(jobId, i), false);
+    if (!ed) return res.status(404).json({ error: "Edition not scraped yet." });
+    const pairs = ed.bonusPairs || [];
+    const cursor = ed.bonusCursor || 0;
+    if (cursor >= pairs.length) return res.status(200).json({ index: i, cursor, total: pairs.length, done: true });
+    const CHUNK = 45;
+    const deadline = Date.now() + 50000; // leave headroom under the 60s limit
+    const { results, attempted } = await scrapeBonusResults(job.base, job.editions[i].slug, pairs.slice(cursor, cursor + CHUNK), deadline);
+    applyBonusResults(ed.games as any, results);
+    ed.bonusCursor = cursor + Math.max(1, attempted); // always advance so we can't loop forever
+    await writeJson(edPath(jobId, i), ed);
+    return res.status(200).json({ index: i, cursor: ed.bonusCursor, total: pairs.length, done: ed.bonusCursor >= pairs.length });
   }
 
   // finish: assemble every scraped edition into one tournament (or refresh an

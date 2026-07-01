@@ -21,6 +21,7 @@ export function BulkImport() {
   // name (lowercased) -> existing set slug here, for skip/refresh decisions.
   const [existing, setExisting] = useState<Map<string, string>>(new Map());
   const [refreshExisting, setRefreshExisting] = useState(false);
+  const [bonusResults, setBonusResults] = useState(false);
   const [running, setRunning] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const [err, setErr] = useState("");
@@ -66,7 +67,16 @@ export function BulkImport() {
         for (let e = 0; e < start.total; e++) {
           if (stop.current) break;
           addLog(`    edition ${e + 1}/${start.total}${start.editions?.[e]?.name ? ` — ${start.editions[e].name}` : ""}`);
-          await post({ op: "import-edition", jobId: start.jobId, index: e });
+          const ed = await post({ op: "import-edition", jobId: start.jobId, index: e });
+          // Optional: scrape per-team bonus results in chunks (slow; some pages 504).
+          if (bonusResults && ed.bonusTotal > 0) {
+            let done = false;
+            while (!done && !stop.current) {
+              const r = await post({ op: "import-bonus-chunk", jobId: start.jobId, index: e });
+              addLog(`      bonus results ${Math.min(r.cursor, r.total)}/${r.total}`);
+              done = r.done;
+            }
+          }
         }
         if (stop.current) { addLog("Stopped."); break; }
         const fin = await post({ op: "import-finish", jobId: start.jobId, name: s.name, level, visibility, autoPublicAt: null, ...(refreshSlug ? { refreshSlug } : {}) });
@@ -113,6 +123,12 @@ export function BulkImport() {
           <label className="field-inline">
             <input type="checkbox" checked={refreshExisting} onChange={(e) => setRefreshExisting(e.target.checked)} disabled={running} />
             <span>Refresh the {present.length} set{present.length === 1 ? "" : "s"} already here (re-import in place)</span>
+          </label>
+        )}
+        {sets && (
+          <label className="field-inline">
+            <input type="checkbox" checked={bonusResults} onChange={(e) => setBonusResults(e.target.checked)} disabled={running} />
+            <span>Import per-team bonus data (slow — scrapes each bonus page; some may be unavailable)</span>
           </label>
         )}
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
