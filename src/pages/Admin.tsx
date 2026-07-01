@@ -34,6 +34,7 @@ export function Admin() {
   const [blocklistDirty, setBlocklistDirty] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [rebuildProg, setRebuildProg] = useState<string | null>(null);
 
   async function load() {
     setErr(null);
@@ -60,6 +61,23 @@ export function Admin() {
     window.confirm(`Delete "${s.name}" (${s.slug})? This permanently removes all its data.`) &&
     run(s.slug, async () => { await postJson("/api/manage", { slug: s.slug, op: "delete" }); refreshIndex(); await load(); });
   const rebuild = (s: AdminSet) => run(s.slug, () => postJson("/api/manage", { slug: s.slug, op: "reaggregate" }));
+  // Re-aggregate every tournament, one request each (each set stays within the
+  // function time limit), continuing past individual failures.
+  async function rebuildAll() {
+    if (!sets?.length) return;
+    if (!window.confirm(`Rebuild stats for all ${sets.length} tournaments? Each is re-aggregated in turn; this can take a while.`)) return;
+    setBusy("rebuild-all"); setErr(null);
+    let ok = 0; const fails: string[] = [];
+    for (let i = 0; i < sets.length; i++) {
+      const s = sets[i];
+      setRebuildProg(`Rebuilding ${i + 1} of ${sets.length}: ${s.name}…`);
+      try { await postJson("/api/manage", { slug: s.slug, op: "reaggregate" }); ok++; }
+      catch (e) { fails.push(`${s.slug} (${(e as Error).message})`); }
+    }
+    setRebuildProg(null); setBusy(null);
+    refreshIndex(); await load();
+    if (fails.length) setErr(`Rebuilt ${ok} of ${sets.length}. Failed: ${fails.join("; ")}`);
+  }
   const setVisibility = (s: AdminSet, visibility: Visibility) =>
     run(s.slug, async () => { await postJson("/api/manage", { slug: s.slug, op: "settings", visibility }); refreshIndex(); await load(); });
 
@@ -134,6 +152,14 @@ export function Admin() {
             {/* ---- tournaments ---- */}
             <h2>Tournaments</h2>
             <p className="muted">Question content stays hidden when you open a non-public set{isAdmin ? " until you reveal it" : ""}.</p>
+            {sets && sets.length > 0 && (
+              <div className="cat-toolbar">
+                <button className="btn-secondary btn-sm" disabled={!!busy} onClick={rebuildAll}>
+                  {busy === "rebuild-all" ? "Rebuilding…" : "Rebuild all stats"}
+                </button>
+                {rebuildProg && <span className="muted">{rebuildProg}</span>}
+              </div>
+            )}
             {sets === null ? <Loading /> : (
               <div className="table-wrap">
                 <table className="data-table">
