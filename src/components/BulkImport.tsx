@@ -2,11 +2,33 @@ import { useRef, useState } from "react";
 import { refreshIndex } from "../data";
 import { TOURNAMENT_LEVELS, Visibility } from "../types";
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 async function post(b: any) {
   const r = await fetch("/api/ingest", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) });
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d.error || `Failed (${r.status})`);
   return d;
+}
+
+// Heavy bonus scraping makes the (Cloudflare-fronted) source throttle, which can
+// push a later edition scrape past the function time limit (a bare 504). Retry
+// those transient failures with a growing backoff so the throttle can subside;
+// each op is idempotent, so re-running is safe.
+const RETRYABLE = /\b(429|500|502|503|504)\b|timeout|network|fetch/i;
+async function postRetry(b: any, onWait?: (s: number) => void, tries = 4) {
+  let last: unknown;
+  for (let i = 0; i < tries; i++) {
+    try { return await post(b); }
+    catch (e) {
+      last = e;
+      if (i === tries - 1 || !RETRYABLE.test(String((e as Error).message || e))) throw e;
+      const secs = 10 * (i + 1); // 10s, 20s, 30s
+      onWait?.(secs);
+      await sleep(secs * 1000);
+    }
+  }
+  throw last;
 }
 
 // Admin-only: discover every set at another Buzzpoints site and import them all,
@@ -63,23 +85,25 @@ export function BulkImport() {
       const refreshSlug = slugFor(s); // set => refresh in place, keeping settings
       try {
         addLog(`[${i}/${todo.length}] ${s.name}${refreshSlug ? " (refresh)" : ""}: reading editions…`);
-        const start = await post({ op: "import-start", importUrl: `${base}/set/${s.slug}` });
+        const waitLog = (secs: number) => addLog(`    …source is slow; retrying in ${secs}s`);
+        const start = await postRetry({ op: "import-start", importUrl: `${base}/set/${s.slug}` }, waitLog);
         for (let e = 0; e < start.total; e++) {
           if (stop.current) break;
           addLog(`    edition ${e + 1}/${start.total}${start.editions?.[e]?.name ? ` — ${start.editions[e].name}` : ""}`);
-          const ed = await post({ op: "import-edition", jobId: start.jobId, index: e });
-          // Optional: scrape per-team bonus results in chunks (slow; some pages 504).
+          const ed = await postRetry({ op: "import-edition", jobId: start.jobId, index: e }, waitLog);
+          // Optional: scrape per-team bonus results + text in chunks (slow; some pages 504).
           if (bonusResults && ed.bonusTotal > 0) {
             let done = false;
             while (!done && !stop.current) {
-              const r = await post({ op: "import-bonus-chunk", jobId: start.jobId, index: e });
+              const r = await postRetry({ op: "import-bonus-chunk", jobId: start.jobId, index: e }, waitLog);
               addLog(`      bonus results ${Math.min(r.cursor, r.total)}/${r.total}`);
               done = r.done;
             }
+            if (e < start.total - 1) await sleep(2000); // brief pause between editions to ease throttling
           }
         }
         if (stop.current) { addLog("Stopped."); break; }
-        const fin = await post({ op: "import-finish", jobId: start.jobId, name: s.name, level, visibility, autoPublicAt: null, ...(refreshSlug ? { refreshSlug } : {}) });
+        const fin = await postRetry({ op: "import-finish", jobId: start.jobId, name: s.name, level, visibility, autoPublicAt: null, ...(refreshSlug ? { refreshSlug } : {}) }, waitLog);
         addLog(`  ✓ ${s.name} → /set/${fin.slug} (${fin.editions} editions)${fin.refreshed ? " — refreshed" : ""}`);
         refreshIndex();
       } catch (e) {

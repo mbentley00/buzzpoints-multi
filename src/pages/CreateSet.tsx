@@ -82,12 +82,16 @@ export function CreateSet() {
   // tournaments (e.g. 17 editions) import fully, edition by edition.
   async function importPost(b: any) {
     let lastErr: Error | null = null;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    // Retry transient 5xx/timeouts with a growing backoff: heavy bonus scraping
+    // makes the source throttle, and a bare 504 means our function timed out —
+    // waiting lets the throttle subside. Each op is idempotent, so retrying is safe.
+    for (let attempt = 0; attempt < 4; attempt++) {
       const r = await fetch("/api/ingest", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) });
       const d = await r.json().catch(() => ({}));
       if (r.ok) return d;
       lastErr = new Error(d.error || `Failed (${r.status})`);
-      if (r.status < 500) break; // only retry transient server/timeout errors
+      if (r.status < 500) break; // don't retry client errors (validation etc.)
+      if (attempt < 3) { const secs = 10 * (attempt + 1); setStatus(`Source is slow; retrying in ${secs}s…`); await new Promise((res) => setTimeout(res, secs * 1000)); }
     }
     throw lastErr;
   }
