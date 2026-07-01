@@ -228,6 +228,88 @@ function combinedPackets(editions: Edition[]): PacketFile[] {
 
 const stripTxt = (s: string) => (s || "").replace(/<[^>]+>/g, "").replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
 
+// A compact comparison token for a tossup answer line: the primary answer only
+// (cut before the first bracketed alternate/prompt or parenthetical), lowercased
+// and reduced to its first few alphanumeric words. Robust to formatting/HTML
+// differences between mirrors of the same question.
+function answerKey(ans: string): string {
+  let s = stripTxt(ans).toLowerCase().split(/\[|\(/)[0];
+  s = s.replace(/[^a-z0-9]+/g, " ").trim();
+  return s.split(/\s+/).filter(Boolean).slice(0, 8).join(" ");
+}
+
+// Align editions' round numbering to a common packet identity. Different mirrors
+// of a tournament (ACF Fall/Winter/Regionals especially) read the same packets in
+// a DIFFERENT round order, so keying questions by administration round pools
+// buzzes from different questions under one `round-num`. We match each edition's
+// packets to a reference edition's packets by their set of answer lines and
+// renumber rounds so the same physical packet shares a round number everywhere.
+// A no-op (returns the input) for a single edition or when orders already agree.
+export function canonicalizeEditions(editions: Edition[]): Edition[] {
+  if (editions.length <= 1) return editions;
+  const sig = (p: PacketFile) => new Set((p.tossups || []).map((t) => answerKey(t.answer)).filter(Boolean));
+  const perEd = editions.map((e) => (e.packets || []).map((p) => ({ round: p.round, set: sig(p) })));
+
+  // Reference = the most complete edition (most packets), earliest on a tie.
+  let refIdx = 0;
+  for (let i = 1; i < perEd.length; i++) if (perEd[i].length > perEd[refIdx].length) refIdx = i;
+
+  // Canonical rounds are seeded from the reference edition (identity), and grow as
+  // other editions contribute packets the reference lacks.
+  const canon: { round: number; set: Set<string> }[] = perEd[refIdx].map((p) => ({ round: p.round, set: p.set }));
+  let nextRound = Math.max(0, ...canon.map((c) => c.round)) + 1;
+  const remap = editions.map(() => new Map<number, number>());
+  for (const p of perEd[refIdx]) remap[refIdx].set(p.round, p.round);
+
+  const interCount = (a: Set<string>, b: Set<string>) => {
+    let n = 0;
+    for (const k of a) if (b.has(k)) n++;
+    return n;
+  };
+
+  for (let e = 0; e < editions.length; e++) {
+    if (e === refIdx) continue;
+    const packets = perEd[e];
+    // Greedily pair this edition's packets to canonical rounds by best overlap.
+    // Require a majority of answers to line up AND at least a few in absolute
+    // terms, so a sparsely-scraped packet can't false-match on one shared answer.
+    const pairs: { pi: number; ci: number; s: number }[] = [];
+    packets.forEach((p, pi) => canon.forEach((c, ci) => {
+      const inter = interCount(p.set, c.set);
+      const s = p.set.size && c.set.size ? inter / Math.min(p.set.size, c.set.size) : 0;
+      if (s >= 0.5 && inter >= 3) pairs.push({ pi, ci, s });
+    }));
+    pairs.sort((a, b) => b.s - a.s);
+    const usedP = new Set<number>(), usedC = new Set<number>();
+    for (const { pi, ci } of pairs) {
+      if (usedP.has(pi) || usedC.has(ci)) continue;
+      usedP.add(pi); usedC.add(ci);
+      remap[e].set(packets[pi].round, canon[ci].round);
+    }
+    // Packets with no match are new canonical rounds (so later editions can match
+    // them too), appended after the existing canonical rounds.
+    packets.forEach((p, pi) => {
+      if (usedP.has(pi)) return;
+      const round = nextRound++;
+      canon.push({ round, set: p.set });
+      remap[e].set(p.round, round);
+    });
+  }
+
+  // Nothing moved (orders already agree) -> return the input unchanged.
+  const changed = remap.some((m) => [...m.entries()].some(([o, c]) => o !== c));
+  if (!changed) return editions;
+
+  return editions.map((e, i) => {
+    const map = (r: number) => remap[i].get(r) ?? r;
+    return {
+      ...e,
+      packets: (e.packets || []).map((p) => ({ ...p, round: map(p.round) })),
+      games: (e.games || []).map((g) => ({ ...g, round: map(g.round) })),
+    };
+  });
+}
+
 // Attach a per-question `versions` list to each combined detail entry: each
 // edition's question AT THAT POSITION (buzzes follow position), with a flag for
 // whether it differs from the canonical (latest) version. Lets the UI switch
@@ -255,7 +337,9 @@ function attachVersions(out: Record<string, unknown>, editions: Edition[]) {
 // editions/<id>/. Returns the combined meta and the per-edition summaries.
 export async function aggregateAndWrite(slug: string, source: SetSource, corrections: Correction[]) {
   const cfg = { name: source.name, slug, scoring: getScoring(source.scoring), hasBonuses: source.hasBonuses };
-  const editions = editionsOf(source);
+  // Align mirrors that read the packets in different round orders onto a common
+  // packet numbering, so combined stats key each question consistently.
+  const editions = canonicalizeEditions(editionsOf(source));
   const multi = editions.length > 1;
   const virtualCats = await readVirtualCats(slug);
 
