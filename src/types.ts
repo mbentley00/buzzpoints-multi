@@ -220,6 +220,9 @@ export interface PlayerRow {
   name: string;
   team: string;
   teamId: string;
+  // Editions this player appeared in; present only on the combined rows of a
+  // multi-edition set (after re-aggregation).
+  editionIds?: string[];
   games: number;
   tuh: number;
   powers: number;
@@ -265,6 +268,9 @@ export interface PlayerDetail extends PlayerRow {
 export interface TeamRow {
   id: string;
   name: string;
+  // Editions this team appeared in; present only on the combined rows of a
+  // multi-edition set (after re-aggregation).
+  editionIds?: string[];
   games: number;
   wins: number;
   losses: number;

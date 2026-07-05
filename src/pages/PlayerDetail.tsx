@@ -3,7 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { PlayerDetail, PlayerBuzz } from "../types";
 import { Html, num } from "../util";
-import { Loading, ErrorBox } from "../components/Common";
+import { Loading, ErrorBox, EditionBadges } from "../components/Common";
 import { CategoryStatsTable } from "../components/CategoryStatsTable";
 import { DataTable, Column } from "../components/DataTable";
 
@@ -17,7 +17,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 export function PlayerDetailPage() {
-  const { meta } = useSetCtx();
+  const { meta, scope, editions } = useSetCtx();
   const { slug = "", id = "" } = useParams();
   const { data: all, error, loading } = useScopedJson<Record<string, PlayerDetail>>("players_detail.json");
   const [view, setView] = useState<"cat" | "buzz">("cat");
@@ -56,6 +56,7 @@ export function PlayerDetailPage() {
           <h1>{d.name}</h1>
           <p className="subtitle">
             <Link to={`/set/${slug}/team/${d.teamId}`} className="link">{d.team}</Link>
+            {scope === "all" && !!d.editionIds?.length && <> · <EditionBadges ids={d.editionIds} editions={editions} /></>}
           </p>
         </div>
         <button className="btn-primary" onClick={() => setView(view === "cat" ? "buzz" : "cat")}>

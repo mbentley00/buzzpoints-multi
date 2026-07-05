@@ -4,10 +4,10 @@ import { useSetCtx, useScopedJson } from "../components/Layout";
 import { TeamRow } from "../types";
 import { num } from "../util";
 import { DataTable, Column } from "../components/DataTable";
-import { PageHeader, Loading, ErrorBox, SearchInput } from "../components/Common";
+import { PageHeader, Loading, ErrorBox, SearchInput, EditionBadges } from "../components/Common";
 
 export function Teams() {
-  const { meta } = useSetCtx();
+  const { meta, scope, editions } = useSetCtx();
   const { slug = "" } = useParams();
   const { data, error, loading } = useScopedJson<TeamRow[]>("teams.json");
   const [q, setQ] = useState("");
@@ -18,8 +18,16 @@ export function Teams() {
     return r;
   }, [data, q]);
 
+  // In the combined view of a multi-edition set, say which edition(s) each team
+  // played (rows only carry editionIds once the set has been re-aggregated).
+  const edLabel = (id: string) => editions.find((e) => e.id === id)?.label ?? id;
+  const showEditions = scope === "all" && editions.length > 1 && (data ?? []).some((t) => t.editionIds?.length);
+
   const columns: Column<TeamRow>[] = [
     { key: "name", label: "Team", sortVal: (t) => t.name.toLowerCase(), render: (t) => <Link className="link" to={`/set/${slug}/team/${t.id}`}>{t.name}</Link> },
+    ...(showEditions
+      ? [{ key: "edition", label: "Edition", sortVal: (t: TeamRow) => (t.editionIds || []).map(edLabel).join(", ").toLowerCase(), render: (t: TeamRow) => <EditionBadges ids={t.editionIds} editions={editions} />, title: "Edition(s) this team played" }]
+      : []),
     { key: "games", label: "GP", align: "right", sortVal: (t) => t.games, render: (t) => t.games },
     {
       key: "record",

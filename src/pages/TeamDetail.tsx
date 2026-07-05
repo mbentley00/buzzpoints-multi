@@ -3,7 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { TeamDetail, RosterPlayer, CatBonusRow, CatBonusSub, CatTeamTossupRow, CatTeamTossupSub } from "../types";
 import { num, pct } from "../util";
-import { Loading, ErrorBox } from "../components/Common";
+import { Loading, ErrorBox, EditionBadges } from "../components/Common";
 import { CategoryGroups, CatColumn } from "../components/CategoryGroups";
 import { DataTable, Column } from "../components/DataTable";
 
@@ -21,7 +21,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 export function TeamDetailPage() {
-  const { meta } = useSetCtx();
+  const { meta, scope, editions } = useSetCtx();
   const { slug = "", id = "" } = useParams();
   const { data: all, error, loading } = useScopedJson<Record<string, TeamDetail>>("teams_detail.json");
   const [view, setView] = useState<"main" | "bonus">("main");
@@ -70,7 +70,10 @@ export function TeamDetailPage() {
       <div className="page-header">
         <div>
           <h1>{d.name}</h1>
-          <p className="subtitle">{d.wins}-{d.losses}{d.ties ? `-${d.ties}` : ""} · {d.games} games</p>
+          <p className="subtitle">
+            {d.wins}-{d.losses}{d.ties ? `-${d.ties}` : ""} · {d.games} games
+            {scope === "all" && !!d.editionIds?.length && <> · <EditionBadges ids={d.editionIds} editions={editions} /></>}
+          </p>
         </div>
         {teamBonus && (
           <button className="btn-primary" onClick={() => setView(view === "main" ? "bonus" : "main")}>

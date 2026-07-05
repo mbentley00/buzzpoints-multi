@@ -377,12 +377,21 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   };
 
   const editionSummaries: EditionSummary[] = [];
+  // Which edition(s) each team/player appeared in, keyed by the same raw names
+  // the combined aggregation merges on, for annotating the combined rows.
+  const teamEds = new Map<string, string[]>();
+  const playerEds = new Map<string, string[]>();
+  const playerKey = (r: any) => `${r.name}\u0000${r.team}`;
   for (const ed of editions) {
     const out = aggregate(ed.packets, ed.games, cfg, corrections, virtualCats);
     overrideBonuses(out, [ed]);
     const m = out["meta.json"] as any;
     editionSummaries.push({ id: ed.id, label: ed.label, numGames: m.numGames, numTeams: m.numTeams, numPlayers: m.numPlayers, numTossups: m.numTossups, rounds: m.rounds.length });
-    if (multi) await writeFiles(`sets/${slug}/editions/${ed.id}/`, out);
+    if (multi) {
+      for (const t of out["teams.json"] as any[]) teamEds.set(t.name, [...(teamEds.get(t.name) || []), ed.id]);
+      for (const p of out["players.json"] as any[]) { const k = playerKey(p); playerEds.set(k, [...(playerEds.get(k) || []), ed.id]); }
+      await writeFiles(`sets/${slug}/editions/${ed.id}/`, out);
+    }
   }
 
   // combined (single-edition: identical to the one edition)
@@ -391,7 +400,17 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   const out = aggregate(combined, combinedGames, cfg, corrections, virtualCats);
   overrideBonuses(out, editions);
   (out["meta.json"] as any).editions = editionSummaries;
-  if (multi) attachVersions(out, editions);
+  if (multi) {
+    attachVersions(out, editions);
+    // Tag combined team/player rows (list + detail) with the editions they
+    // appeared in, so the combined view can say which mirror was played.
+    for (const t of out["teams.json"] as any[]) t.editionIds = teamEds.get(t.name) || [];
+    const td = out["teams_detail.json"] as Record<string, any>;
+    for (const id in td) td[id].editionIds = teamEds.get(td[id].name) || [];
+    for (const p of out["players.json"] as any[]) p.editionIds = playerEds.get(playerKey(p)) || [];
+    const pd = out["players_detail.json"] as Record<string, any>;
+    for (const id in pd) pd[id].editionIds = playerEds.get(playerKey(pd[id])) || [];
+  }
   await writeFiles(`sets/${slug}/`, out);
 
   // Per-phase (round-tag) scopes: re-aggregate the subset of rounds carrying each

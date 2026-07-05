@@ -1,6 +1,21 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../auth";
+import { EditionSummary } from "../types";
+
+// Small labels naming which edition(s) a team/player appeared in. Rendered only
+// in the combined view of a multi-edition set; rows without editionIds (older
+// aggregations, single-edition sets) render nothing.
+export function EditionBadges({ ids, editions }: { ids?: string[]; editions: EditionSummary[] }) {
+  if (!ids?.length || editions.length < 2) return null;
+  return (
+    <>
+      {ids.map((id) => (
+        <span key={id} className="edition-badge">{editions.find((e) => e.id === id)?.label ?? id}</span>
+      ))}
+    </>
+  );
+}
 
 // Shows the signed-in user + logout, or a link to log in. Used in every topbar.
 export function AuthNav() {

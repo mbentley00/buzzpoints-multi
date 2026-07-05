@@ -601,6 +601,9 @@ mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
 /* editions + diff */
 .edition-count { font-size: 12px; font-weight: 600; color: #2c5fb3; background: #e3edff; padding: 2px 8px; border-radius: 10px; vertical-align: middle; margin-left: 6px; }
 .level-badge { display: inline-block; font-size: 11px; font-weight: 700; color: #475569; background: #eef1f5; padding: 1px 8px; border-radius: 10px; margin-right: 8px; vertical-align: middle; }
+/* which edition(s) a team/player played (combined view of a multi-edition set) */
+.edition-badge { display: inline-block; font-size: 11px; font-weight: 600; color: #2c5fb3; background: #e3edff; padding: 1px 8px; border-radius: 10px; vertical-align: middle; white-space: nowrap; }
+.edition-badge + .edition-badge { margin-left: 4px; }
 .editions-bar { background: #eef2f7; border-bottom: 1px solid #dbe2ea; padding: 7px 24px; display: flex; align-items: center; gap: 10px; font-size: 13.5px; }
 .editions-bar select { font: inherit; padding: 3px 8px; border: 1px solid #cdd5e0; border-radius: 4px; }
 
