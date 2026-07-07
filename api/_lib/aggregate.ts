@@ -249,7 +249,7 @@ const bnNew = (): CatBnAcc => ({ main: "", heard: 0, pts: 0, parts: new Map() })
 /* ----------------------------- accumulators ----------------------------- */
 interface TUStat { round: number; num: number; questionHtml: string; answer: string; category: string; subcategory: string; categoryMid: string; words: string[]; wordCount: number; powerIndex: number | null; }
 interface BNStat { round: number; num: number; leadin: string; parts: string[]; answers: string[]; difficultyModifiers: string[]; category: string; subcategory: string; }
-type Buzz = { player: string | null; team: string | null; value: number; wordIndex: number | null; opponent?: string | null; origPlayer?: string | null; origWordIndex?: number | null; };
+type Buzz = { player: string | null; team: string | null; value: number; wordIndex: number | null; opponent?: string | null; origPlayer?: string | null; origWordIndex?: number | null; firstInRoom?: boolean; };
 type CatAcc = { powers: number; gets: number; incorrect: number; points: number; posSum: number; posN: number; earliest: number | null };
 const newCatAcc = (): CatAcc => ({ powers: 0, gets: 0, incorrect: 0, points: 0, posSum: 0, posN: 0, earliest: null });
 type CatTuAcc = { main: string; heard: number; powers: number; gets: number; buzzSum: number; buzzN: number; firstConv: number; secondConv: number; incorrectBefore: number };
@@ -387,7 +387,11 @@ export function aggregate(
         if (tq) {
           const opp = teamNames.find((t) => t !== bteam) ?? null;
           let arr = tuBuzzes.get(key!); if (!arr) { arr = []; tuBuzzes.set(key!, arr); }
-          arr.push({ player: pname, team: bteam, value, wordIndex: widx, opponent: opp, origPlayer, origWordIndex });
+          // `ordered` already has this buzz appended above, so length === 1 means
+          // it's the first buzz of this room's reading. Later buzzes only happen
+          // after an earlier team negged and the reader resumed, so they aren't a
+          // genuine same-clue race — the buzzer-race view excludes them.
+          arr.push({ player: pname, team: bteam, value, wordIndex: widx, opponent: opp, origPlayer, origWordIndex, firstInRoom: ordered.length === 1 });
         }
         if (pname) {
           const pv = plOf(pname, bteam || "");
@@ -792,7 +796,7 @@ export function aggregate(
   /* ----------------------------- buzzer races ----------------------------- */
   const races: Record<string, unknown>[] = [];
   for (const [id, t] of tossups) {
-    const buzzes = (tuBuzzes.get(id) || []).filter((b) => b.wordIndex !== null && !imprecise(b.value, b.wordIndex, t.powerIndex));
+    const buzzes = (tuBuzzes.get(id) || []).filter((b) => b.firstInRoom && b.wordIndex !== null && !imprecise(b.value, b.wordIndex, t.powerIndex));
     if (buzzes.length < 2) continue;
     const idxs = buzzes.map((b) => b.wordIndex!).sort((a, b) => a - b);
     let bestCount = 0, bestStart = idxs[0];
