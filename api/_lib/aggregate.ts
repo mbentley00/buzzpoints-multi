@@ -162,6 +162,73 @@ function levels(full: string): [string | null, string | null] {
   return [mid, parts.length >= 3 ? full : null];
 }
 
+/* ----------------------------- bad-category heuristic ----------------------------- */
+// Canonical top-level quizbowl categories (and common multi-word ones), normalized
+// to lowercase words. Used only to AVOID flagging legitimate categories that would
+// otherwise trip the "looks like a name / too short" checks; unknown categories are
+// never flagged on their own — a category must also LOOK wrong (initials, a personal
+// name, or an unusually short code) to be surfaced.
+const KNOWN_CATEGORIES = new Set(
+  [
+    "literature", "history", "science", "arts", "fine arts", "religion", "mythology",
+    "philosophy", "social science", "geography", "current events", "popular culture",
+    "pop culture", "trash", "general knowledge", "other", "other academic", "academic",
+    "mathematics", "math", "music", "painting", "sculpture", "architecture", "film",
+    "visual arts", "auditory arts", "world literature", "american literature",
+    "british literature", "european literature", "long fiction", "short fiction", "poetry",
+    "drama", "physics", "biology", "chemistry", "astronomy", "earth science", "geology",
+    "computer science", "economics", "psychology", "sociology", "anthropology",
+    "political science", "law", "linguistics", "thought", "world history", "american history",
+    "european history", "ancient history", "world", "american", "european", "religion mythology philosophy",
+    "rmp", "rmpss", "myth", "social studies", "sports", "entertainment", "science math",
+  ].map((s) => s.replace(/[^a-z]+/g, " ").trim())
+);
+const normCat = (s: string) => s.toLowerCase().replace(/[^a-z]+/g, " ").trim();
+
+export interface CategoryWarning { category: string; count: number; reason: string; examples: string[] }
+
+// Heuristic scan for likely-mislabeled tossup categories. The classic failure is a
+// packet whose "category" column actually holds author initials ("AK") or names,
+// so the aggregated stats show categories like "AK" instead of "History". We flag a
+// parsed main category when it looks like initials (1–3 letters, e.g. "AK", "J.B."),
+// a personal name ("John Keats"), or an unusually short code — none of which are
+// real subjects. Advisory only; nothing is blocked or altered.
+export function scanCategoryQuality(tossups: Map<string, TUStat>): CategoryWarning[] {
+  const byMain = new Map<string, { count: number; examples: string[] }>();
+  for (const t of tossups.values()) {
+    const m = (t.category || "").trim();
+    let e = byMain.get(m);
+    if (!e) { e = { count: 0, examples: [] }; byMain.set(m, e); }
+    e.count++;
+    if (e.examples.length < 3) { const a = stripHtml(t.answer).trim(); if (a) e.examples.push(a.length > 60 ? a.slice(0, 57) + "…" : a); }
+  }
+  const isInitials = (s: string) => {
+    const c = s.replace(/[. \s]/g, "");
+    return c.length >= 1 && c.length <= 3 && /^[A-Za-z]+$/.test(c) && c === c.toUpperCase();
+  };
+  const looksLikeName = (s: string) => /^[A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z']+$/.test(s.trim());
+
+  // A personal name ("John Keats") is also a valid-looking two-word subject phrase
+  // ("Vocal Music"), so we only trust the name signal when the set already carries
+  // several initials-style categories — i.e. the category column clearly holds
+  // people, not subjects. Otherwise we'd flag legitimate two-word categories.
+  const distinctInitials = [...byMain.keys()].filter((m) => m && isInitials(m)).length;
+  const nameFlagOn = distinctInitials >= 2;
+
+  const out: CategoryWarning[] = [];
+  for (const [m, e] of byMain) {
+    if (!m || normCat(m) === "other") continue; // blank/"Other" is the generic fallback, not a mislabel
+    if (KNOWN_CATEGORIES.has(normCat(m))) continue;
+    let reason = "";
+    if (isInitials(m)) reason = "looks like author initials, not a subject category";
+    else if (nameFlagOn && looksLikeName(m)) reason = "looks like a person's name, not a subject category";
+    else if (m.length <= 4 && /^[A-Za-z.]+$/.test(m)) reason = "unusually short — may be an abbreviation or code, not a subject";
+    if (reason) out.push({ category: m, count: e.count, reason, examples: e.examples });
+  }
+  out.sort((a, b) => b.count - a.count || a.category.localeCompare(b.category));
+  return out.slice(0, 25);
+}
+
 /* generic 3-level category tree (main -> subcategory -> sub-subcategory) */
 type TreeNode = Record<string, unknown> & { category: string; heard: number; subs: SubNode[] };
 type SubNode = Record<string, unknown> & { subcategory: string; subLabel: string; leaves?: SubNode[] };
@@ -853,6 +920,9 @@ export function aggregate(
     numGames: games.length, numTeams: tm.size, numPlayers: pl.size,
     numTossups: tossups.size, numBonuses: cfg.hasBonuses ? bonuses.size : 0,
     rounds: [...new Set([...tossups.values()].map((t) => t.round))].sort((a, b) => a - b),
+    // Advisory heuristic: categories that look mislabeled (author initials/names,
+    // short codes) rather than real subjects. Shown to owners; never blocks upload.
+    categoryWarnings: scanCategoryQuality(tossups),
     generatedAt: new Date().toISOString(),
   };
 

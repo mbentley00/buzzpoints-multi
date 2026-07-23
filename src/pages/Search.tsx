@@ -4,8 +4,27 @@ import { AuthNav, Loading, ErrorBox } from "../components/Common";
 import { Html, CategoryTag, num } from "../util";
 
 type SearchType = "players" | "questions";
-interface PlayerHit { slug: string; setName: string; playerId: string; name: string; team: string; ppg: number; games: number }
+interface CatHit { category: string; points: number }
+interface PlayerHit { slug: string; setName: string; createdAt: string | null; playerId: string; name: string; team: string; ppg: number; games: number; pts: number; topCats?: CatHit[] }
 interface QuestionHit { slug: string; setName: string; id: string; round: number; num: number; answer: string; category: string }
+
+type PlayerSort = "recent" | "ppg" | "points" | "name";
+const SORTS: { id: PlayerSort; label: string }[] = [
+  { id: "recent", label: "Most recent tournament" },
+  { id: "ppg", label: "Points per game" },
+  { id: "points", label: "Total points" },
+  { id: "name", label: "Name (A–Z)" },
+];
+function sortPlayers(rows: PlayerHit[], sort: PlayerSort): PlayerHit[] {
+  const by = [...rows];
+  const cmp: Record<PlayerSort, (a: PlayerHit, b: PlayerHit) => number> = {
+    recent: (a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")) || b.ppg - a.ppg,
+    ppg: (a, b) => b.ppg - a.ppg || b.pts - a.pts,
+    points: (a, b) => b.pts - a.pts || b.ppg - a.ppg,
+    name: (a, b) => a.name.localeCompare(b.name) || String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
+  };
+  return by.sort(cmp[sort]);
+}
 
 export function Search() {
   const [params, setParams] = useSearchParams();
@@ -14,6 +33,7 @@ export function Search() {
 
   const [input, setInput] = useState(q);
   const [typeSel, setTypeSel] = useState<SearchType>(type);
+  const [sort, setSort] = useState<PlayerSort>("recent");
   const [results, setResults] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -84,20 +104,41 @@ export function Search() {
         {error && <ErrorBox error={error} />}
 
         {!loading && !error && q.length >= 2 && (
-          <p className="subtitle">{total === 0 ? "No matches." : `${total}${total >= 200 ? "+" : ""} match${total === 1 ? "" : "es"}`}{total > results.length ? ` (showing first ${results.length})` : ""}</p>
+          <div className="search-summary">
+            <span className="subtitle">{total === 0 ? "No matches." : `${total}${total >= 200 ? "+" : ""} match${total === 1 ? "" : "es"}`}{total > results.length ? ` (showing first ${results.length})` : ""}</span>
+            {type === "players" && results.length > 1 && (
+              <label className="search-sort">
+                Sort by
+                <select value={sort} onChange={(e) => setSort(e.target.value as PlayerSort)}>
+                  {SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                </select>
+              </label>
+            )}
+          </div>
         )}
 
         {!loading && !error && (
           <div className="search-results">
             {type === "players"
-              ? (results as PlayerHit[]).map((p) => (
-                  <Link key={`${p.slug}:${p.playerId}`} to={`/set/${p.slug}/player/${p.playerId}`} className="search-result">
-                    <div className="search-result-main">{p.name}</div>
-                    <div className="search-result-meta">
-                      {p.team && <span>{p.team}</span>}
-                      <span className="search-set">{p.setName}</span>
-                      <span>{num(p.ppg)} PPG · {p.games} G</span>
+              ? sortPlayers(results as PlayerHit[], sort).map((p) => (
+                  <Link key={`${p.slug}:${p.playerId}`} to={`/set/${p.slug}/player/${p.playerId}`} className="search-result player">
+                    <div className="search-result-row">
+                      <div className="search-result-main">{p.name}</div>
+                      <div className="search-result-meta">
+                        {p.team && <span>{p.team}</span>}
+                        <span className="search-set">{p.setName}</span>
+                        <span className="search-stat">{num(p.ppg)} PPG · {p.games} G</span>
+                      </div>
                     </div>
+                    {p.topCats && p.topCats.length > 0 && (
+                      <div className="search-cats">
+                        {p.topCats.map((c) => (
+                          <span key={c.category} className="search-cat">
+                            {c.category}<b>{c.points}</b>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </Link>
                 ))
               : (results as QuestionHit[]).map((qr) => (

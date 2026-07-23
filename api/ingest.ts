@@ -332,7 +332,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
       await writeIndex(index);
       await cleanupTemp(tempPaths);
-      return res.status(200).json({ slug: editionOf, editionId: resultId, editions });
+      return res.status(200).json({ slug: editionOf, editionId: resultId, editions, categoryWarnings: (meta as any).categoryWarnings || [] });
     }
 
     // ---- create a new tournament ----
@@ -377,9 +377,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(202).json({ pending: true, message: "Your first tournament was submitted for review. You'll get an email when it's approved." });
     }
 
-    const { slug } = await createTournament(body, owner);
+    const { slug, categoryWarnings } = await createTournament(body, owner);
     await cleanupTemp(tempPaths);
-    return res.status(200).json({ slug });
+    return res.status(200).json({ slug, categoryWarnings });
   } catch (e) {
     await cleanupTemp(tempPaths);
     if (e instanceof CreateError) return res.status(e.status).json({ error: e.message });

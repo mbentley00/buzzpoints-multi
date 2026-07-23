@@ -55,7 +55,7 @@ export class CreateError extends Error {
 
 // Create and publish a new tournament owned by `owner`. Throws CreateError with
 // an HTTP status on validation failure. Reads/writes the index internally.
-export async function createTournament(body: CreateBody, owner: string): Promise<{ slug: string }> {
+export async function createTournament(body: CreateBody, owner: string): Promise<{ slug: string; categoryWarnings?: unknown[] }> {
   const name = (body.name || "").trim();
   if (!name) throw new CreateError(400, "Tournament name is required.");
   if (!body.scoring || !(body.scoring in SCORINGS)) throw new CreateError(400, "Unknown scoring format.");
@@ -105,7 +105,7 @@ export async function createTournament(body: CreateBody, owner: string): Promise
     numTossups: meta.numTossups, rounds: meta.rounds.length, createdAt,
   };
   await writeIndex({ sets: [entry, ...index.sets.filter((s) => s.slug !== slug)] });
-  return { slug };
+  return { slug, categoryWarnings: (meta as any).categoryWarnings || [] };
 }
 
 // Refresh an EXISTING tournament in place from a freshly re-scraped source

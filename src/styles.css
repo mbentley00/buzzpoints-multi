@@ -204,15 +204,25 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
   flex: 1; min-width: 240px; padding: 9px 12px; font-size: 15px;
   border: 1px solid var(--line-strong); border-radius: 6px;
 }
-.search-results { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.search-summary { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 8px 0 4px; }
+.search-summary .subtitle { margin: 0; }
+.search-sort { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+.search-sort select { padding: 3px 6px; font-size: 12.5px; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--bg); color: var(--ink); }
+.search-results { display: flex; flex-direction: column; gap: 1px; margin-top: 4px; }
 .search-result {
   display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
-  padding: 10px 12px; border-radius: 6px; border: 1px solid transparent;
+  padding: 6px 10px; border-radius: 6px; border: 1px solid transparent;
 }
+.search-result.player { flex-direction: column; align-items: stretch; gap: 3px; }
+.search-result-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
 .search-result:hover { background: var(--hover); border-color: var(--line); text-decoration: none; }
 .search-result-main { font-weight: 600; color: var(--ink); }
-.search-result-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; color: var(--muted); font-size: 13px; text-align: right; }
+.search-result-meta { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; justify-content: flex-end; color: var(--muted); font-size: 13px; text-align: right; }
+.search-stat { font-variant-numeric: tabular-nums; }
 .search-set { font-weight: 600; color: var(--link); }
+.search-cats { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+.search-cat { color: var(--muted); background: var(--hover); border-radius: 4px; padding: 1px 7px; white-space: nowrap; }
+.search-cat b { color: var(--ink); font-weight: 600; margin-left: 5px; font-variant-numeric: tabular-nums; }
 
 /* about page — restrained, document-style layout with careful typography */
 .about-doc { flex: 1; width: 100%; background: #fbfbf9; }
@@ -373,6 +383,19 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
   font-size: 13px;
 }
 .note-imprecise { background: #f7f7f5; border: 1px solid var(--line); color: #444; }
+
+/* Bad-category upload warning */
+.cat-warn { background: #fdf6ec; border: 1px solid #e6d3ab; color: #5c4a24; border-radius: 6px; padding: 14px 16px; margin-bottom: 16px; }
+.cat-warn > strong { display: block; font-size: 14px; color: #7a5a15; }
+.cat-warn > p { margin: 6px 0 10px; font-size: 13px; }
+.cat-warn-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cat-warn-list li { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; font-size: 13px; padding: 6px 0; border-top: 1px solid #efe1c4; }
+.cat-warn-list li:first-child { border-top: none; }
+.cat-warn-name { font-weight: 700; color: #7a3f12; background: #f6e8cf; border-radius: 4px; padding: 1px 7px; }
+.cat-warn-count { color: #6b5a30; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cat-warn-reason { color: #5c4a24; }
+.cat-warn-eg { color: #8a7748; font-style: italic; flex-basis: 100%; }
+.cat-warn-actions { display: flex; align-items: center; gap: 16px; margin-top: 14px; }
 /* Results (YellowFruit) games + box scores */
 .results-round { margin-bottom: 22px; }
 .results-round > h2 { font-size: 15px; margin: 0 0 8px; color: var(--muted); }

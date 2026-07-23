@@ -8,6 +8,8 @@ import { uploadFiles } from "../upload";
 import { FileDrop } from "../components/FileDrop";
 import { Visibility, TOURNAMENT_LEVELS } from "../types";
 
+interface CategoryWarning { category: string; count: number; reason: string; examples: string[] }
+
 const SCORING_OPTIONS = [
   { id: "mACF", label: "mACF (15 / 10 / -5)" },
   { id: "ACF", label: "ACF (10 / -5)" },
@@ -62,6 +64,7 @@ export function CreateSet() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<string | null>(null);
+  const [warned, setWarned] = useState<{ slug: string; warnings: CategoryWarning[] } | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function onGames(files: File[]) {
@@ -174,6 +177,15 @@ export function CreateSet() {
         return;
       }
       refreshIndex();
+      // If the category heuristic flagged likely-mislabeled categories, pause on a
+      // review screen so the owner can fix their packets before relying on stats.
+      const warnings: CategoryWarning[] = Array.isArray(json.categoryWarnings) ? json.categoryWarnings : [];
+      if (warnings.length) {
+        setWarned({ slug: json.slug, warnings });
+        setBusy(false);
+        setStatus(null);
+        return;
+      }
       navigate(`/set/${json.slug}`);
     } catch (err) {
       setError(String((err as Error).message || err));
@@ -218,7 +230,33 @@ export function CreateSet() {
             </div>
           </div>
         )}
-        {!authLoading && user && !submitted && (
+        {!authLoading && user && warned && (
+          <div className="cat-warn" role="status">
+            <strong>Your tournament was created — but some categories look off.</strong>
+            <p className="muted">
+              These parsed categories don't look like real subjects. Often this means the packet's
+              category column actually holds author initials or names. Fix the packet metadata and
+              re-upload (or refresh this tournament) if that's the case — otherwise you can ignore this.
+            </p>
+            <ul className="cat-warn-list">
+              {warned.warnings.map((w) => (
+                <li key={w.category}>
+                  <span className="cat-warn-name">{w.category}</span>
+                  <span className="cat-warn-count">{w.count} tossup{w.count === 1 ? "" : "s"}</span>
+                  <span className="cat-warn-reason">{w.reason}</span>
+                  {w.examples?.length > 0 && <span className="cat-warn-eg">e.g. {w.examples.join("; ")}</span>}
+                </li>
+              ))}
+            </ul>
+            <div className="cat-warn-actions">
+              <button type="button" className="btn-primary" onClick={() => navigate(`/set/${warned.slug}`)}>
+                View tournament
+              </button>
+              <Link to="/" className="link">← Back to tournaments</Link>
+            </div>
+          </div>
+        )}
+        {!authLoading && user && !submitted && !warned && (
         <form className="create-form" onSubmit={submit}>
           <label className="field">
             <span>How do you want to add this tournament?</span>
