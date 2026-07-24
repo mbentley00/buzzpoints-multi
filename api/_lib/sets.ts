@@ -251,7 +251,7 @@ function collectImportedBonuses(editions: Edition[], roundFilter?: Set<number>):
   return out;
 }
 
-const stripTxt = (s: string) => (s || "").replace(/<[^>]+>/g, "").replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+const stripTxt = (s: string | undefined) => (s || "").replace(/<[^>]+>/g, "").replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
 
 // A compact comparison token for a tossup answer line: the primary answer only
 // (cut before the first bracketed alternate/prompt or parenthetical), lowercased
