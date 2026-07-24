@@ -30,7 +30,8 @@ export function PlayerDetailPage() {
   function rowClass(b: PlayerBuzz): string {
     if (b.value > 10) return "buzz-row buzz-row-power";
     if (b.value > 0) return "buzz-row buzz-row-get";
-    return "buzz-row buzz-row-neg";
+    if (b.value < 0) return "buzz-row buzz-row-neg";
+    return "buzz-row buzz-row-zero";
   }
 
   const cols: Column<PlayerBuzz>[] = [

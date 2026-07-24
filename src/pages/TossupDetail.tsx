@@ -12,7 +12,7 @@ function tier(v: number): "power" | "get" | "neg" | "zero" {
   if (v < 0) return "neg";
   return "zero";
 }
-const rowCls: Record<string, string> = { power: "buzz-row-power", get: "buzz-row-get", neg: "buzz-row-neg", zero: "buzz-row-neg" };
+const rowCls: Record<string, string> = { power: "buzz-row-power", get: "buzz-row-get", neg: "buzz-row-neg", zero: "buzz-row-zero" };
 function annotClass(v: number): string {
   if (v > 10) return "an-power";
   if (v > 0) return "an-pos";

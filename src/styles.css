@@ -16,6 +16,10 @@
   --power-bg: #3c5d86;    --power-bg-h: #36547a;
   --get-bg: #43784f;      --get-bg-h: #3c6c47;
   --neg-bg: #a4544b;      --neg-bg-h: #964c44;
+  /* Zero-value "no penalty" buzzes (a wrong buzz at the end of a question, or any
+     wrong buzz in a no-neg format): a neutral slate, NOT red, so they don't read
+     as negs. */
+  --zero-bg: #7e828a;     --zero-bg-h: #74777f;
   /* Bonus conversion tiers: a green → gold → clay → red gradient in the same family. */
   --tier-gold: #a98c45;   --tier-gold-h: #9b8040;
   --tier-clay: #b06f49;   --tier-clay-h: #a26542;
@@ -687,6 +691,8 @@ mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
 .data-table tbody tr.buzz-row-get:hover td { background: var(--get-bg-h); }
 .data-table tbody tr.buzz-row-neg td { background: var(--neg-bg); }
 .data-table tbody tr.buzz-row-neg:hover td { background: var(--neg-bg-h); }
+.data-table tbody tr.buzz-row-zero td { background: var(--zero-bg); }
+.data-table tbody tr.buzz-row-zero:hover td { background: var(--zero-bg-h); }
 /* Highlight buzzers at the word currently hovered in the question text. The inset
    overlay lightens whatever tier background the row has; a white left edge marks it. */
 .data-table tbody tr.buzz-row.buzz-hl td { box-shadow: inset 0 0 0 9999px rgba(255, 255, 255, 0.18); }
