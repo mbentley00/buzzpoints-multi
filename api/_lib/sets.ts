@@ -267,6 +267,10 @@ function answerKey(ans: string): string {
 // renumber rounds so the same physical packet shares a round number everywhere.
 // A no-op (returns the input) for a single edition or when orders already agree.
 export function canonicalizeEditions(editions: Edition[]): Edition[] {
+  return canonicalizeTossups(canonicalizeRounds(editions));
+}
+
+function canonicalizeRounds(editions: Edition[]): Edition[] {
   if (editions.length <= 1) return editions;
   const sig = (p: PacketFile) => new Set((p.tossups || []).map((t) => answerKey(t.answer)).filter(Boolean));
   const perEd = editions.map((e) => (e.packets || []).map((p) => ({ round: p.round, set: sig(p) })));
@@ -328,6 +332,85 @@ export function canonicalizeEditions(editions: Edition[]): Edition[] {
       packets: (e.packets || []).map((p) => ({ ...p, round: map(p.round) })),
       games: (e.games || []).map((g) => ({ ...g, round: map(g.round) })),
     };
+  });
+}
+
+// After rounds are aligned, fix packets whose tossups a mirror READ IN A DIFFERENT
+// ORDER. Buzzes are keyed by (round, tossup number), so if one mirror read a
+// packet's tossups in a different order than another, buzzes on the same question
+// land on different numbers and get attributed to whatever question sits in that
+// slot in the combined view. When an edition's packet for a round is an exact
+// PERMUTATION of the reference packet — same set of answer lines, each unique,
+// just reordered — we renumber its tossups (and its games' tossup references) to
+// the reference order so buzzes follow the question, not the slot.
+//
+// Deliberately conservative: it fires only for a clean permutation. If any answer
+// line differs (a revised or replaced question) or repeats, the round is left
+// untouched, so the position-keyed `versions`/revision model still handles those
+// (a genuinely different question at a shared slot keeps its existing behavior).
+export function canonicalizeTossups(editions: Edition[]): Edition[] {
+  if (editions.length <= 1) return editions;
+  const rounds = new Set<number>();
+  for (const e of editions) for (const p of e.packets || []) rounds.add(p.round);
+  const pktAt = editions.map((e) => { const m = new Map<number, PacketFile>(); for (const p of e.packets || []) m.set(p.round, p); return m; });
+
+  // answerKey -> 1-based position, but only when EVERY tossup has a non-blank key
+  // that is unique within the packet (else null: not safely permutable).
+  const uniqPos = (p: PacketFile): Map<string, number> | null => {
+    const ts = p.tossups || [];
+    const count = new Map<string, number>(), pos = new Map<string, number>();
+    ts.forEach((t, i) => { const k = answerKey(t.answer); if (k) { count.set(k, (count.get(k) || 0) + 1); pos.set(k, i + 1); } });
+    for (const t of ts) { const k = answerKey(t.answer); if (!k || count.get(k) !== 1) return null; }
+    return pos;
+  };
+
+  const remap = editions.map(() => new Map<string, number>()); // `${round}-${oldNum}` -> newNum
+  let changed = false;
+  for (const round of rounds) {
+    const present = editions.map((_, e) => ({ e, p: pktAt[e].get(round) })).filter((x): x is { e: number; p: PacketFile } => !!x.p);
+    if (present.length < 2) continue;
+    let ref = present[0];
+    for (const x of present) if ((x.p.tossups || []).length > (ref.p.tossups || []).length) ref = x;
+    const refPos = uniqPos(ref.p);
+    if (!refPos) continue;
+    for (const { e, p } of present) {
+      if (e === ref.e) continue;
+      const ts = p.tossups || [];
+      if (ts.length !== (ref.p.tossups || []).length) continue;
+      const ePos = uniqPos(p);
+      if (!ePos) continue;
+      if (![...ePos.keys()].every((k) => refPos.has(k))) continue; // same answer multiset (both unique, equal size)
+      let moved = false;
+      const local: [number, number][] = [];
+      ts.forEach((t, i) => { const nn = refPos.get(answerKey(t.answer))!; local.push([i + 1, nn]); if (nn !== i + 1) moved = true; });
+      if (!moved) continue;
+      for (const [oldN, newN] of local) remap[e].set(`${round}-${oldN}`, newN);
+      changed = true;
+    }
+  }
+  if (!changed) return editions;
+
+  const touched = (m: Map<string, number>, round: number) => { for (const k of m.keys()) if (k.startsWith(`${round}-`)) return true; return false; };
+  return editions.map((e, ei) => {
+    const m = remap[ei];
+    if (m.size === 0) return e;
+    const rm = (round: number, oldN: number) => m.get(`${round}-${oldN}`) ?? oldN;
+    const packets = (e.packets || []).map((p) => {
+      if (!touched(m, p.round)) return p;
+      const tossups: PacketFile["tossups"] = new Array((p.tossups || []).length);
+      (p.tossups || []).forEach((t, i) => { tossups[rm(p.round, i + 1) - 1] = t; });
+      return { ...p, tossups };
+    });
+    const games = (e.games || []).map((g) => {
+      if (!touched(m, g.round)) return g;
+      return { ...g, match_questions: (g.match_questions || []).map((mq) => {
+        const tn = mq.tossup_question?.question_number;
+        if (tn == null) return mq;
+        const nn = rm(g.round, tn);
+        return nn === tn ? mq : { ...mq, tossup_question: { ...mq.tossup_question, question_number: nn } };
+      }) };
+    });
+    return { ...e, packets, games };
   });
 }
 
