@@ -455,6 +455,13 @@ export function aggregate(
           const c = corrMap.get(corrKeyOf(r, tnum, bteam, origPlayer, origWordIndex));
           if (c) { if (c.toPlayer !== undefined) pname = c.toPlayer; if (c.toWordIndex !== undefined) widx = c.toWordIndex; }
         }
+        // A buzz's word index is relative to the exact wording the player heard. In
+        // the combined view of a multi-edition set the canonical wording may be a
+        // different length (a mirror reworded the same question), which would render
+        // the buzz past the end of the shown text. Pin those to the last word so
+        // positions stay within the question. Per-edition views use that edition's
+        // own wording, so this is a no-op there.
+        if (tq && widx !== null && widx >= tq.wordCount) widx = tq.wordCount - 1;
         ordered.push({ value, pname, bteam, widx });
         if (tq) {
           const opp = teamNames.find((t) => t !== bteam) ?? null;

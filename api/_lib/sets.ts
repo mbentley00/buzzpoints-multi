@@ -219,10 +219,14 @@ function combinedPackets(editions: Edition[]): PacketFile[] {
       (p.tossups || []).forEach((t, i) => r!.tossups.set(i, t)); // later editions overwrite
       (p.bonuses || []).forEach((b, i) => r!.bonuses.set(i, b));
     }
+  // Place each question at its own index (not compacted): canonicalizeTossups may
+  // leave gaps/appended slots, and buzzes are keyed by slot number, so positions
+  // must be preserved. Holes (slots no edition filled) are skipped downstream.
+  const atIndex = <T>(m: Map<number, T>): T[] => { const a: T[] = []; for (const [i, v] of m) a[i] = v; return a; };
   return [...rounds.entries()].sort((a, b) => a[0] - b[0]).map(([round, r]) => ({
     round,
-    tossups: [...r.tossups.entries()].sort((a, b) => a[0] - b[0]).map(([, t]) => t),
-    bonuses: [...r.bonuses.entries()].sort((a, b) => a[0] - b[0]).map(([, b]) => b),
+    tossups: atIndex(r.tossups),
+    bonuses: atIndex(r.bonuses),
   }));
 }
 
@@ -336,56 +340,68 @@ function canonicalizeRounds(editions: Edition[]): Edition[] {
 }
 
 // After rounds are aligned, fix packets whose tossups a mirror READ IN A DIFFERENT
-// ORDER. Buzzes are keyed by (round, tossup number), so if one mirror read a
-// packet's tossups in a different order than another, buzzes on the same question
-// land on different numbers and get attributed to whatever question sits in that
-// slot in the combined view. When an edition's packet for a round is an exact
-// PERMUTATION of the reference packet — same set of answer lines, each unique,
-// just reordered — we renumber its tossups (and its games' tossup references) to
-// the reference order so buzzes follow the question, not the slot.
+// ORDER — or where a mirror PLAYED A DIFFERENT QUESTION at a slot. Buzzes are
+// keyed by (round, tossup number), so if one mirror read a packet's tossups in a
+// different order, or swapped/replaced a tossup, buzzes on the same question land
+// on different numbers and get pooled with (and rendered against) whatever
+// question sits in that slot in the combined view — e.g. giveaway buzzes on a
+// 136-word question shown past the end of the unrelated 128-word question that
+// happens to occupy that slot.
 //
-// Deliberately conservative: it fires only for a clean permutation. If any answer
-// line differs (a revised or replaced question) or repeats, the round is left
-// untouched, so the position-keyed `versions`/revision model still handles those
-// (a genuinely different question at a shared slot keeps its existing behavior).
+// We align each round's tossups by ANSWER IDENTITY to a reference edition (the
+// one with the most tossups that round): a tossup that shares its primary answer
+// with a reference tossup is renumbered to the reference's position (so a reorder
+// collapses onto one slot and its buzzes follow the question); a tossup with no
+// reference match is a genuine replacement and is appended to its OWN new slot
+// (shared across editions that played the same replacement) so its buzzes are
+// never mixed into an unrelated question. Same primary answer, different wording
+// stays merged (the `versions` list surfaces the wording diff); only genuinely
+// different questions are split apart. A no-op for a single edition, and for
+// mirrors that already agree on order.
 export function canonicalizeTossups(editions: Edition[]): Edition[] {
   if (editions.length <= 1) return editions;
   const rounds = new Set<number>();
   for (const e of editions) for (const p of e.packets || []) rounds.add(p.round);
   const pktAt = editions.map((e) => { const m = new Map<number, PacketFile>(); for (const p of e.packets || []) m.set(p.round, p); return m; });
 
-  // answerKey -> 1-based position, but only when EVERY tossup has a non-blank key
-  // that is unique within the packet (else null: not safely permutable).
-  const uniqPos = (p: PacketFile): Map<string, number> | null => {
-    const ts = p.tossups || [];
-    const count = new Map<string, number>(), pos = new Map<string, number>();
-    ts.forEach((t, i) => { const k = answerKey(t.answer); if (k) { count.set(k, (count.get(k) || 0) + 1); pos.set(k, i + 1); } });
-    for (const t of ts) { const k = answerKey(t.answer); if (!k || count.get(k) !== 1) return null; }
-    return pos;
-  };
-
   const remap = editions.map(() => new Map<string, number>()); // `${round}-${oldNum}` -> newNum
   let changed = false;
   for (const round of rounds) {
     const present = editions.map((_, e) => ({ e, p: pktAt[e].get(round) })).filter((x): x is { e: number; p: PacketFile } => !!x.p);
     if (present.length < 2) continue;
+    // Reference = the edition with the most tossups this round (stable seed order).
     let ref = present[0];
     for (const x of present) if ((x.p.tossups || []).length > (ref.p.tossups || []).length) ref = x;
-    const refPos = uniqPos(ref.p);
-    if (!refPos) continue;
+    const refKeys = (ref.p.tossups || []).map((t) => answerKey(t.answer));
+    // answerKey -> reference position (1-based), only for keys unique within ref.
+    const refPos = new Map<string, number>();
+    { const cnt = new Map<string, number>(); for (const k of refKeys) if (k) cnt.set(k, (cnt.get(k) || 0) + 1);
+      refKeys.forEach((k, i) => { if (k && cnt.get(k) === 1 && !refPos.has(k)) refPos.set(k, i + 1); }); }
+    // Replacements (a question not in the reference) are appended beyond the
+    // largest packet; identical replacements across editions share a slot.
+    let nextAppend = Math.max(0, ...present.map((x) => (x.p.tossups || []).length));
+    const appendPos = new Map<string, number>();
+
     for (const { e, p } of present) {
-      if (e === ref.e) continue;
       const ts = p.tossups || [];
-      if (ts.length !== (ref.p.tossups || []).length) continue;
-      const ePos = uniqPos(p);
-      if (!ePos) continue;
-      if (![...ePos.keys()].every((k) => refPos.has(k))) continue; // same answer multiset (both unique, equal size)
-      let moved = false;
-      const local: [number, number][] = [];
-      ts.forEach((t, i) => { const nn = refPos.get(answerKey(t.answer))!; local.push([i + 1, nn]); if (nn !== i + 1) moved = true; });
-      if (!moved) continue;
-      for (const [oldN, newN] of local) remap[e].set(`${round}-${oldN}`, newN);
-      changed = true;
+      const target = new Array<number>(ts.length).fill(0);
+      // 1) same question as the reference at the same slot -> stay put.
+      ts.forEach((t, i) => { const k = answerKey(t.answer); if (k && refKeys[i] === k) target[i] = i + 1; });
+      // 2) else a question matching a unique reference position -> move there (reorder).
+      ts.forEach((t, i) => { if (target[i]) return; const k = answerKey(t.answer); if (k && refPos.has(k)) target[i] = refPos.get(k)!; });
+      // 3) else a replacement (no reference match) -> append; a blank answer (e.g. a
+      //    tossup that failed to scrape) can't be identified, so it stays in place.
+      ts.forEach((t, i) => {
+        if (target[i]) return;
+        const k = answerKey(t.answer);
+        if (!k) { target[i] = i + 1; return; }
+        let slot = appendPos.get(k); if (slot === undefined) { slot = ++nextAppend; appendPos.set(k, slot); }
+        target[i] = slot;
+      });
+      // 4) enforce injectivity: on any collision, push the later one to a fresh slot.
+      const used = new Set<number>();
+      ts.forEach((_, i) => { if (used.has(target[i])) target[i] = ++nextAppend; used.add(target[i]); });
+      ts.forEach((_, i) => { if (target[i] !== i + 1) { remap[e].set(`${round}-${i + 1}`, target[i]); changed = true; } });
     }
   }
   if (!changed) return editions;
@@ -397,7 +413,9 @@ export function canonicalizeTossups(editions: Edition[]): Edition[] {
     const rm = (round: number, oldN: number) => m.get(`${round}-${oldN}`) ?? oldN;
     const packets = (e.packets || []).map((p) => {
       if (!touched(m, p.round)) return p;
-      const tossups: PacketFile["tossups"] = new Array((p.tossups || []).length);
+      // Sparse: holes at canonical slots this edition never played (no buzzes
+      // reference them; combined merge and versions both skip holes).
+      const tossups: PacketFile["tossups"] = [];
       (p.tossups || []).forEach((t, i) => { tossups[rm(p.round, i + 1) - 1] = t; });
       return { ...p, tossups };
     });
