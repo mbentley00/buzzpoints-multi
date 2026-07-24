@@ -713,10 +713,13 @@ export function aggregate(
   for (const [k, s] of pl) {
     const pid = `p${pidx++}`;
     const g = s.games.size;
+    // Rebounds: tossups this player converted after another team had buzzed wrong
+    // (already flagged per-buzz in the buzz log).
+    const rebounds = (plBuzzes.get(k) || []).filter((b) => b.rebound).length;
     const row = {
       id: pid, name: s.name, team: s.team, teamId: teamId.get(s.team) ?? null,
       games: g, tuh: s.tuh, powers: s.powers, gets: s.gets, incorrect: s.incorrect, pts: s.pts,
-      firstBuzzes: firstPl.get(k) || 0, top3Buzzes: top3Pl.get(k) || 0,
+      firstBuzzes: firstPl.get(k) || 0, top3Buzzes: top3Pl.get(k) || 0, rebounds,
       ppg: g ? round1(s.pts / g) : 0, pPerTuh: s.tuh ? Math.round((100 * s.pts) / s.tuh) / 100 : 0,
     };
     players.push(row);

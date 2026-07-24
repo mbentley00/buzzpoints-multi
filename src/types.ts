@@ -231,6 +231,7 @@ export interface PlayerRow {
   pts: number;
   firstBuzzes: number;
   top3Buzzes: number;
+  rebounds: number;
   ppg: number;
   pPerTuh: number;
 }

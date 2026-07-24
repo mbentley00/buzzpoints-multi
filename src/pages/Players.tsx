@@ -44,6 +44,7 @@ export function Players() {
     { key: "ptuh", label: "Pts/TUH", align: "right", sortVal: (p) => p.pPerTuh, render: (p) => num(p.pPerTuh, 2) },
     { key: "first", label: "1st", align: "right", sortVal: (p) => p.firstBuzzes, render: (p) => p.firstBuzzes, title: "Times the fastest correct buzz on a tossup" },
     { key: "top3", label: "Top3", align: "right", sortVal: (p) => p.top3Buzzes, render: (p) => p.top3Buzzes },
+    { key: "reb", label: "Reb", align: "right", sortVal: (p) => p.rebounds, render: (p) => p.rebounds, title: "Rebounds: tossups converted after another team buzzed wrong" },
   ];
 
   return (
