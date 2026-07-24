@@ -69,6 +69,7 @@ export function PlayerDetailPage() {
         <Stat label="TUH" value={String(d.tuh)} />
         {meta.hasPower && <Stat label="Powers" value={String(d.powers)} />}
         <Stat label="Correct" value={String(d.gets)} />
+        <Stat label={meta.hasNeg ? "Neg" : "Inc"} value={String(d.incorrect)} />
         <Stat label="Points" value={String(d.pts)} />
         <Stat label="PPG" value={num(d.ppg)} />
         <Stat label="1st buzzes" value={String(d.firstBuzzes)} />

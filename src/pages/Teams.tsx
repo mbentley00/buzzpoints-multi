@@ -40,11 +40,13 @@ export function Teams() {
     ...(meta.hasPower
       ? [{ key: "pwr", label: "Pwr", align: "right" as const, sortVal: (t: TeamRow) => t.powers, render: (t: TeamRow) => t.powers }]
       : []),
+    { key: "gets", label: "Correct", align: "right", sortVal: (t) => t.gets, render: (t) => t.gets },
+    { key: "inc", label: meta.hasNeg ? "Neg" : "Inc", align: "right", sortVal: (t) => t.incorrect, render: (t) => t.incorrect, title: "Incorrect buzzes" },
     { key: "pp20", label: "PP20TUH", align: "right", sortVal: (t) => t.pp20tuh, render: (t) => num(t.pp20tuh) },
     ...(meta.hasBonuses && meta.hasTeamBonuses !== false
       ? [{ key: "ppb", label: "PPB", align: "right" as const, sortVal: (t: TeamRow) => t.ppb, render: (t: TeamRow) => num(t.ppb, 2) }]
       : []),
-    { key: "first", label: "1st", align: "right", sortVal: (t) => t.firstBuzzes, render: (t) => t.firstBuzzes, title: "First buzzes" },
+    { key: "first", label: "1st", align: "right", sortVal: (t) => t.firstBuzzes, render: (t) => t.firstBuzzes, title: "Fastest correct buzz on a tossup" },
     { key: "top3", label: "Top3", align: "right", sortVal: (t) => t.top3Buzzes, render: (t) => t.top3Buzzes },
   ];
 

@@ -58,6 +58,7 @@ export function TeamDetailPage() {
     { key: "games", label: "GP", align: "right", sortVal: (p) => p.games, render: (p) => p.games },
     ...(meta.hasPower ? [{ key: "powers", label: "Pwr", align: "right" as const, sortVal: (p: RosterPlayer) => p.powers, render: (p: RosterPlayer) => p.powers }] : []),
     { key: "gets", label: "Get", align: "right", sortVal: (p) => p.gets, render: (p) => p.gets },
+    { key: "inc", label: meta.hasNeg ? "Neg" : "Inc", align: "right", sortVal: (p) => p.incorrect, render: (p) => p.incorrect, title: "Incorrect buzzes" },
     { key: "pts", label: "Points", align: "right", sortVal: (p) => p.pts, render: (p) => p.pts },
     { key: "ppg", label: "PPG", align: "right", sortVal: (p) => p.ppg, render: (p) => num(p.ppg) },
   ];
@@ -88,6 +89,7 @@ export function TeamDetailPage() {
         <Stat label="PP20TUH" value={num(d.pp20tuh)} />
         {meta.hasPower && <Stat label="Powers" value={String(d.powers)} />}
         <Stat label="Correct" value={String(d.gets)} />
+        <Stat label={meta.hasNeg ? "Neg" : "Inc"} value={String(d.incorrect)} />
         <Stat label="1st buzzes" value={String(d.firstBuzzes)} />
         <Stat label="Top 3" value={String(d.top3Buzzes)} />
       </div>

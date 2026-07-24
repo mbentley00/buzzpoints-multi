@@ -281,6 +281,7 @@ export interface TeamRow {
   ppg: number;
   powers: number;
   gets: number;
+  incorrect: number;
   firstBuzzes: number;
   top3Buzzes: number;
   bonusesHeard: number;
@@ -296,6 +297,7 @@ export interface RosterPlayer {
   ppg: number;
   powers: number;
   gets: number;
+  incorrect: number;
 }
 
 export interface CatTeamTossupSub {

@@ -340,6 +340,11 @@ export function aggregate(
   const isCorrect = (v: number) => v > 0; // power or get
   const imprecise = (v: number, widx: number | null, pIdx: number | null) =>
     hasPower && isGet(v) && pIdx !== null && widx !== null && widx < pIdx;
+  // The "neg"/incorrect stat counts penalized wrong buzzes. A 0-point buzz is NOT
+  // a neg — it carries no penalty — so in a neg format it must not inflate neg
+  // counts (a wrong buzz there is negative). In a no-neg format a wrong buzz
+  // scores 0, so those 0s ARE the incorrect buzzes we want to count.
+  const countsNeg = (v: number) => (scoring.hasNeg ? v < 0 : v <= 0);
 
   const corrMap = new Map<string, Correction>();
   for (const c of corrections) corrMap.set(corrKeyOf(c.round, c.num, c.team, c.fromPlayer, c.fromWordIndex), c);
@@ -375,7 +380,7 @@ export function aggregate(
 
   type PL = { name: string; team: string; games: Set<string>; tuh: number; powers: number; gets: number; incorrect: number; pts: number };
   const pl = new Map<string, PL>();
-  type TM = { games: number; wins: number; losses: number; ties: number; tuPts: number; bonusPts: number; bonusesHeard: number; powers: number; gets: number; tuh: number };
+  type TM = { games: number; wins: number; losses: number; ties: number; tuPts: number; bonusPts: number; bonusesHeard: number; powers: number; gets: number; incorrect: number; tuh: number };
   const tm = new Map<string, TM>();
   const rosters = new Map<string, Set<string>>();
   const plCat = new Map<string, Map<string, CatAcc>>();      // player -> categoryMid -> acc
@@ -391,13 +396,13 @@ export function aggregate(
     if (!v) { v = { name, team, games: new Set(), tuh: 0, powers: 0, gets: 0, incorrect: 0, pts: 0 }; pl.set(k, v); }
     return v;
   };
-  const tmOf = (k: string): TM => { let v = tm.get(k); if (!v) { v = { games: 0, wins: 0, losses: 0, ties: 0, tuPts: 0, bonusPts: 0, bonusesHeard: 0, powers: 0, gets: 0, tuh: 0 }; tm.set(k, v); } return v; };
+  const tmOf = (k: string): TM => { let v = tm.get(k); if (!v) { v = { games: 0, wins: 0, losses: 0, ties: 0, tuPts: 0, bonusPts: 0, bonusesHeard: 0, powers: 0, gets: 0, incorrect: 0, tuh: 0 }; tm.set(k, v); } return v; };
   const nestCat = <V>(m: Map<string, Map<string, V>>, k: string, sub: string, make: () => V): V => {
     let inner = m.get(k); if (!inner) { inner = new Map(); m.set(k, inner); }
     let v = inner.get(sub); if (!v) { v = make(); inner.set(sub, v); } return v;
   };
   const addCat = (c: CatAcc, value: number, widx: number | null, prec: boolean) => {
-    if (isPower(value)) c.powers++; else if (isGet(value)) c.gets++; else c.incorrect++;
+    if (isPower(value)) c.powers++; else if (isGet(value)) c.gets++; else if (countsNeg(value)) c.incorrect++;
     c.points += value;
     if (prec && widx !== null) { c.posSum += widx; c.posN++; c.earliest = c.earliest === null ? widx : Math.min(c.earliest, widx); }
   };
@@ -462,7 +467,7 @@ export function aggregate(
         }
         if (pname) {
           const pv = plOf(pname, bteam || "");
-          if (isPower(value)) pv.powers++; else if (isGet(value)) pv.gets++; else pv.incorrect++;
+          if (isPower(value)) pv.powers++; else if (isGet(value)) pv.gets++; else if (countsNeg(value)) pv.incorrect++;
           pv.pts += value;
           if (tq) {
             const prec = isCorrect(value) && !imprecise(value, widx, tq.powerIndex);
@@ -472,7 +477,7 @@ export function aggregate(
         }
         if (bteam) {
           const t = tmOf(bteam);
-          if (isPower(value)) t.powers++; else if (isGet(value)) t.gets++;
+          if (isPower(value)) t.powers++; else if (isGet(value)) t.gets++; else if (countsNeg(value)) t.incorrect++;
           t.tuPts += value;
           addGamePts(bteam, value);
           if (tq) {
@@ -545,22 +550,31 @@ export function aggregate(
   const firstTm = new Map<string, number>(), top3Tm = new Map<string, number>();
   const firstPlfc = new Map<string, number>(), top3Plfc = new Map<string, number>();
   const bump = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) || 0) + 1);
+  // #elements strictly less than x in a sorted array (each correct buzz's rank).
+  const lowerBound = (arr: number[], x: number) => { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] < x) lo = m + 1; else hi = m; } return lo; };
   const tuCorrect = new Map<string, number[]>(); // sorted widx of reliably-placed correct buzzes
   for (const [k, blist] of tuBuzzes) {
     const t = tossups.get(k);
     const P = t ? t.powerIndex : null;
     const sub = t ? t.subcategory : null;
-    const valid = blist.filter((b) => b.wordIndex !== null && !imprecise(b.value, b.wordIndex, P)).sort((a, b) => a.wordIndex! - b.wordIndex!);
-    tuCorrect.set(k, blist.filter((b) => isCorrect(b.value) && b.wordIndex !== null && !imprecise(b.value, b.wordIndex, P)).map((b) => b.wordIndex!).sort((a, b) => a - b));
-    if (!valid.length) continue;
-    const minpos = valid[0].wordIndex!;
-    for (const b of valid) if (b.wordIndex === minpos && b.player) {
-      bump(firstPl, plKey(b.player, b.team || "")); if (b.team) bump(firstTm, b.team);
-      if (sub) bump(firstPlfc, `${plKey(b.player, b.team || "")}${SEP}${sub}`);
-    }
-    for (const b of valid.slice(0, 3)) if (b.player) {
-      bump(top3Pl, plKey(b.player, b.team || "")); if (b.team) bump(top3Tm, b.team);
-      if (sub) bump(top3Plfc, `${plKey(b.player, b.team || "")}${SEP}${sub}`);
+    // "1st buzz" / "top-3 buzz" credit the fastest CORRECT answerers in the field.
+    // A neg is often the earliest buzz on a tossup, but it must never count as a
+    // first/top-3 buzz — otherwise these totals disagree with the per-buzz ranks
+    // shown on each player's page (buzzRowsFor ranks among correct buzzes only)
+    // and neggers get spurious "first buzz" credit.
+    const correct = blist.filter((b) => isCorrect(b.value) && b.wordIndex !== null && !imprecise(b.value, b.wordIndex, P)).sort((a, b) => a.wordIndex! - b.wordIndex!);
+    const positions = correct.map((b) => b.wordIndex!);
+    tuCorrect.set(k, positions);
+    if (!correct.length) continue;
+    // Rank each correct buzz among the field by position, ties sharing a rank
+    // (rank = #correct buzzes strictly earlier + 1) — identical to the per-buzz
+    // rank shown on the player page, so header totals and the buzz list agree.
+    for (const b of correct) {
+      if (!b.player) continue;
+      const rank = lowerBound(positions, b.wordIndex!) + 1;
+      const pk = plKey(b.player, b.team || "");
+      if (rank === 1) { bump(firstPl, pk); if (b.team) bump(firstTm, b.team); if (sub) bump(firstPlfc, `${pk}${SEP}${sub}`); }
+      if (rank <= 3) { bump(top3Pl, pk); if (b.team) bump(top3Tm, b.team); if (sub) bump(top3Plfc, `${pk}${SEP}${sub}`); }
     }
   }
 
@@ -669,7 +683,6 @@ export function aggregate(
     rows.sort((a, b) => a.category.toLowerCase().localeCompare(b.category.toLowerCase()));
     return rows;
   };
-  const lowerBound = (arr: number[], x: number) => { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] < x) lo = m + 1; else hi = m; } return lo; };
   const buzzRowsFor = (name: string, team: string) => {
     const rows = (plBuzzes.get(plKey(name, team)) || []).map((rec) => {
       const t = tossups.get(`${rec.round}-${rec.num}`);
@@ -725,14 +738,14 @@ export function aggregate(
     const tid = teamId.get(name)!;
     const row = {
       id: tid, name, games: g, wins: s.wins, losses: s.losses, ties: s.ties, pts: totpts, tuPts: s.tuPts, bonusPts: s.bonusPts,
-      ppg: g ? round1(totpts / g) : 0, powers: s.powers, gets: s.gets,
+      ppg: g ? round1(totpts / g) : 0, powers: s.powers, gets: s.gets, incorrect: s.incorrect,
       firstBuzzes: firstTm.get(name) || 0, top3Buzzes: top3Tm.get(name) || 0,
       bonusesHeard: s.bonusesHeard, ppb: s.bonusesHeard ? Math.round((100 * s.bonusPts) / s.bonusesHeard) / 100 : 0,
       pp20tuh: s.tuh ? round1((20 * s.tuPts) / s.tuh) : 0,
     };
     teams.push(row);
     const roster = (teamRoster.get(name) || []).slice().sort((a, b) => (b.pts as number) - (a.pts as number))
-      .map((p) => ({ id: p.id, name: p.name, games: p.games, pts: p.pts, ppg: p.ppg, powers: p.powers, gets: p.gets }));
+      .map((p) => ({ id: p.id, name: p.name, games: p.games, pts: p.pts, ppg: p.ppg, powers: p.powers, gets: p.gets, incorrect: p.incorrect }));
     const bnCatMap = new Map<string, CatBnAcc>();
     for (const [sub, v] of tmBonusCat.get(name) || new Map<string, BnCat>()) bnCatMap.set(sub, { main: v.main, heard: v.heard, pts: v.pts, parts: v.parts });
     tmDetail[tid] = {
