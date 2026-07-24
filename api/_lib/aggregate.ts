@@ -380,7 +380,7 @@ export function aggregate(
 
   type PL = { name: string; team: string; games: Set<string>; tuh: number; powers: number; gets: number; incorrect: number; pts: number };
   const pl = new Map<string, PL>();
-  type TM = { games: number; wins: number; losses: number; ties: number; tuPts: number; bonusPts: number; bonusesHeard: number; powers: number; gets: number; incorrect: number; tuh: number };
+  type TM = { games: number; wins: number; losses: number; ties: number; tuPts: number; bonusPts: number; bonusesHeard: number; powers: number; gets: number; incorrect: number; tuh: number; fullTuh: number };
   const tm = new Map<string, TM>();
   const rosters = new Map<string, Set<string>>();
   const plCat = new Map<string, Map<string, CatAcc>>();      // player -> categoryMid -> acc
@@ -396,7 +396,7 @@ export function aggregate(
     if (!v) { v = { name, team, games: new Set(), tuh: 0, powers: 0, gets: 0, incorrect: 0, pts: 0 }; pl.set(k, v); }
     return v;
   };
-  const tmOf = (k: string): TM => { let v = tm.get(k); if (!v) { v = { games: 0, wins: 0, losses: 0, ties: 0, tuPts: 0, bonusPts: 0, bonusesHeard: 0, powers: 0, gets: 0, incorrect: 0, tuh: 0 }; tm.set(k, v); } return v; };
+  const tmOf = (k: string): TM => { let v = tm.get(k); if (!v) { v = { games: 0, wins: 0, losses: 0, ties: 0, tuPts: 0, bonusPts: 0, bonusesHeard: 0, powers: 0, gets: 0, incorrect: 0, tuh: 0, fullTuh: 0 }; tm.set(k, v); } return v; };
   const nestCat = <V>(m: Map<string, Map<string, V>>, k: string, sub: string, make: () => V): V => {
     let inner = m.get(k); if (!inner) { inner = new Map(); m.set(k, inner); }
     let v = inner.get(sub); if (!v) { v = make(); inner.set(sub, v); } return v;
@@ -411,6 +411,10 @@ export function aggregate(
     const r = g.round;
     const teamNames = (g.match_teams || []).map((t) => t.team?.name).filter(Boolean) as string[];
     const gameId = `${r}:` + [...teamNames].sort().join("|");
+    // Tossups read in this game (used to credit every teammate with a full game's
+    // worth of TUH — see the players section — since sources often list only the
+    // players who buzzed, not who actually played).
+    const gameTuh = (g.match_questions || []).length;
     const gamePts = new Map<string, number>();
     const addGamePts = (t: string, v: number) => gamePts.set(t, (gamePts.get(t) || 0) + v);
 
@@ -419,6 +423,7 @@ export function aggregate(
       if (!tname) continue;
       const t = tmOf(tname);
       t.games += 1;
+      t.fullTuh += gameTuh;
       t.bonusPts += mt.bonus_points || 0;
       addGamePts(tname, mt.bonus_points || 0);
       let rs = rosters.get(tname);
@@ -712,15 +717,21 @@ export function aggregate(
   let pidx = 0;
   for (const [k, s] of pl) {
     const pid = `p${pidx++}`;
-    const g = s.games.size;
+    // Games/TUH: sources frequently list only the players who buzzed in a game, so
+    // a player's own game/TUH tallies undercount games they played without buzzing.
+    // Credit every player with all the games (and full tossups-heard) that their
+    // team played, so games/TUH/PPG reflect the rounds their team was in.
+    const tmStats = tm.get(s.team);
+    const g = tmStats ? tmStats.games : s.games.size;
+    const tuh = tmStats ? tmStats.fullTuh : s.tuh;
     // Rebounds: tossups this player converted after another team had buzzed wrong
     // (already flagged per-buzz in the buzz log).
     const rebounds = (plBuzzes.get(k) || []).filter((b) => b.rebound).length;
     const row = {
       id: pid, name: s.name, team: s.team, teamId: teamId.get(s.team) ?? null,
-      games: g, tuh: s.tuh, powers: s.powers, gets: s.gets, incorrect: s.incorrect, pts: s.pts,
+      games: g, tuh, powers: s.powers, gets: s.gets, incorrect: s.incorrect, pts: s.pts,
       firstBuzzes: firstPl.get(k) || 0, top3Buzzes: top3Pl.get(k) || 0, rebounds,
-      ppg: g ? round1(s.pts / g) : 0, pPerTuh: s.tuh ? Math.round((100 * s.pts) / s.tuh) / 100 : 0,
+      ppg: g ? round1(s.pts / g) : 0, pPerTuh: tuh ? Math.round((100 * s.pts) / tuh) / 100 : 0,
     };
     players.push(row);
     if (!teamRoster.has(s.team)) teamRoster.set(s.team, []);
