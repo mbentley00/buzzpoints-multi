@@ -26,14 +26,18 @@ export function Login() {
     setBusy(true);
     try {
       if (mode === "signup") {
-        const r = await signup(email.trim(), password, fullName.trim(), institution.trim() || undefined);
+        // Pass `next` along: the verification email carries it, so finishing
+        // signup drops them back where they were headed (usually an invite link)
+        // instead of on the tournament list.
+        const r = await signup(email.trim(), password, fullName.trim(), institution.trim() || undefined, next);
         setPending({ email: email.trim(), devUrl: r.devUrl, delivered: r.delivered });
       } else {
-        await login(email.trim(), password);
+        await login(email.trim(), password, next);
         navigate(next, { replace: true });
       }
     } catch (err) {
       const e2 = err as Error & { needsVerification?: boolean; devUrl?: string };
+      // Logging in unverified re-sends the link server-side (carrying `next`).
       if (e2.needsVerification) setPending({ email: email.trim(), devUrl: e2.devUrl });
       else setError(String(e2.message || err));
     } finally {
@@ -43,7 +47,7 @@ export function Login() {
 
   async function resend() {
     setResent(null);
-    try { const r = await resendVerification(pending!.email); setResent(r.devUrl ? `dev:${r.devUrl}` : "sent"); }
+    try { const r = await resendVerification(pending!.email, next); setResent(r.devUrl ? `dev:${r.devUrl}` : "sent"); }
     catch (e) { setError(String((e as Error).message || e)); }
   }
 

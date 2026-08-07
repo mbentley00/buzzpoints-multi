@@ -183,7 +183,16 @@ export const writeRequests = (slug: string, r: CorrectionRequest[]) => writeJson
 // Access requests: a logged-in user asks the owner to be invited to a set.
 // They must declare their affiliation: a role and the team they were part of.
 export type AccessRole = "player" | "staff" | "coach";
-export interface AccessRequest { email: string; name: string; at: string; status: "pending" | "approved" | "denied"; role?: AccessRole; team?: string; }
+export interface AccessRequest {
+  email: string; name: string; at: string;
+  status: "pending" | "approved" | "denied";
+  role?: AccessRole; team?: string;
+  // How the request stopped being pending, and when. "link" means they redeemed
+  // an invite link themselves — which is why an owner can open a request email
+  // and find the person already has access.
+  via?: "owner" | "link";
+  resolvedAt?: string;
+}
 export const readAccess = (slug: string) => readBlobJson<AccessRequest[]>(`sets/${slug}/_access.json`, false).then((r) => r || []);
 export const writeAccess = (slug: string, r: AccessRequest[]) => writeJson(`sets/${slug}/_access.json`, r);
 

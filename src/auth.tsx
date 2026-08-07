@@ -12,17 +12,19 @@ interface AuthState {
   role: Role;
   isModerator: boolean; // moderator OR admin
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, name: string, institution?: string) => Promise<SignupResult>;
-  verify: (token: string) => Promise<void>;
-  resendVerification: (email: string) => Promise<{ devUrl?: string }>;
+  login: (email: string, password: string, next?: string) => Promise<void>;
+  signup: (email: string, password: string, name: string, institution?: string, next?: string) => Promise<SignupResult>;
+  // Resolves to where the verification link said to go (the invite link they
+  // clicked before signing up), or null.
+  verify: (token: string) => Promise<string | null>;
+  resendVerification: (email: string, next?: string) => Promise<{ devUrl?: string }>;
   logout: () => Promise<void>;
 }
 
 const Ctx = createContext<AuthState>(null as unknown as AuthState);
 export const useAuth = () => useContext(Ctx);
 
-type AuthResp = { email?: string | null; name?: string | null; isAdmin?: boolean; role?: Role; error?: string; needsVerification?: boolean; devUrl?: string };
+type AuthResp = { email?: string | null; name?: string | null; isAdmin?: boolean; role?: Role; error?: string; needsVerification?: boolean; devUrl?: string; next?: string | null };
 async function call(body: Record<string, unknown>): Promise<{ ok: boolean; status: number; data: AuthResp }> {
   const r = await fetch("/api/auth", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const data = await r.json().catch(() => ({}));
@@ -63,10 +65,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     role,
     isModerator: role !== "user",
     loading,
-    login: async (e, p) => { const { ok, data } = await call({ action: "login", email: e, password: p }); if (!ok) fail(data); apply(data); },
-    signup: async (e, p, n, inst) => { const { ok, data } = await call({ action: "signup", email: e, password: p, name: n, institution: inst }); if (!ok) fail(data); return data as SignupResult; },
-    verify: async (token) => { const { ok, data } = await call({ action: "verify", token }); if (!ok) fail(data); apply(data); },
-    resendVerification: async (e) => { const { ok, data } = await call({ action: "resend-verification", email: e }); if (!ok) fail(data); return { devUrl: data.devUrl }; },
+    login: async (e, p, next) => { const { ok, data } = await call({ action: "login", email: e, password: p, next }); if (!ok) fail(data); apply(data); },
+    signup: async (e, p, n, inst, next) => { const { ok, data } = await call({ action: "signup", email: e, password: p, name: n, institution: inst, next }); if (!ok) fail(data); return data as SignupResult; },
+    verify: async (token) => { const { ok, data } = await call({ action: "verify", token }); if (!ok) fail(data); apply(data); return data.next ?? null; },
+    resendVerification: async (e, next) => { const { ok, data } = await call({ action: "resend-verification", email: e, next }); if (!ok) fail(data); return { devUrl: data.devUrl }; },
     logout: async () => { await call({ action: "logout" }); apply({ email: null, name: null, isAdmin: false }); },
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

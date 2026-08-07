@@ -411,6 +411,8 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
 /* Round-alignment variant: the message is a sentence per row, not a chip grid. */
 .round-warn .cat-warn-list li { display: list-item; list-style: disc; margin-left: 18px; }
 
+.settings-sub { font-size: 13px; color: var(--muted); margin: 18px 0 6px; font-weight: 600; }
+
 /* Owner repair tools for the uploaded packets/games (Settings) */
 .srcfiles { margin-top: 10px; }
 .srcfiles-ed + .srcfiles-ed { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }

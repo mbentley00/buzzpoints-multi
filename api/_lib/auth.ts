@@ -99,25 +99,47 @@ export function verifyToken(token: string | undefined): string | null {
   }
 }
 
+// A post-action destination that's safe to redirect to: a path on this site
+// only. Anything absolute, protocol-relative ("//evil.com") or backslash-tricked
+// is rejected, so a `next` carried through an email can't become an open
+// redirect.
+export function safeNext(v: unknown): string | undefined {
+  const s = String(v ?? "");
+  if (!s.startsWith("/") || s.startsWith("//") || s.startsWith("/\\") || s.length > 300) return undefined;
+  return s;
+}
+
 // Short-lived HMAC token for a one-off purpose (e.g. email verification),
-// independent of the login session.
-export function signPurpose(email: string, purpose: string, ttlSec: number): string {
-  const payload = b64(JSON.stringify({ email, p: purpose, exp: Date.now() + ttlSec * 1000 }));
+// independent of the login session. `next` rides along inside the SIGNED
+// payload so a verification link can return the user to whatever they were
+// doing when they signed up (typically redeeming an invite link) — and so it
+// can't be swapped for another destination in transit.
+export function signPurpose(email: string, purpose: string, ttlSec: number, next?: string): string {
+  const body: Record<string, unknown> = { email, p: purpose, exp: Date.now() + ttlSec * 1000 };
+  const n = safeNext(next);
+  if (n) body.n = n;
+  const payload = b64(JSON.stringify(body));
   const sig = crypto.createHmac("sha256", SECRET).update(payload).digest("base64url");
   return `${payload}.${sig}`;
 }
-export function readPurpose(token: string | undefined, purpose: string): string | null {
+function openPurpose(token: string | undefined, purpose: string): { email: string; next?: string } | null {
   if (!token || !token.includes(".")) return null;
   const [payload, sig] = token.split(".");
   const expected = crypto.createHmac("sha256", SECRET).update(payload).digest("base64url");
   if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
   try {
-    const { email, p, exp } = JSON.parse(Buffer.from(payload, "base64url").toString());
+    const { email, p, exp, n } = JSON.parse(Buffer.from(payload, "base64url").toString());
     if (!email || p !== purpose || typeof exp !== "number" || exp < Date.now()) return null;
-    return email as string;
+    return { email: email as string, next: safeNext(n) };
   } catch {
     return null;
   }
+}
+export function readPurpose(token: string | undefined, purpose: string): string | null {
+  return openPurpose(token, purpose)?.email ?? null;
+}
+export function readPurposeNext(token: string | undefined, purpose: string): string | undefined {
+  return openPurpose(token, purpose)?.next;
 }
 
 export function setSessionCookie(res: VercelResponse, token: string) {

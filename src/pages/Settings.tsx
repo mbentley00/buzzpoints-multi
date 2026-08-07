@@ -39,6 +39,7 @@ export function Settings() {
   const [level, setLevel] = useState("");
   const [tdLink, setTdLink] = useState("");
   const [accessRequests, setAccessRequests] = useState<{ email: string; name: string; at: string; role?: string; team?: string }[]>([]);
+  const [resolved, setResolved] = useState<{ email: string; name: string; status: string; via?: string; resolvedAt?: string }[]>([]);
   const [links, setLinks] = useState<{ id: string; label: string; at: string; revoked?: boolean; uses: number }[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -59,6 +60,7 @@ export function Settings() {
         setLevel(d.level || "");
         setTdLink(d.tdLink || "");
         setAccessRequests(d.accessRequests || []);
+        setResolved(d.resolvedRequests || []);
         setLinks(d.links || []);
       })
       .catch((e) => setErr(String(e.message || e)))
@@ -125,6 +127,7 @@ export function Settings() {
     try {
       const d = await postJson("/api/manage", { slug, op: approve ? "approve-access" : "deny-access", email });
       setAccessRequests(d.accessRequests || accessRequests.filter((a) => a.email !== email));
+      if (d.resolvedRequests) setResolved(d.resolvedRequests);
       if (approve) setInvites((prev) => [...new Set([...prev, email])].sort());
     } catch (e) { setErr(String((e as Error).message || e)); } finally { setBusy(false); }
   }
@@ -151,7 +154,11 @@ export function Settings() {
     <>
       <h2 style={{ marginTop: reviewingAccess ? 0 : 28 }}>Access requests ({accessRequests.length})</h2>
       {accessRequests.length === 0 ? (
-        <p className="muted">No pending requests.</p>
+        <p className="muted">
+          No pending requests.
+          {resolved.some((r) => r.via === "link") &&
+            " If you followed a request email here, the person has since let themselves in with an invite link — see below."}
+        </p>
       ) : (
         <ul className="invite-list">
           {accessRequests.map((a) => (
@@ -169,6 +176,28 @@ export function Settings() {
             </li>
           ))}
         </ul>
+      )}
+      {resolved.length > 0 && (
+        <>
+          <h3 className="settings-sub">Recently settled</h3>
+          <ul className="invite-list">
+            {resolved.map((r) => (
+              <li key={r.email}>
+                <span>
+                  <strong>{r.name}</strong> <span className="muted">· {r.email}</span>
+                </span>
+                <span className="muted">
+                  {r.status === "denied"
+                    ? "denied"
+                    : r.via === "link"
+                    ? "joined via invite link — request auto-approved"
+                    : "approved by you"}
+                  {r.resolvedAt ? ` · ${new Date(r.resolvedAt).toLocaleDateString()}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </>
   );
