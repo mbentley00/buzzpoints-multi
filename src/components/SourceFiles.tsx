@@ -1,0 +1,261 @@
+import { useEffect, useMemo, useState } from "react";
+import { clearSetCache, refreshIndex } from "../data";
+import { RoundWarning } from "../types";
+
+// Owner-only repair tools for a tournament's uploaded files.
+//
+//   RoundAlignEditor — a packet's round is read from its FILENAME, so a packet
+//   named without a number ("Taylor_SMTMT.json") lands on round 0 while its
+//   games sit on round 1; the questions then show 0 heard forever. This lets the
+//   owner renumber a packet after the fact instead of re-uploading.
+//
+//   GameFilesEditor — uploads APPEND to an edition, so re-uploading the same
+//   files makes every team look like it played the same games twice. This lists
+//   the stored games and removes the ones the owner picks.
+
+interface PacketRow { index: number; round: number; tossups: number; bonuses: number; sample: string }
+interface EditionRounds { id: string; label: string; packets: PacketRow[]; gameRounds: { round: number; count: number }[]; warnings: RoundWarning[] }
+interface GameRow { index: number; round: number; teams: string[]; tossups: number; copy: number; copies: number }
+interface EditionGames { id: string; label: string; games: GameRow[] }
+
+async function post(body: unknown) {
+  const r = await fetch("/api/manage", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((d as any).error || `Failed (${r.status})`);
+  return d;
+}
+async function load<T>(slug: string, op: string): Promise<T> {
+  const r = await fetch(`/api/manage?slug=${encodeURIComponent(slug)}&op=${op}`);
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((d as any).error || `Failed (${r.status})`);
+  return d as T;
+}
+
+export function warningText(w: RoundWarning): string {
+  if (w.kind === "packet-unplayed")
+    return `Packet round ${w.round} (${w.tossups} question${w.tossups === 1 ? "" : "s"}) has no games — nothing was ever read from it, so every question there shows 0 heard.`;
+  if (w.kind === "games-unmatched")
+    return `${w.games} game${w.games === 1 ? "" : "s"} were played in round ${w.round}, but no packet is filed under that round, so their buzzes have no questions to attach to.`;
+  return `${w.files} packet files share round ${w.round} — only the last one's questions survive; the rest are silently dropped.`;
+}
+
+// Stats are stale the moment the source changes, so blow away the cached JSON
+// and reload rather than trying to patch the page in place.
+function applied(slug: string) {
+  clearSetCache(slug);
+  refreshIndex();
+  window.location.reload();
+}
+
+export function RoundAlignEditor({ slug }: { slug: string }) {
+  const [editions, setEditions] = useState<EditionRounds[] | null>(null);
+  // packet index -> the round the owner typed, keyed `${editionId}:${index}`
+  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    load<{ editions: EditionRounds[] }>(slug, "rounds")
+      .then((d) => setEditions(d.editions || []))
+      .catch((e) => setErr(String(e.message || e)));
+  }, [slug]);
+
+  const roundOf = (edId: string, p: PacketRow) => {
+    const v = edits[`${edId}:${p.index}`];
+    return v === undefined ? String(p.round) : v;
+  };
+  const changesFor = (ed: EditionRounds) => {
+    const out: Record<number, number> = {};
+    for (const p of ed.packets) {
+      const raw = roundOf(ed.id, p).trim();
+      if (raw === "" || !/^\d+$/.test(raw)) continue;
+      if (Number(raw) !== p.round) out[p.index] = Number(raw);
+    }
+    return out;
+  };
+  const invalid = (ed: EditionRounds) => ed.packets.some((p) => !/^\d+$/.test(roundOf(ed.id, p).trim()));
+
+  // "Apply suggested" fills every packet whose orphaned round the server could
+  // pair with an unmatched game round.
+  function useSuggestions(ed: EditionRounds) {
+    const byRound = new Map<number, number>();
+    for (const w of ed.warnings) if (w.kind === "packet-unplayed" && w.suggested !== null) byRound.set(w.round, w.suggested);
+    setEdits((e) => {
+      const next = { ...e };
+      for (const p of ed.packets) { const s = byRound.get(p.round); if (s !== undefined) next[`${ed.id}:${p.index}`] = String(s); }
+      return next;
+    });
+  }
+
+  async function save(ed: EditionRounds) {
+    const rounds = changesFor(ed);
+    setBusy(true); setErr("");
+    try {
+      await post({ slug, op: "remap-rounds", editionId: ed.id, rounds });
+      applied(slug);
+    } catch (e) { setErr(String((e as Error).message || e)); setBusy(false); }
+  }
+
+  if (err && !editions) return <div className="error-box">{err}</div>;
+  if (!editions) return <p className="muted">Loading packets…</p>;
+  if (!editions.length) return <p className="muted">No packets uploaded.</p>;
+
+  return (
+    <div className="srcfiles">
+      {err && <div className="error-box">{err}</div>}
+      {editions.map((ed) => {
+        const suggestable = ed.warnings.some((w) => w.kind === "packet-unplayed" && w.suggested !== null);
+        const changed = Object.keys(changesFor(ed)).length;
+        return (
+          <div className="srcfiles-ed" key={ed.id}>
+            {editions.length > 1 && <h3 className="srcfiles-ed-name">{ed.label}</h3>}
+            {ed.warnings.length > 0 && (
+              <ul className="srcfiles-warn">
+                {ed.warnings.map((w, i) => <li key={i}>{warningText(w)}</li>)}
+              </ul>
+            )}
+            <p className="muted srcfiles-note">
+              Games were played in round{ed.gameRounds.length === 1 ? "" : "s"}{" "}
+              <strong>{ed.gameRounds.length ? ed.gameRounds.map((g) => g.round).join(", ") : "— (no games)"}</strong>. A
+              packet only collects buzzes when its round matches the round its games were played in.
+            </p>
+            <table className="data-table srcfiles-table">
+              <thead>
+                <tr><th className="right">Round</th><th className="right">Tossups</th><th className="right">Bonuses</th><th>First answer</th><th className="right">Games</th></tr>
+              </thead>
+              <tbody>
+                {ed.packets.map((p) => {
+                  const cur = roundOf(ed.id, p);
+                  const games = ed.gameRounds.find((g) => g.round === Number(cur))?.count ?? 0;
+                  const bad = !/^\d+$/.test(cur.trim());
+                  return (
+                    <tr key={p.index} className={Number(cur) !== p.round ? "srcfiles-dirty" : undefined}>
+                      <td className="right">
+                        <input
+                          className="num-input" type="number" min={0} max={999} value={cur} style={{ width: 70 }}
+                          onChange={(e) => setEdits((s) => ({ ...s, [`${ed.id}:${p.index}`]: e.target.value }))}
+                        />
+                      </td>
+                      <td className="right mono">{p.tossups}</td>
+                      <td className="right mono">{p.bonuses}</td>
+                      <td className="srcfiles-sample">{p.sample || <span className="muted">—</span>}</td>
+                      <td className="right mono">
+                        {bad ? <span className="error-inline">?</span> : games === 0 ? <span className="error-inline">0</span> : games}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div className="srcfiles-actions">
+              {suggestable && <button type="button" className="mini-btn" onClick={() => useSuggestions(ed)}>Use suggested rounds</button>}
+              <button className="btn-primary btn-sm" disabled={busy || !changed || invalid(ed)} onClick={() => save(ed)}>
+                {busy ? "Saving…" : changed ? `Save ${changed} change${changed === 1 ? "" : "s"} & rebuild` : "No changes"}
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function GameFilesEditor({ slug }: { slug: string }) {
+  const [editions, setEditions] = useState<EditionGames[] | null>(null);
+  const [picked, setPicked] = useState<Record<string, boolean>>({}); // `${editionId}:${index}`
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    load<{ editions: EditionGames[] }>(slug, "games")
+      .then((d) => setEditions(d.editions || []))
+      .catch((e) => setErr(String(e.message || e)));
+  }, [slug]);
+
+  const dupCount = useMemo(
+    () => (editions || []).reduce((n, ed) => n + ed.games.filter((g) => g.copy > 1).length, 0),
+    [editions]
+  );
+  const pickedIn = (ed: EditionGames) => ed.games.filter((g) => picked[`${ed.id}:${g.index}`]);
+
+  const toggle = (edId: string, index: number) =>
+    setPicked((p) => ({ ...p, [`${edId}:${index}`]: !p[`${edId}:${index}`] }));
+  const setMany = (rows: { edId: string; index: number }[], on: boolean) =>
+    setPicked((p) => { const n = { ...p }; for (const r of rows) n[`${r.edId}:${r.index}`] = on; return n; });
+
+  async function remove(ed: EditionGames) {
+    const games = pickedIn(ed).map((g) => g.index);
+    if (!games.length) return;
+    const plural = games.length === 1 ? "this game" : `these ${games.length} games`;
+    if (!window.confirm(`Remove ${plural} from "${ed.label}"? Stats are rebuilt without them. This can't be undone — you'd have to re-upload the files.`)) return;
+    setBusy(true); setErr("");
+    try {
+      await post({ slug, op: "remove-files", editionId: ed.id, games });
+      applied(slug);
+    } catch (e) { setErr(String((e as Error).message || e)); setBusy(false); }
+  }
+
+  if (err && !editions) return <div className="error-box">{err}</div>;
+  if (!editions) return <p className="muted">Loading games…</p>;
+  if (!editions.some((e) => e.games.length)) return <p className="muted">No games uploaded.</p>;
+
+  return (
+    <div className="srcfiles">
+      {err && <div className="error-box">{err}</div>}
+      {dupCount > 0 && (
+        <div className="srcfiles-warn srcfiles-warn-block">
+          <strong>{dupCount} duplicate game{dupCount === 1 ? "" : "s"}.</strong> The same matchup is stored more than
+          once in the same round — the usual cause is uploading the same files again (adding files <em>appends</em> to an
+          edition rather than replacing it). Every extra copy inflates games played, tossups heard, and totals.
+          <div style={{ marginTop: 8 }}>
+            <button
+              type="button" className="mini-btn"
+              onClick={() => setMany((editions || []).flatMap((ed) => ed.games.filter((g) => g.copy > 1).map((g) => ({ edId: ed.id, index: g.index }))), true)}
+            >
+              Select every extra copy
+            </button>
+          </div>
+        </div>
+      )}
+      {editions.map((ed) => {
+        const sel = pickedIn(ed);
+        return (
+          <div className="srcfiles-ed" key={ed.id}>
+            {editions.length > 1 && <h3 className="srcfiles-ed-name">{ed.label}</h3>}
+            {ed.games.length === 0 ? (
+              <p className="muted">No games in this edition.</p>
+            ) : (
+              <>
+                <table className="data-table srcfiles-table">
+                  <thead>
+                    <tr><th className="srcfiles-check"></th><th className="right">Round</th><th>Teams</th><th className="right">TUH</th><th>Copy</th></tr>
+                  </thead>
+                  <tbody>
+                    {ed.games.map((g) => (
+                      <tr key={g.index} className={g.copy > 1 ? "srcfiles-dupe" : undefined}>
+                        <td className="srcfiles-check">
+                          <input type="checkbox" checked={!!picked[`${ed.id}:${g.index}`]} onChange={() => toggle(ed.id, g.index)} />
+                        </td>
+                        <td className="right mono">{g.round}</td>
+                        <td>{g.teams.join(" vs ") || <span className="muted">—</span>}</td>
+                        <td className="right mono">{g.tossups}</td>
+                        <td className="mono">{g.copies > 1 ? `${g.copy} of ${g.copies}` : ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="srcfiles-actions">
+                  <button type="button" className="mini-btn" onClick={() => setMany(ed.games.map((g) => ({ edId: ed.id, index: g.index })), true)}>Select all</button>
+                  <button type="button" className="mini-btn" onClick={() => setMany(ed.games.map((g) => ({ edId: ed.id, index: g.index })), false)}>Clear</button>
+                  <button className="btn-primary btn-sm danger-btn" disabled={busy || !sel.length} onClick={() => remove(ed)}>
+                    {busy ? "Removing…" : sel.length ? `Remove ${sel.length} game${sel.length === 1 ? "" : "s"} & rebuild` : "Remove selected"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}

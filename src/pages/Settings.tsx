@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { useSetCtx } from "../components/Layout";
 import { refreshIndex } from "../data";
 import { Visibility, TOURNAMENT_LEVELS } from "../types";
 import { Loading } from "../components/Common";
 import { RoundTagsEditor } from "../components/RoundTagsEditor";
+import { RoundAlignEditor, GameFilesEditor } from "../components/SourceFiles";
 
 const VIS_OPTIONS: { id: Visibility; label: string; desc: string }[] = [
   { id: "listed", label: "Listed (login + invite)", desc: "Shown in the list; only invited, logged-in people can view." },
@@ -22,7 +23,12 @@ const toDateInput = (iso: string | null) => (iso ? new Date(iso).toISOString().s
 
 export function Settings() {
   const { slug = "" } = useParams();
-  const { isOwner, meta } = useSetCtx();
+  const { isOwner, meta, user } = useSetCtx();
+  const loc = useLocation();
+  const [params] = useSearchParams();
+  // Access-request emails deep-link here with ?review=access, so lead with the
+  // pending list instead of burying it under the rest of the settings.
+  const reviewingAccess = params.get("review") === "access";
   const [loading, setLoading] = useState(true);
   const [visibility, setVisibility] = useState<Visibility>("listed");
   const [autoPublish, setAutoPublish] = useState(false);
@@ -59,6 +65,13 @@ export function Settings() {
       .finally(() => setLoading(false));
   }, [slug, isOwner]);
 
+  if (!user)
+    return (
+      <p className="caveat">
+        {reviewingAccess ? "Log in as the tournament owner to review access requests." : "Log in as the tournament owner to change settings."}{" "}
+        <Link to={`/login?next=${encodeURIComponent(loc.pathname + loc.search)}`} className="link">Log in →</Link>
+      </p>
+    );
   if (!isOwner) return <p className="caveat">Only the set owner can change settings.</p>;
   if (loading) return <Loading />;
 
@@ -134,11 +147,41 @@ export function Settings() {
   const visDesc = VIS_OPTIONS.find((v) => v.id === visibility)?.desc;
   const activeLinks = links.filter((l) => !l.revoked);
 
+  const accessSection = (
+    <>
+      <h2 style={{ marginTop: reviewingAccess ? 0 : 28 }}>Access requests ({accessRequests.length})</h2>
+      {accessRequests.length === 0 ? (
+        <p className="muted">No pending requests.</p>
+      ) : (
+        <ul className="invite-list">
+          {accessRequests.map((a) => (
+            <li key={a.email}>
+              <span>
+                <strong>{a.name}</strong> <span className="muted">· {a.email}</span>
+                {(a.role || a.team) && (
+                  <span className="muted"> · {[a.role, a.team].filter(Boolean).join(" — ")}</span>
+                )}
+              </span>
+              <span className="req-actions">
+                <button className="btn-primary btn-sm" disabled={busy} onClick={() => decide(a.email, true)}>Approve</button>
+                <button className="btn-link" disabled={busy} onClick={() => decide(a.email, false)}>Deny</button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+
   return (
     <div className="detail">
       <h1>Settings</h1>
       {err && <div className="error-box">{err}</div>}
       {msg && <div className="caveat"><span className="ok-msg">{msg}</span></div>}
+
+      {reviewingAccess && visibility !== "public" && (
+        <div className="caveat" style={{ marginBottom: 28 }}>{accessSection}</div>
+      )}
 
       <h2>Tournament details</h2>
       <div className="create-form" style={{ maxWidth: 520 }}>
@@ -194,6 +237,26 @@ export function Settings() {
         </>
       )}
 
+      {meta?.kind !== "results" && (
+        <>
+          <h2 id="rounds" style={{ marginTop: 28 }}>Round alignment</h2>
+          <p className="muted">
+            Each packet's round is taken from its <strong>filename</strong> when you upload it ("Round_3.json" → round
+            3); a file with no number in its name falls back to round 0. Games carry their own round from inside the QBJ.
+            If the two don't match, the buzzes never reach the questions — the packet shows 0 heard everywhere while
+            player and team stats still look normal. Fix it by setting the right round below.
+          </p>
+          <RoundAlignEditor slug={slug} />
+
+          <h2 id="games" style={{ marginTop: 28 }}>Uploaded games</h2>
+          <p className="muted">
+            Adding files to an edition <strong>appends</strong> them, so uploading the same games twice stores them
+            twice. Remove any game you didn't mean to add — stats are rebuilt without it.
+          </p>
+          <GameFilesEditor slug={slug} />
+        </>
+      )}
+
       {hasYf && (
         <>
           <h2 style={{ marginTop: 28 }}>YellowFruit export</h2>
@@ -213,27 +276,7 @@ export function Settings() {
 
       {visibility !== "public" && (
         <>
-          <h2 style={{ marginTop: 28 }}>Access requests ({accessRequests.length})</h2>
-          {accessRequests.length === 0 ? (
-            <p className="muted">No pending requests.</p>
-          ) : (
-            <ul className="invite-list">
-              {accessRequests.map((a) => (
-                <li key={a.email}>
-                  <span>
-                    <strong>{a.name}</strong> <span className="muted">· {a.email}</span>
-                    {(a.role || a.team) && (
-                      <span className="muted"> · {[a.role, a.team].filter(Boolean).join(" — ")}</span>
-                    )}
-                  </span>
-                  <span className="req-actions">
-                    <button className="btn-primary btn-sm" disabled={busy} onClick={() => decide(a.email, true)}>Approve</button>
-                    <button className="btn-link" disabled={busy} onClick={() => decide(a.email, false)}>Deny</button>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
+          {!reviewingAccess && accessSection}
 
           <h2 style={{ marginTop: 28 }}>Invite links</h2>
           <p className="muted">Anyone with an account who opens an active link gets access to this tournament.</p>

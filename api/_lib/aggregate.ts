@@ -229,6 +229,65 @@ export function scanCategoryQuality(tossups: Map<string, TUStat>): CategoryWarni
   return out.slice(0, 25);
 }
 
+/* ----------------------------- round alignment ----------------------------- */
+// A packet's round comes from its FILENAME ("Round_3.json" -> 3); a game's comes
+// from inside the QBJ (`_round`), falling back to its filename. When the two
+// disagree, buzzes never meet questions: every tossup shows 0 heard even though
+// player and team stats look perfectly fine. The usual cause is a packet whose
+// name carries no number at all ("Taylor_SMTMT.json"), which falls back to round
+// 0 while its games sit on round 1. A second, quieter failure is two packet
+// files landing on the SAME round — combinedPackets() lets the later one
+// overwrite the earlier, so a whole packet's questions silently vanish.
+//
+// This scan reports both so the owner can renumber packets in Settings ->
+// Round alignment. Advisory only: nothing is blocked or altered.
+export interface RoundWarning {
+  kind: "packet-unplayed" | "games-unmatched" | "packet-duplicate";
+  round: number;
+  tossups: number;          // questions sitting on this packet round
+  games: number;            // games played in this round
+  files: number;            // packet files on this round
+  suggested: number | null; // the round this packet most likely belongs on
+}
+
+type RoundScanPacket = { round: number; tossups?: unknown[]; bonuses?: unknown[] };
+
+export function scanRoundAlignment(packets: RoundScanPacket[], games: { round: number }[]): RoundWarning[] {
+  // Count only packets that actually carry questions — an empty packet round
+  // says nothing about alignment.
+  const pkt = new Map<number, { questions: number; files: number }>();
+  for (const p of packets) {
+    const n = (p.tossups || []).filter(Boolean).length + (p.bonuses || []).filter(Boolean).length;
+    if (!n) continue;
+    const e = pkt.get(p.round) || { questions: 0, files: 0 };
+    e.questions += n; e.files += 1;
+    pkt.set(p.round, e);
+  }
+  const gm = new Map<number, number>();
+  for (const g of games) gm.set(g.round, (gm.get(g.round) || 0) + 1);
+  if (!pkt.size || !gm.size) return []; // packets-only or games-only: nothing to align
+
+  const unplayed = [...pkt.keys()].filter((r) => !gm.has(r)).sort((a, b) => a - b);
+  const unmatched = [...gm.keys()].filter((r) => !pkt.has(r)).sort((a, b) => a - b);
+  const dupes = [...pkt.entries()].filter(([, e]) => e.files > 1).map(([r]) => r).sort((a, b) => a - b);
+
+  // When exactly as many packet rounds are orphaned as game rounds, a straight
+  // renumbering in order is almost certainly the fix (the common case is one
+  // packet stuck on round 0 while its games sit on the real round).
+  const paired = unplayed.length > 0 && unplayed.length === unmatched.length;
+
+  const out: RoundWarning[] = [];
+  unplayed.forEach((r, i) => out.push({
+    kind: "packet-unplayed", round: r, tossups: pkt.get(r)!.questions, games: 0,
+    files: pkt.get(r)!.files, suggested: paired ? unmatched[i] : null,
+  }));
+  for (const r of unmatched)
+    out.push({ kind: "games-unmatched", round: r, tossups: 0, games: gm.get(r)!, files: 0, suggested: null });
+  for (const r of dupes)
+    out.push({ kind: "packet-duplicate", round: r, tossups: pkt.get(r)!.questions, games: gm.get(r) || 0, files: pkt.get(r)!.files, suggested: null });
+  return out;
+}
+
 /* generic 3-level category tree (main -> subcategory -> sub-subcategory) */
 type TreeNode = Record<string, unknown> & { category: string; heard: number; subs: SubNode[] };
 type SubNode = Record<string, unknown> & { subcategory: string; subLabel: string; leaves?: SubNode[] };
@@ -957,6 +1016,10 @@ export function aggregate(
     // Advisory heuristic: categories that look mislabeled (author initials/names,
     // short codes) rather than real subjects. Shown to owners; never blocks upload.
     categoryWarnings: scanCategoryQuality(tossups),
+    // Advisory: packet rounds that don't line up with the rounds games were
+    // played in (so their questions can never accumulate buzzes). Owners get a
+    // banner and a renumbering tool in Settings.
+    roundWarnings: scanRoundAlignment(packets, games),
     generatedAt: new Date().toISOString(),
   };
 

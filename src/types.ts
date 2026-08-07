@@ -116,7 +116,19 @@ export interface Meta {
   rounds: number[];
   phases?: string[];
   editions?: EditionSummary[];
+  // Packet rounds that don't line up with the rounds games were played in, so
+  // their questions can never pick up buzzes. Owner-facing; absent on older sets.
+  roundWarnings?: RoundWarning[];
   generatedAt: string;
+}
+
+export interface RoundWarning {
+  kind: "packet-unplayed" | "games-unmatched" | "packet-duplicate";
+  round: number;
+  tossups: number;
+  games: number;
+  files: number;
+  suggested: number | null;
 }
 
 export interface TossupRow {

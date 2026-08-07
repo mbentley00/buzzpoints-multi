@@ -6,7 +6,8 @@ import { AuthNav } from "../components/Common";
 import { detectScoring } from "../detectScoring";
 import { uploadFiles } from "../upload";
 import { FileDrop } from "../components/FileDrop";
-import { Visibility, TOURNAMENT_LEVELS } from "../types";
+import { Visibility, TOURNAMENT_LEVELS, RoundWarning } from "../types";
+import { warningText } from "../components/SourceFiles";
 
 interface CategoryWarning { category: string; count: number; reason: string; examples: string[] }
 
@@ -64,7 +65,7 @@ export function CreateSet() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<string | null>(null);
-  const [warned, setWarned] = useState<{ slug: string; warnings: CategoryWarning[] } | null>(null);
+  const [warned, setWarned] = useState<{ slug: string; warnings: CategoryWarning[]; rounds: RoundWarning[] } | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function onGames(files: File[]) {
@@ -177,11 +178,13 @@ export function CreateSet() {
         return;
       }
       refreshIndex();
-      // If the category heuristic flagged likely-mislabeled categories, pause on a
-      // review screen so the owner can fix their packets before relying on stats.
+      // If the category heuristic flagged likely-mislabeled categories, or the
+      // packets' rounds don't line up with the games', pause on a review screen so
+      // the owner can fix things before relying on the stats.
       const warnings: CategoryWarning[] = Array.isArray(json.categoryWarnings) ? json.categoryWarnings : [];
-      if (warnings.length) {
-        setWarned({ slug: json.slug, warnings });
+      const rounds: RoundWarning[] = Array.isArray(json.roundWarnings) ? json.roundWarnings : [];
+      if (warnings.length || rounds.length) {
+        setWarned({ slug: json.slug, warnings, rounds });
         setBusy(false);
         setStatus(null);
         return;
@@ -230,9 +233,27 @@ export function CreateSet() {
             </div>
           </div>
         )}
-        {!authLoading && user && warned && (
+        {!authLoading && user && warned && warned.rounds.length > 0 && (
+          <div className="cat-warn round-warn" role="status">
+            <strong>Your tournament was created — but its packets aren't lined up with the games.</strong>
+            <p className="muted">
+              A packet's round comes from its <strong>filename</strong> ("Round_3.json" → round 3); a file with no
+              number in its name falls back to round 0. Games carry their own round from inside the QBJ. When the two
+              disagree the questions never pick up any buzzes — they'll show 0 heard even though player and team stats
+              look fine. You can set the right rounds without re-uploading.
+            </p>
+            <ul className="cat-warn-list">
+              {warned.rounds.map((w, i) => <li key={i}>{warningText(w)}</li>)}
+            </ul>
+            <div className="cat-warn-actions">
+              <Link className="btn-primary" to={`/set/${warned.slug}/settings#rounds`}>Fix round alignment</Link>
+              <Link className="link" to={`/set/${warned.slug}`}>Skip for now →</Link>
+            </div>
+          </div>
+        )}
+        {!authLoading && user && warned && warned.warnings.length > 0 && (
           <div className="cat-warn" role="status">
-            <strong>Your tournament was created — but some categories look off.</strong>
+            <strong>Some categories look off.</strong>
             <p className="muted">
               These parsed categories don't look like real subjects. Often this means the packet's
               category column actually holds author initials or names. Fix the packet metadata and
@@ -255,6 +276,9 @@ export function CreateSet() {
               <Link to="/" className="link">← Back to tournaments</Link>
             </div>
           </div>
+        )}
+        {!authLoading && user && warned && !warned.warnings.length && (
+          <p><Link to="/" className="link">← Back to tournaments</Link></p>
         )}
         {!authLoading && user && !submitted && !warned && (
         <form className="create-form" onSubmit={submit}>

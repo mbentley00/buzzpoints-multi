@@ -408,6 +408,28 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
 .cat-warn-reason { color: #5c4a24; }
 .cat-warn-eg { color: #8a7748; font-style: italic; flex-basis: 100%; }
 .cat-warn-actions { display: flex; align-items: center; gap: 16px; margin-top: 14px; }
+/* Round-alignment variant: the message is a sentence per row, not a chip grid. */
+.round-warn .cat-warn-list li { display: list-item; list-style: disc; margin-left: 18px; }
+
+/* Owner repair tools for the uploaded packets/games (Settings) */
+.srcfiles { margin-top: 10px; }
+.srcfiles-ed + .srcfiles-ed { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+.srcfiles-ed-name { font-size: 14px; margin: 0 0 8px; }
+.srcfiles-note { font-size: 13px; margin: 8px 0; }
+.srcfiles-warn { margin: 0 0 10px; padding: 0 0 0 18px; font-size: 13px; color: #7a3f12; }
+.srcfiles-warn li { margin: 3px 0; }
+.srcfiles-warn-block {
+  list-style: none; padding: 12px 14px; margin-bottom: 16px;
+  background: #fdf6ec; border: 1px solid #e6d3ab; border-radius: 6px; color: #5c4a24;
+}
+.srcfiles-table { max-width: 720px; }
+.srcfiles-table td, .srcfiles-table th { vertical-align: middle; }
+.srcfiles-check { width: 28px; }
+.srcfiles-sample { color: var(--muted); font-size: 12px; }
+.srcfiles-dirty > td { background: #eef5ff; }
+.srcfiles-dupe > td { background: #fdf1ef; }
+.srcfiles-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.danger-btn { background: var(--neg); border-color: var(--neg); }
 /* Results (YellowFruit) games + box scores */
 .results-round { margin-bottom: 22px; }
 .results-round > h2 { font-size: 15px; margin: 0 0 8px; color: var(--muted); }
@@ -586,8 +608,19 @@ mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
   opacity: 0; pointer-events: none; transition: opacity 0.08s ease; white-space: nowrap;
 }
 .q-tok:hover > .q-idx { opacity: 0.8; }
-.q-word { display: inline-flex; flex-direction: column; align-items: center; vertical-align: bottom; }
-.q-annots { display: flex; gap: 5px; height: 13px; line-height: 1; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+/* The word stays a plain inline box and its annotations float above it. Laying
+   the two out as a flex column instead would make the serializer treat them as
+   separate blocks, so copying the question came out with a line break around
+   every buzzed word. */
+.q-word { position: relative; display: inline; }
+/* `display: inline` (not flex) matters: Chrome's copy serializer emits a line
+   break around a block-level box even when it's absolutely positioned and
+   unselectable, which put a newline before every buzzed word. */
+.q-annots {
+  position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+  display: inline; line-height: 1; font-size: 10.5px; font-weight: 600; white-space: nowrap;
+}
+.q-annot + .q-annot { margin-left: 5px; }
 .q-annot.an-power { color: var(--power); }
 .q-annot.an-pos { color: var(--get); }
 .q-annot.an-neg { color: var(--neg); }
@@ -595,6 +628,58 @@ mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
 .q-chip { background: #d3e0fb; border-radius: 4px; padding: 0 4px; color: #1c2530; }
 .q-avg { display: inline-block; width: 0; border-left: 2px dashed #e08a1e; height: 1.2em; vertical-align: middle; margin: 0 1px; }
 .q-end { font-weight: 700; color: #555; }
+/* The word index, the value[count] annotations, the average-buzz mark and the
+   END marker are read-outs ABOUT the question, not part of it — keep them out of
+   the selection so copying the text yields the question and nothing else. */
+.q-idx, .q-annots, .q-avg, .q-end { user-select: none; -webkit-user-select: none; }
+
+/* Who buzzed here — hover a buzzed word, click to pin (so the links inside are
+   reachable). Also reused for a bonus part's converting teams. */
+.q-word { cursor: pointer; }
+.q-word-pinned .q-chip, .bn-got-pinned { box-shadow: 0 0 0 2px #7ea3e0; }
+.q-pop {
+  position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  margin-top: 4px; z-index: 20; cursor: auto;
+  display: flex; flex-direction: column; gap: 3px;
+  min-width: 190px; max-width: 320px; padding: 8px 10px;
+  /* A popular easy part can be converted by dozens of teams — scroll rather
+     than run off the page. Pin it (click) to scroll comfortably. */
+  max-height: 300px; overflow-y: auto; overscroll-behavior: contain;
+  background: #fff; border: 1px solid var(--line-strong); border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16);
+  font-size: 12.5px; line-height: 1.45; text-align: left; white-space: normal;
+  user-select: none; -webkit-user-select: none;
+}
+.q-pop-head { font-weight: 700; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 2px; }
+.q-pop-row { display: flex; align-items: baseline; gap: 8px; }
+.q-pop-val { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 26px; text-align: right; }
+.q-pop-who { display: flex; flex-direction: column; min-width: 0; }
+.q-pop-team { color: var(--muted); font-size: 11.5px; }
+.bn-got {
+  margin-left: 8px; position: relative; cursor: pointer; white-space: nowrap;
+  font-size: 11.5px; font-weight: 600; color: var(--muted);
+  background: #f1f3f6; border-radius: 10px; padding: 1px 8px;
+}
+.bn-got:hover { color: #1c2530; }
+
+/* Adjacent-question links in the breadcrumb row */
+.breadcrumb-nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.qnav { display: flex; align-items: center; gap: 14px; font-size: 13px; }
+.qnav-link { color: var(--link); text-decoration: none; }
+.qnav-link:hover { text-decoration: underline; }
+.qnav-off { color: var(--muted); opacity: 0.5; }
+.qnav-pos { font-variant-numeric: tabular-nums; }
+
+/* Long buzz lists scroll in place instead of stretching the page; the sticky
+   header then sticks to this box rather than the window. */
+.buzz-scroll {
+  max-height: min(70vh, 620px); overflow: auto; overscroll-behavior: contain;
+  border: 1px solid var(--line); border-radius: 6px;
+}
+.buzz-scroll .data-table thead th { top: -1px; }
+/* Inside the scroll box the table can't spill past the column, so let long team
+   names break instead of pushing the Buzz/Val columns out of sight. */
+.buzz-scroll .buzz-who, .buzz-scroll .buzz-opp { overflow-wrap: anywhere; }
 .tu-answer { font-size: 15px; margin: 14px 0 6px; }
 .tu-answer u { text-decoration: underline; }
 

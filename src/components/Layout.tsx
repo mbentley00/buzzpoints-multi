@@ -4,6 +4,7 @@ import { useSetJson, useIndex, isRevealed, setRevealed, clearSetCache } from "..
 import { Meta, SetCtx } from "../types";
 import { useAuth } from "../auth";
 import { Loading, ErrorBox, AuthNav } from "./Common";
+import { warningText } from "./SourceFiles";
 
 // Child pages read the set context (meta + ownership + scope) through this hook.
 export function useSetCtx(): SetCtx {
@@ -131,6 +132,21 @@ export function SetLayout() {
         </div>
       )}
       <main className="content">
+        {isOwner && (meta?.roundWarnings?.length ?? 0) > 0 && (
+          <div className="cat-warn round-warn" role="status">
+            <strong>Some packets aren't lined up with the games.</strong>
+            <p className="muted">
+              A packet only collects buzzes when its round matches the round its games were played in — otherwise its
+              questions show 0 heard while player and team stats still look fine.
+            </p>
+            <ul className="cat-warn-list">
+              {meta!.roundWarnings!.map((w, i) => <li key={i}>{warningText(w)}</li>)}
+            </ul>
+            <div className="cat-warn-actions">
+              <Link className="btn-primary" to={`${base}/settings#rounds`}>Fix round alignment</Link>
+            </div>
+          </div>
+        )}
         {redactedForAdmin && (
           <div className="caveat admin-reveal">
             <span><strong>Admin view.</strong> Question content is hidden for this {entry?.visibility} tournament. Stats are shown; answers and question text are masked.</span>
@@ -169,7 +185,7 @@ export function SetLayout() {
                 </>
               )
             ) : (
-              <>You need to <Link to={`/login?next=${encodeURIComponent(loc.pathname)}`} className="link">log in</Link> (and be invited) to view it.</>
+              <>You need to <Link to={`/login?next=${encodeURIComponent(loc.pathname + loc.search)}`} className="link">log in</Link> (and be invited) to view it.</>
             )}
           </div>
         )}

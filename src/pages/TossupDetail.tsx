@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { clearSetCache, useSetJson } from "../data";
 import { useSetCtx } from "../components/Layout";
 import { TossupDetail, Buzz, Rosters } from "../types";
 import { Html, pct, num } from "../util";
 import { Loading, ErrorBox } from "../components/Common";
+import { QuestionNav, useQuestionNav } from "../components/QuestionNav";
 
 function tier(v: number): "power" | "get" | "neg" | "zero" {
   if (v > 10) return "power";
@@ -24,12 +25,45 @@ function annotClass(v: number): string {
 const effIdx = (d: TossupDetail, b: Buzz) =>
   b.imprecise && d.powerIndex !== null ? d.powerIndex : b.wordIndex;
 
+// Who buzzed at one word, shown on hover (and pinned on click) over the chip.
+function BuzzPop({ bz, slug }: { bz: Buzz[]; slug: string }) {
+  const sorted = [...bz].sort((a, b) => b.value - a.value || (a.player || "").localeCompare(b.player || ""));
+  return (
+    <span className="q-pop" role="tooltip">
+      <span className="q-pop-head">{bz.length} buzz{bz.length === 1 ? "" : "es"} here</span>
+      {sorted.map((b, i) => (
+        <span key={i} className="q-pop-row">
+          <span className={`q-pop-val ${annotClass(b.value)}`}>{b.value > 0 ? `+${b.value}` : b.value}</span>
+          <span className="q-pop-who">
+            {b.playerId ? <Link className="link" to={`/set/${slug}/player/${b.playerId}`}>{b.player}</Link> : b.player}
+            <span className="q-pop-team">{b.team}</span>
+          </span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
 /** Question text: each buzzed word becomes a blue chip with value[count]
  *  annotations above it; an orange dashed line marks the average buzz. Hovering
  *  any word reveals its 1-based index (handy for corrections) and, via
- *  onHoverWord, highlights the buzzers at that word in the buzz list. */
-function Question({ d, onHoverWord }: { d: TossupDetail; onHoverWord: (i: number | null) => void }) {
+ *  onHoverWord, highlights the buzzers at that word in the buzz list. Hovering a
+ *  buzzed word also pops up everyone who buzzed there; clicking pins that popup
+ *  so you can follow the player/team links inside it. */
+function Question({ d, slug, onHoverWord }: { d: TossupDetail; slug: string; onHoverWord: (i: number | null) => void }) {
   const eff = (b: Buzz) => effIdx(d, b);
+  const [pinned, setPinned] = useState<number | null>(null);
+  const [hovered, setHovered] = useState<number | null>(null);
+
+  // A pinned popup closes on the next click anywhere outside it.
+  useEffect(() => {
+    if (pinned === null) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement)?.closest?.(".q-word")) setPinned(null);
+    };
+    document.addEventListener("click", onDoc);
+    return () => document.removeEventListener("click", onDoc);
+  }, [pinned]);
 
   const byWord = new Map<number, Buzz[]>();
   for (const b of d.buzzes) {
@@ -48,6 +82,7 @@ function Question({ d, onHoverWord }: { d: TossupDetail; onHoverWord: (i: number
     for (const b of bz) counts.set(b.value, (counts.get(b.value) ?? 0) + 1);
     return [...counts.entries()].sort((a, b) => b[0] - a[0]);
   };
+  const shown = pinned ?? hovered;
 
   return (
     <p className="q-text">
@@ -57,18 +92,22 @@ function Question({ d, onHoverWord }: { d: TossupDetail; onHoverWord: (i: number
           <span
             key={i}
             className="q-tok"
-            onMouseEnter={() => onHoverWord(i)}
-            onMouseLeave={() => onHoverWord(null)}
+            onMouseEnter={() => { onHoverWord(i); setHovered(i); }}
+            onMouseLeave={() => { onHoverWord(null); setHovered(null); }}
           >
             <span className="q-idx" aria-hidden="true">{i + 1}</span>
             {bz ? (
-              <span className="q-word">
+              <span
+                className={"q-word" + (pinned === i ? " q-word-pinned" : "")}
+                onClick={(e) => { e.stopPropagation(); setPinned((p) => (p === i ? null : i)); }}
+              >
                 <span className="q-annots">
                   {annotations(bz).map(([v, c], j) => (
                     <span key={j} className={`q-annot ${annotClass(v)}`}>{v} [{c}]</span>
                   ))}
                 </span>
                 <span className="q-chip">{w}</span>
+                {shown === i && <BuzzPop bz={bz} slug={slug} />}
               </span>
             ) : (
               w
@@ -198,6 +237,7 @@ export function TossupDetailPage() {
   const { data: rosters } = useSetJson<Rosters>(slug, version !== "all" ? `editions/${version}/rosters.json` : "rosters.json", nonce);
   const [editing, setEditing] = useState<number | null>(null);
   const [hoverWord, setHoverWord] = useState<number | null>(null);
+  const nav = useQuestionNav(data, id);
 
   if (loading) return <Loading />;
   if (error) return <ErrorBox error={error} />;
@@ -207,11 +247,14 @@ export function TossupDetailPage() {
   const versions = comb?.[id]?.versions ?? [];
   const negs = d.buzzes.filter((b) => b.value < 0).length;
   const sorted = [...d.buzzes].sort((a, b) => (a.wordIndex ?? 1e9) - (b.wordIndex ?? 1e9));
+  // Long buzz lists get their own scroll box so the question stays on screen.
+  const scrollBuzzes = sorted.length > 14;
 
   return (
     <div className="detail">
-      <div className="breadcrumb">
+      <div className="breadcrumb breadcrumb-nav">
         <Link to={`/set/${slug}/tossup`} className="link">← Tossups</Link>
+        <QuestionNav nav={nav} label="Tossup" hrefOf={(q) => `/set/${slug}/tossup/${q}`} />
       </div>
 
       {versions.length > 1 && (
@@ -228,7 +271,7 @@ export function TossupDetailPage() {
       <div className="tu-grid">
         <div className="tu-left">
           <h1>Packet {d.round}: Tossup {d.num}</h1>
-          <Question d={d} onHoverWord={setHoverWord} />
+          <Question d={d} slug={slug} onHoverWord={setHoverWord} />
           <p className="tu-answer">ANSWER: <Html html={d.answer} /></p>
           <p className="subtitle">{d.category} · <span className="muted">{d.subcategory}</span></p>
         </div>
@@ -241,7 +284,7 @@ export function TossupDetailPage() {
             </p>
           )}
           {user && !isOwner && <p className="muted">Spot a mistake? Use <strong>Edit</strong> to send the owner a correction request.</p>}
-          <div className="table-wrap">
+          <div className={scrollBuzzes ? "buzz-scroll" : "table-wrap"}>
             <table className="data-table">
               <thead>
                 <tr><th>Player / Team</th><th>Opponent</th><th className="right" title="Buzz position (word #)">Buzz</th><th className="right">Val</th></tr>

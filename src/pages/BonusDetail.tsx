@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useSetJson } from "../data";
 import { useSetCtx } from "../components/Layout";
@@ -6,10 +6,58 @@ import { BonusDetail, BonusResult, PartConv } from "../types";
 import { CategoryTag, Html, pct, num } from "../util";
 import { Loading, ErrorBox } from "../components/Common";
 import { DataTable, Column } from "../components/DataTable";
+import { QuestionNav, useQuestionNav } from "../components/QuestionNav";
 
 // Points a team earned on one part (direct + bounceback).
 const partGot = (r: BonusResult, p: PartConv) => (r.partPts[p.idx] || 0) + (r.bbPts[p.idx] || 0);
 const diffInitial = (p: PartConv) => (p.difficulty || "").charAt(0).toUpperCase() || "•";
+
+// Every team that earned a part, shown on hover / click next to its answer line.
+// A team that got it on the bounceback is marked, since that's a different feat
+// from converting the part it controlled.
+function PartTeams({ part, results }: { part: PartConv; results: BonusResult[] }) {
+  const [open, setOpen] = useState(false);
+  const [pinned, setPinned] = useState(false);
+
+  useEffect(() => {
+    if (!pinned) return;
+    const onDoc = (e: MouseEvent) => { if (!(e.target as HTMLElement)?.closest?.(".bn-got")) setPinned(false); };
+    document.addEventListener("click", onDoc);
+    return () => document.removeEventListener("click", onDoc);
+  }, [pinned]);
+
+  const got = results
+    .filter((r) => partGot(r, part) > 0)
+    .map((r) => ({ team: r.team, bounceback: (r.partPts[part.idx] || 0) === 0 }))
+    .sort((a, b) => a.team.localeCompare(b.team));
+
+  return (
+    <span
+      className={"bn-got" + (pinned ? " bn-got-pinned" : "")}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onClick={(e) => { e.stopPropagation(); setPinned((p) => !p); }}
+      title="Teams that converted this part"
+    >
+      {got.length}/{results.length} teams
+      {(open || pinned) && (
+        <span className="q-pop" role="tooltip">
+          <span className="q-pop-head">
+            {got.length === 0 ? "No team converted this part" : `Converted by ${got.length} of ${results.length}`}
+          </span>
+          {got.map((g) => (
+            <span key={g.team} className="q-pop-row">
+              <span className="q-pop-who">
+                {g.team}
+                {g.bounceback && <span className="q-pop-team">bounceback</span>}
+              </span>
+            </span>
+          ))}
+        </span>
+      )}
+    </span>
+  );
+}
 
 // Row color by how much of the bonus a team converted.
 function rowClass(r: BonusResult, parts: PartConv[]): string {
@@ -28,6 +76,7 @@ export function BonusDetailPage() {
   const dispFile = version !== "all" ? `editions/${version}/bonuses_detail.json` : combinedFile;
   const { data: comb } = useSetJson<Record<string, BonusDetail>>(slug, combinedFile);
   const { data, error, loading } = useSetJson<Record<string, BonusDetail>>(slug, dispFile);
+  const nav = useQuestionNav(data, id);
   if (loading) return <Loading />;
   if (error) return <ErrorBox error={error} />;
   const d = data?.[id];
@@ -55,8 +104,9 @@ export function BonusDetailPage() {
 
   return (
     <div className="detail">
-      <div className="breadcrumb">
+      <div className="breadcrumb breadcrumb-nav">
         <Link to={`/set/${slug}/bonus`} className="link">← Bonuses</Link>
+        <QuestionNav nav={nav} label="Bonus" hrefOf={(q) => `/set/${slug}/bonus/${q}`} />
       </div>
       {versions.length > 1 && (
         <div className="version-bar">
@@ -79,7 +129,10 @@ export function BonusDetailPage() {
                   <span className="bonus-part-tag">[10{(p.difficulty || "").charAt(0)}]</span>{" "}
                   <Html html={p.part} />
                 </p>
-                <p className="bonus-answer">ANSWER: <Html html={p.answer} /></p>
+                <p className="bonus-answer">
+                  ANSWER: <Html html={p.answer} />
+                  {d.results.length > 0 && <PartTeams part={p} results={d.results} />}
+                </p>
               </li>
             ))}
           </ol>
