@@ -12,7 +12,11 @@ async function postJson(url: string, body: unknown) {
   return d;
 }
 
-function describe(c: CorrectionRequest["correction"]) {
+function describe(r: CorrectionRequest) {
+  if (r.rename)
+    return `rename ${r.rename.from} to ${r.rename.to}${r.rename.team ? ` on ${r.rename.team}` : " on every team"}`;
+  const c = r.correction;
+  if (!c) return "no change";
   const parts: string[] = [];
   const from = c.fromPlayer ?? "(unknown)";
   if (c.toPlayer !== undefined && c.toPlayer !== null && c.toPlayer !== c.fromPlayer)
@@ -20,6 +24,26 @@ function describe(c: CorrectionRequest["correction"]) {
   if (c.toWordIndex !== undefined && c.toWordIndex !== null)
     parts.push(`move buzz to word #${c.toWordIndex + 1}`);
   return parts.join("; ") || "no change";
+}
+
+// A rename has no single question to link to, so it gets a plain label.
+function Title({ slug, r }: { slug: string; r: CorrectionRequest }) {
+  if (r.rename)
+    return (
+      <>
+        <span className="pill">Player rename</span>{" "}
+        <span className="muted">{r.rename.team ?? "all teams"}</span>
+      </>
+    );
+  if (!r.correction) return <span className="muted">Edit</span>;
+  return (
+    <>
+      <Link to={`/set/${slug}/tossup/${r.correction.round}-${r.correction.num}`} className="link">
+        Tossup {r.correction.round}-{r.correction.num}
+      </Link>{" "}
+      · <span className="muted">{r.correction.team}</span>
+    </>
+  );
 }
 
 export function Requests() {
@@ -76,13 +100,8 @@ export function Requests() {
           {pending.map((r) => (
             <div key={r.id} className="req-card">
               <div className="req-main">
-                <div className="req-title">
-                  <Link to={`/set/${slug}/tossup/${r.correction.round}-${r.correction.num}`} className="link">
-                    Tossup {r.correction.round}-{r.correction.num}
-                  </Link>{" "}
-                  · <span className="muted">{r.correction.team}</span>
-                </div>
-                <div className="req-desc">{describe(r.correction)}</div>
+                <div className="req-title"><Title slug={slug} r={r} /></div>
+                <div className="req-desc">{describe(r)}</div>
                 {r.desc && <div className="req-note">“{r.desc}”</div>}
                 <div className="req-meta">by {r.by} · {new Date(r.at).toLocaleString()}</div>
               </div>
@@ -105,15 +124,12 @@ export function Requests() {
               <div key={r.id} className="req-card req-handled">
                 <div className="req-main">
                   <div className="req-title">
-                    <Link to={`/set/${slug}/tossup/${r.correction.round}-${r.correction.num}`} className="link">
-                      Tossup {r.correction.round}-{r.correction.num}
-                    </Link>{" "}
-                    · <span className="muted">{r.correction.team}</span>
+                    <Title slug={slug} r={r} />
                     <span className={`pill ${r.status === "approved" ? "buzz-get" : "buzz-neg"}`} style={{ marginLeft: 8 }}>
                       {r.status}
                     </span>
                   </div>
-                  <div className="req-desc">{describe(r.correction)}</div>
+                  <div className="req-desc">{describe(r)}</div>
                   <div className="req-meta">by {r.by} · {new Date(r.at).toLocaleString()}</div>
                 </div>
               </div>

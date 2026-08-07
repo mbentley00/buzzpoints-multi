@@ -2,7 +2,7 @@
 // re-aggregation helper used by ingest and the edit endpoints.
 import { put, del } from "@vercel/blob";
 import { readBlobJson } from "./blob.js";
-import { aggregate, bonusFilesFromImported, ImportedBonus, PacketFile, GameFile, Correction, VirtualCategory } from "./aggregate.js";
+import { aggregate, bonusFilesFromImported, ImportedBonus, PacketFile, GameFile, Correction, VirtualCategory, PlayerRename } from "./aggregate.js";
 import { getScoring } from "./scoring.js";
 
 export interface Edition {
@@ -133,9 +133,13 @@ export function sanitizeEntry(e: SetEntry, user: string | null) {
   const { invites, ...rest } = e;
   return { ...rest, visibility: effectiveVisibility(e), inviteCount: (invites || []).length, hasAccess: canViewContent(e, user), ...(isOwner ? { invites } : {}) };
 }
+// A proposed edit awaiting the owner. Exactly one of `correction` (one buzz) or
+// `rename` (a player across the whole tournament) is set; `correction` stays
+// non-optional in shape for the many older records that predate renames.
 export interface CorrectionRequest {
   id: string;
-  correction: Correction;
+  correction?: Correction;
+  rename?: PlayerRename;
   by: string;
   at: string;
   status: "pending" | "approved" | "rejected";
@@ -157,6 +161,37 @@ export const writeSource = (slug: string, s: SetSource) => writeJson(`sets/${slu
 
 export const readCorrections = (slug: string) => readBlobJson<Correction[]>(`sets/${slug}/_corrections.json`, false).then((c) => c || []);
 export const writeCorrections = (slug: string, c: Correction[]) => writeJson(`sets/${slug}/_corrections.json`, c);
+
+// Set-wide player renames applied on (re-)aggregation. Same lifecycle as
+// corrections: the owner writes them directly, viewers propose them.
+export const readRenames = (slug: string) =>
+  readBlobJson<PlayerRename[]>(`sets/${slug}/_renames.json`, false).then((r) => r || []);
+export const writeRenames = (slug: string, r: PlayerRename[]) => writeJson(`sets/${slug}/_renames.json`, r);
+
+const renameKey = (r: PlayerRename) => `${r.team ?? ""}|${r.from}`;
+
+export function validRename(r: any): r is PlayerRename {
+  if (!r || typeof r.from !== "string" || typeof r.to !== "string") return false;
+  const from = r.from.trim(), to = r.to.trim();
+  if (!from || !to || from === to) return false;
+  if (from.length > 120 || to.length > 120) return false;
+  return r.team === null || r.team === undefined || (typeof r.team === "string" && r.team.length <= 200);
+}
+
+// Add a rename, keeping the list a single-pass map: an existing rename whose
+// TARGET is being renamed again is retargeted rather than left to dangle, so
+// "A -> B" followed by "B -> C" ends up as "A -> C" plus "B -> C" instead of a
+// chain the aggregator would refuse to follow.
+export function mergeRename(list: PlayerRename[], incoming: PlayerRename): PlayerRename[] {
+  const inc: PlayerRename = { ...incoming, from: incoming.from.trim(), to: incoming.to.trim(), team: incoming.team ?? null };
+  const sameScope = (r: PlayerRename) => (r.team ?? null) === inc.team || r.team === null;
+  const out = list
+    .filter((r) => renameKey(r) !== renameKey(inc))
+    .map((r) => (r.to === inc.from && sameScope(r) ? { ...r, to: inc.to } : r));
+  // A rename onto a name that is itself renamed away would strand the player.
+  const onward = out.find((r) => r.from === inc.to && sameScope(r));
+  return [...out, onward ? { ...inc, to: onward.to } : inc];
+}
 
 // Owner-defined merged ("virtual") categories applied to the tossup + bonus
 // category trees on (re-)aggregation.
@@ -473,6 +508,7 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   const editions = canonicalizeEditions(editionsOf(source));
   const multi = editions.length > 1;
   const virtualCats = await readVirtualCats(slug);
+  const renames = await readRenames(slug);
 
   // Bonuses imported as aggregate-only stats: rebuild the bonus files from those
   // stats when there's no per-game bonus data. If per-team results WERE scraped
@@ -493,7 +529,7 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   const playerEds = new Map<string, string[]>();
   const playerKey = (r: any) => `${r.name}\u0000${r.team}`;
   for (const ed of editions) {
-    const out = aggregate(ed.packets, ed.games, cfg, corrections, virtualCats);
+    const out = aggregate(ed.packets, ed.games, cfg, corrections, virtualCats, renames);
     overrideBonuses(out, [ed]);
     const m = out["meta.json"] as any;
     editionSummaries.push({ id: ed.id, label: ed.label, numGames: m.numGames, numTeams: m.numTeams, numPlayers: m.numPlayers, numTossups: m.numTossups, rounds: m.rounds.length });
@@ -507,7 +543,7 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   // combined (single-edition: identical to the one edition)
   const combinedGames = editions.flatMap((e) => e.games || []);
   const combined = combinedPackets(editions);
-  const out = aggregate(combined, combinedGames, cfg, corrections, virtualCats);
+  const out = aggregate(combined, combinedGames, cfg, corrections, virtualCats, renames);
   overrideBonuses(out, editions);
   (out["meta.json"] as any).editions = editionSummaries;
   if (multi) {
@@ -541,7 +577,7 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
     const gm = combinedGames.filter((g) => roundsSet.has(g.round));
     if (!gm.length) continue;
     const pk = combined.filter((p) => roundsSet.has(p.round));
-    const tout = aggregate(pk, gm, cfg, corrections, virtualCats);
+    const tout = aggregate(pk, gm, cfg, corrections, virtualCats, renames);
     overrideBonuses(tout, editions, roundsSet);
     const slugT = tagSlug(name);
     await writeFiles(`sets/${slug}/tags/${slugT}/`, tout);

@@ -67,6 +67,24 @@ export interface Correction {
 const corrKeyOf = (r: number, num: number, team: string | null, player: string | null, widx: number | null) =>
   `${r}|${num}|${team}|${player}|${widx}`;
 
+// A set-wide player rename. Sources spell the same person differently between
+// games ("Mike Bentley" / "Michael Bentley"), or simply get a name wrong; a
+// rename folds every appearance onto one spelling so their stats stop being
+// split in two. `team` scopes it to one roster — necessary because two different
+// people on different teams can legitimately share a name; null renames the
+// player wherever they appear.
+//
+// Unlike a Correction (which targets one buzz) this applies across the whole
+// tournament, but it travels the same route: the owner applies it directly, a
+// viewer submits it for approval.
+export interface PlayerRename {
+  from: string;
+  to: string;
+  team: string | null;
+  by?: string;
+  at?: string;
+}
+
 // An owner-defined "virtual" (merged) category: a named group that aggregates the
 // stats of one or more existing (sub)categories. `members` are subcategory path
 // strings (e.g. "Fine Arts - Auditory - Opera"); a subcategory may belong to
@@ -389,7 +407,8 @@ export function aggregate(
   games: GameFile[],
   cfg: AggregateConfig,
   corrections: Correction[] = [],
-  virtualCats: VirtualCategory[] = []
+  virtualCats: VirtualCategory[] = [],
+  renames: PlayerRename[] = []
 ): Record<string, unknown> {
   const scoring = cfg.scoring;
   const hasPower = scoring.hasPower;
@@ -407,6 +426,19 @@ export function aggregate(
 
   const corrMap = new Map<string, Correction>();
   for (const c of corrections) corrMap.set(corrKeyOf(c.round, c.num, c.team, c.fromPlayer, c.fromWordIndex), c);
+
+  // Player renames. A team-scoped rename wins over a global one. Applied in a
+  // single pass (never chained), so a rename whose target is another rename's
+  // source can't cascade.
+  const renameAt = new Map<string, string>();
+  for (const r of renames) {
+    if (!r?.from || !r?.to) continue;
+    renameAt.set(`${r.team ?? ""}${SEP}${r.from}`, r.to);
+  }
+  const renamed = renameAt.size
+    ? (name: string, team: string | null) =>
+        renameAt.get(`${team ?? ""}${SEP}${name}`) ?? renameAt.get(`${SEP}${name}`) ?? name
+    : (name: string) => name;
 
   const tossups = new Map<string, TUStat>();
   const bonuses = new Map<string, BNStat>();
@@ -487,9 +519,9 @@ export function aggregate(
       addGamePts(tname, mt.bonus_points || 0);
       let rs = rosters.get(tname);
       if (!rs) { rs = new Set(); rosters.set(tname, rs); }
-      for (const p of mt.team?.players || []) if (p?.name) rs.add(p.name);
+      for (const p of mt.team?.players || []) if (p?.name) rs.add(renamed(p.name, tname));
       for (const mp of mt.match_players || []) {
-        const pname = mp.player?.name;
+        const pname = mp.player?.name ? renamed(mp.player.name, tname) : undefined;
         if (!pname) continue;
         rs.add(pname);
         const pv = plOf(pname, tname);
@@ -519,6 +551,10 @@ export function aggregate(
           const c = corrMap.get(corrKeyOf(r, tnum, bteam, origPlayer, origWordIndex));
           if (c) { if (c.toPlayer !== undefined) pname = c.toPlayer; if (c.toWordIndex !== undefined) widx = c.toWordIndex; }
         }
+        // After the per-buzz correction, so a reassignment lands on the renamed
+        // player too. `origPlayer` deliberately stays raw — it's the key the buzz
+        // editor uses to address this correction.
+        if (pname) pname = renamed(pname, bteam);
         // A buzz's word index is relative to the exact wording the player heard. In
         // the combined view of a multi-edition set the canonical wording may be a
         // different length (a mirror reworded the same question), which would render

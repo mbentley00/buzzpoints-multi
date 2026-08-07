@@ -5,7 +5,7 @@ import { refreshIndex } from "../data";
 import { Visibility, TOURNAMENT_LEVELS } from "../types";
 import { Loading } from "../components/Common";
 import { RoundTagsEditor } from "../components/RoundTagsEditor";
-import { RoundAlignEditor, GameFilesEditor } from "../components/SourceFiles";
+import { RoundAlignEditor, GameFilesEditor, RenamesEditor } from "../components/SourceFiles";
 
 const VIS_OPTIONS: { id: Visibility; label: string; desc: string }[] = [
   { id: "listed", label: "Listed (login + invite)", desc: "Shown in the list; only invited, logged-in people can view." },
@@ -283,6 +283,14 @@ export function Settings() {
             twice. Remove any game you didn't mean to add — stats are rebuilt without it.
           </p>
           <GameFilesEditor slug={slug} />
+
+          <h2 id="renames" style={{ marginTop: 28 }}>Renamed players</h2>
+          <p className="muted">
+            A rename folds every buzz, box score and roster entry for a player onto one spelling — useful when the
+            source spells the same person two ways and splits their stats. Start one from a player’s page; viewers can
+            suggest one there too, and it lands on the <Link to={`/set/${slug}/requests`} className="link">Corrections</Link> page for approval.
+          </p>
+          <RenamesEditor slug={slug} />
         </>
       )}
 

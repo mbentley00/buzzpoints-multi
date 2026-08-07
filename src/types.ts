@@ -79,9 +79,22 @@ export interface Correction {
   toWordIndex?: number | null;
 }
 
+// A set-wide player rename (see PlayerRename in api/_lib/aggregate.ts).
+// `team` scopes it to one roster; null renames the player on every team.
+export interface PlayerRename {
+  from: string;
+  to: string;
+  team: string | null;
+  by?: string;
+  at?: string;
+}
+
+// Exactly one of `correction` (one buzz) or `rename` (a player across the whole
+// tournament) is present.
 export interface CorrectionRequest {
   id: string;
-  correction: Correction & { by?: string; at?: string };
+  correction?: Correction & { by?: string; at?: string };
+  rename?: PlayerRename;
   by: string;
   at: string;
   status: "pending" | "approved" | "rejected";

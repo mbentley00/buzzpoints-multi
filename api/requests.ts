@@ -8,11 +8,18 @@ import { currentUser } from "./_lib/auth.js";
 import {
   getSetEntry, readRequests, writeRequests, readSource, readCorrections, writeCorrections,
   aggregateAndWrite, mergeCorrection, validCorrection, canView, CorrectionRequest,
+  readRenames, writeRenames, mergeRename, validRename,
 } from "./_lib/sets.js";
 import { sendEmail, appUrl, correctionRequestBody } from "./_lib/email.js";
 
-// Human-readable one-line summary of a proposed correction, for the owner email.
-function correctionSummary(c: any): string {
+// Human-readable one-line summary of a proposed edit, for the owner email.
+function requestSummary(r: CorrectionRequest): string {
+  if (r.rename) {
+    const scope = r.rename.team ? ` on ${r.rename.team}` : " (every team)";
+    return `Rename player${scope}: ${r.rename.from} → ${r.rename.to}.`;
+  }
+  const c = r.correction as any;
+  if (!c) return "Edit.";
   const where = `Round ${c.round}, Q${c.num} (${c.team})`;
   const parts: string[] = [];
   if (c.toPlayer !== undefined)
@@ -41,18 +48,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // ---- submit a correction request (any logged-in viewer) ----
   if (body.action === "submit") {
-    const { slug, correction, desc } = body;
-    if (typeof slug !== "string" || !validCorrection(correction))
-      return res.status(400).json({ error: "Invalid request." });
+    const { slug, correction, rename, desc } = body;
+    const isRename = rename !== undefined;
+    if (typeof slug !== "string" || (isRename ? !validRename(rename) : !validCorrection(correction)))
+      return res.status(400).json({ error: isRename ? "Enter a different, non-empty name." : "Invalid request." });
     try {
       const entry = await getSetEntry(slug);
       if (!entry) return res.status(404).json({ error: "Tournament not found." });
       if (!canView(entry, user)) return res.status(403).json({ error: "You don't have access to this tournament." });
       const reqs = await readRequests(slug);
+      const stamp = { by: user, at: new Date().toISOString() };
       const r: CorrectionRequest = {
         id: crypto.randomUUID(),
-        correction: { ...correction, by: user, at: new Date().toISOString() },
-        by: user, at: new Date().toISOString(), status: "pending",
+        ...(isRename ? { rename: { ...rename, ...stamp } } : { correction: { ...correction, ...stamp } }),
+        by: user, at: stamp.at, status: "pending",
         desc: typeof desc === "string" ? desc.slice(0, 300) : undefined,
       };
       reqs.unshift(r);
@@ -61,7 +70,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await sendEmail({
           to: entry.owner,
           subject: `Edit suggested — ${entry.name}`,
-          html: correctionRequestBody(user, entry.name, correctionSummary(r.correction), r.desc || "", `${appUrl()}/set/${slug}/requests`),
+          html: correctionRequestBody(user, entry.name, requestSummary(r), r.desc || "", `${appUrl()}/set/${slug}/requests`),
         });
       return res.status(200).json({ ok: true, id: r.id });
     } catch (e) {
@@ -86,10 +95,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (action === "approve") {
       const source = await readSource(slug);
       if (!source) return res.status(500).json({ error: "Source data not found." });
-      const corrections = await readCorrections(slug);
-      const next = mergeCorrection(corrections, r.correction);
-      await writeCorrections(slug, next);
-      await aggregateAndWrite(slug, source, next);
+      if (r.rename) {
+        await writeRenames(slug, mergeRename(await readRenames(slug), r.rename));
+        await aggregateAndWrite(slug, source, await readCorrections(slug));
+      } else if (r.correction) {
+        const next = mergeCorrection(await readCorrections(slug), r.correction);
+        await writeCorrections(slug, next);
+        await aggregateAndWrite(slug, source, next);
+      }
     }
     r.status = action === "approve" ? "approved" : "rejected";
     await writeRequests(slug, reqs);
