@@ -1,13 +1,15 @@
 // Transactional email via Resend. When RESEND_API_KEY is unset, sending is a
 // no-op (the caller falls back to surfacing links/notices in-app).
 const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
-const EMAIL_FROM = process.env.EMAIL_FROM || "Buzzpoints <noreply@buzzpoints.buzz>";
+const EMAIL_FROM = process.env.EMAIL_FROM || "Buzzpoints <noreply@quizbowlbuzzpoints.com>";
 
 export const emailEnabled = () => !!RESEND_API_KEY;
 
-// Base URL for links in emails. Prefer APP_URL; fall back to the prod host.
+// Base URL for links in emails and for the invite/approval links built server-side.
+// Prefer APP_URL; fall back to the prod host (www is primary — the apex 308s to it,
+// and an invite link that redirects is one more thing to go wrong in a mail client).
 export const appUrl = () =>
-  (process.env.APP_URL || "https://buzzpoints.buzz").replace(/\/+$/, "");
+  (process.env.APP_URL || "https://www.quizbowlbuzzpoints.com").replace(/\/+$/, "");
 
 export async function sendEmail(opts: { to: string; subject: string; html: string; text?: string; replyTo?: string }): Promise<boolean> {
   if (!RESEND_API_KEY) return false;

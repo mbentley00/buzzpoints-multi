@@ -103,8 +103,8 @@ columns appear (power / neg). Bonuses are toggled per tournament.
 | `SESSION_SECRET` | yes (prod) | Signs session & verification tokens. Defaults to an insecure dev value if unset. |
 | `ADMIN_EMAILS` | optional | Comma-separated platform admin emails. |
 | `RESEND_API_KEY` | optional | Enables transactional email (verification, access, corrections) via [Resend](https://resend.com). When unset, links are surfaced in-app instead. |
-| `EMAIL_FROM` | optional | From address, e.g. `Buzzpoints <noreply@buzzpoints.buzz>`. Requires a domain verified in Resend. |
-| `APP_URL` | optional | Base URL used in email links (defaults to `https://buzzpoints.buzz`). |
+| `EMAIL_FROM` | optional | From address, e.g. `Buzzpoints <noreply@quizbowlbuzzpoints.com>`. Requires a domain verified in Resend. |
+| `APP_URL` | optional | Base URL for invite/verification/approval links (defaults to `https://www.quizbowlbuzzpoints.com`). |
 
 ## Local development
 
