@@ -726,6 +726,12 @@ export function aggregate(
     const wc = t.wordCount || 1;
     const fracs = correct.filter((b) => b.wordIndex !== null).map((b) => b.wordIndex! / wc);
     const avgFrac = fracs.length ? fracs.reduce((a, b) => a + b, 0) / fracs.length : null;
+    // Where it got converted while the question was still LIVE: the first buzz of
+    // a room's reading, so the answering team was racing the clock rather than
+    // sitting on a dead question after the other team had already negged. Those
+    // late pickups drag the plain average toward the end of the question.
+    const liveFracs = correct.filter((b) => b.firstInRoom && b.wordIndex !== null).map((b) => b.wordIndex! / wc);
+    const avgLiveFrac = liveFracs.length ? liveFracs.reduce((a, b) => a + b, 0) / liveFracs.length : null;
     const impreciseN = buzzes.filter((b) => imprecise(b.value, b.wordIndex, P)).length;
     const end1 = firstSentenceEnd(t.words), end2 = nthSentenceEnd(t.words, 2);
     const firstConv = correct.filter((b) => b.wordIndex !== null && b.wordIndex <= end1).length;
@@ -745,12 +751,15 @@ export function aggregate(
       id, round: t.round, num: t.num, answer: t.answer, category: t.category, subcategory: t.subcategory,
       heard, powers, gets, convPct, powerPct: pct(powers, heard), incorrectPct: pct(incorrectBefore, heard),
       avgBuzzPct: avgFrac == null ? null : round1(100 * avgFrac),
+      avgLiveBuzzPct: avgLiveFrac == null ? null : round1(100 * avgLiveFrac),
     });
     tuDetail[id] = {
       id, round: t.round, num: t.num, answer: t.answer, questionHtml: t.questionHtml,
       category: t.category, subcategory: t.subcategory, words: t.words, powerIndex: t.powerIndex, wordCount: t.wordCount,
       heard, powers, gets, convPct, powerPct: pct(powers, heard), incorrectPct: pct(incorrectBefore, heard),
-      avgBuzzPct: avgFrac == null ? null : round1(100 * avgFrac), impreciseCount: impreciseN, buzzes: detailBuzzes,
+      avgBuzzPct: avgFrac == null ? null : round1(100 * avgFrac),
+      avgLiveBuzzPct: avgLiveFrac == null ? null : round1(100 * avgLiveFrac),
+      impreciseCount: impreciseN, buzzes: detailBuzzes,
     };
     let cs = catTuSub.get(t.subcategory);
     if (!cs) { cs = { main: t.category, heard: 0, powers: 0, gets: 0, buzzSum: 0, buzzN: 0, firstConv: 0, secondConv: 0, incorrectBefore: 0 }; catTuSub.set(t.subcategory, cs); }

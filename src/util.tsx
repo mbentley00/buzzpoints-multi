@@ -2,9 +2,33 @@ export function CategoryTag({ cat }: { cat: string }) {
   return <span className="cat-tag">{cat}</span>;
 }
 
-// Generic round label (no tournament-specific finals/tiebreaker naming).
+// Generic round label (no tournament-specific finals/tiebreaker naming). Rounds
+// above LETTER_ROUND_BASE came from lettered packets — "Round A" — and are shown
+// as the letter. Keep in sync with roundFromName in api/_lib/publish.ts.
+const LETTER_ROUND_BASE = 1000;
 export function roundLabel(r: number): string {
-  return String(r);
+  return r > LETTER_ROUND_BASE && r <= LETTER_ROUND_BASE + 26
+    ? String.fromCharCode(64 + r - LETTER_ROUND_BASE)
+    : String(r);
+}
+
+// What the owner typed into a round box: a number, or a letter for a lettered
+// packet ("A"). Null if it's neither.
+export function parseRoundInput(raw: string): number | null {
+  const s = (raw || "").trim();
+  if (/^\d+$/.test(s)) return Number(s);
+  if (/^[A-Za-z]$/.test(s)) return LETTER_ROUND_BASE + (s.toUpperCase().charCodeAt(0) - 64);
+  return null;
+}
+
+// The round a packet/game filename refers to, mirroring the server's parsing so
+// the upload form can say which rounds it's about to replace. The server's answer
+// is the one that counts.
+export function roundFromFileName(name: string): number | null {
+  const m = (name || "").match(/(?:Round[_ ])?0*(\d+)(?:[_ .]|$)/i);
+  if (m) return Number(m[1]);
+  const l = (name || "").match(/(?:round|rd|packet)[ _-]*([a-z])(?:[ _.)\-]|$)/i);
+  return l ? LETTER_ROUND_BASE + (l[1].toUpperCase().charCodeAt(0) - 64) : null;
 }
 
 // Pronunciation guides — a parenthetical opening with a quote, e.g. (“BEE-muh”)

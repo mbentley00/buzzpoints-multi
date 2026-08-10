@@ -44,6 +44,11 @@ export function CategoryGroups<G extends GroupBase<S>, S extends SubBase>({
     Object.fromEntries(groups.map((g) => [g.category, true]))
   );
   const [openSubs, setOpenSubs] = useState<Record<string, boolean>>({});
+  // A set that files everything under a bare subject gives each category one
+  // "(general)" child repeating the category's own numbers. There's nothing to
+  // drill into, so the category row stands alone and is itself the link.
+  const flat = (g: G) =>
+    g.subs.length === 1 && g.subs[0].subcategory === g.category && !g.subs[0].leaves?.length;
   const allOpen =
     groups.every((g) => openMains[g.category]) &&
     groups.every((g) => g.subs.every((s) => !s.leaves?.length || openSubs[s.subcategory]));
@@ -58,10 +63,17 @@ export function CategoryGroups<G extends GroupBase<S>, S extends SubBase>({
   return (
     <div>
       <div className="cat-toolbar">
-        <button className="mini-btn" onClick={() => setAll(!allOpen)}>
-          {allOpen ? "Collapse all" : "Expand all"}
-        </button>
-        <span className="muted">Click any category, subcategory, or sub-subcategory to see its questions.</span>
+        {/* Nothing anywhere to expand — don't offer a button that does nothing. */}
+        {!groups.every(flat) && (
+          <button className="mini-btn" onClick={() => setAll(!allOpen)}>
+            {allOpen ? "Collapse all" : "Expand all"}
+          </button>
+        )}
+        <span className="muted">
+          {groups.every(flat)
+            ? "Click any category to see its questions."
+            : "Click any category, subcategory, or sub-subcategory to see its questions."}
+        </span>
       </div>
       <div className="table-wrap">
         <table className="data-table cat-table">
@@ -80,13 +92,17 @@ export function CategoryGroups<G extends GroupBase<S>, S extends SubBase>({
               <Fragment key={g.category}>
                 <tr className="cat-main-row">
                   <td>
-                    <button
-                      className="caret"
-                      onClick={() => setOpenMains((o) => ({ ...o, [g.category]: !o[g.category] }))}
-                      aria-label="toggle"
-                    >
-                      {openMains[g.category] ? "▾" : "▸"}
-                    </button>
+                    {flat(g) ? (
+                      <span className="caret-spacer" />
+                    ) : (
+                      <button
+                        className="caret"
+                        onClick={() => setOpenMains((o) => ({ ...o, [g.category]: !o[g.category] }))}
+                        aria-label="toggle"
+                      >
+                        {openMains[g.category] ? "▾" : "▸"}
+                      </button>
+                    )}
                     <Link
                       className="cat-main-link"
                       to={
@@ -106,6 +122,7 @@ export function CategoryGroups<G extends GroupBase<S>, S extends SubBase>({
                   ))}
                 </tr>
                 {openMains[g.category] &&
+                  !flat(g) &&
                   g.subs.map((s) => {
                     const hasLeaves = !!s.leaves?.length;
                     const open = openSubs[s.subcategory];

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { BuzzerRace } from "../types";
-import { CategoryTag, Html, num } from "../util";
+import { CategoryTag, Html, num, roundLabel } from "../util";
 import { DataTable, Column } from "../components/DataTable";
 import { PageHeader, Loading, ErrorBox, RoundFilter, SearchInput } from "../components/Common";
 
@@ -54,7 +54,7 @@ export function BuzzerRaces() {
     { key: "clue", label: "Contested clue", sortVal: (r) => r.hot.toLowerCase(), render: (r) => <ClueSnippet r={r} /> },
     { key: "answer", label: "Answer", sortVal: (r) => r.id, render: (r) => <Link className="link answer-cell" to={`/set/${slug}/tossup/${r.id}`}><Html html={r.answer} /></Link> },
     { key: "category", label: "Category", sortVal: (r) => r.category, render: (r) => <CategoryTag cat={r.category} /> },
-    { key: "rn", label: "Rd/#", sortVal: (r) => r.round * 100 + r.num, render: (r) => <Link className="mono link" to={`/set/${slug}/tossup/${r.id}`}>{r.round}-{r.num}</Link> },
+    { key: "rn", label: "Rd/#", sortVal: (r) => r.round * 100 + r.num, render: (r) => <Link className="mono link" to={`/set/${slug}/tossup/${r.id}`}>{roundLabel(r.round)}-{r.num}</Link> },
     { key: "through", label: "% Through", align: "right", sortVal: (r) => r.pctThrough, render: (r) => `${num(r.pctThrough)}%`, title: "How far into the question the contested clue sits" },
   ];
 

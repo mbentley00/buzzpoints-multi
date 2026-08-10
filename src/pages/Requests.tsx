@@ -4,6 +4,7 @@ import { useSetCtx } from "../components/Layout";
 import { clearSetCache } from "../data";
 import { CorrectionRequest } from "../types";
 import { Loading } from "../components/Common";
+import { roundLabel } from "../util";
 
 async function postJson(url: string, body: unknown) {
   const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -39,7 +40,7 @@ function Title({ slug, r }: { slug: string; r: CorrectionRequest }) {
   return (
     <>
       <Link to={`/set/${slug}/tossup/${r.correction.round}-${r.correction.num}`} className="link">
-        Tossup {r.correction.round}-{r.correction.num}
+        Tossup {roundLabel(r.correction.round)}-{r.correction.num}
       </Link>{" "}
       · <span className="muted">{r.correction.team}</span>
     </>

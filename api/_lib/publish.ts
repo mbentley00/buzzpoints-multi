@@ -41,9 +41,18 @@ const TWO_YEARS_MS = 2 * 365 * 24 * 60 * 60 * 1000;
 
 export const slugify = (s: string) =>
   (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "set";
+// Packets are normally "Round_09.json", but some tournaments letter them instead
+// ("Round A"). A lettered round is numbered above LETTER_ROUND_BASE so it can't
+// collide with a numbered one — a set can have numbered prelims and a lettered
+// finals packet, and before this they all landed on round 0 and overwrote each
+// other. roundLabel() in src/util.tsx turns them back into letters for display.
+export const LETTER_ROUND_BASE = 1000;
 export const roundFromName = (name: string) => {
   const m = (name || "").match(/(?:Round[_ ])?0*(\d+)(?:[_ .]|$)/i);
-  return m ? Number(m[1]) : null;
+  if (m) return Number(m[1]);
+  // Only after a keyword, so an arbitrary filename can't become round "T".
+  const l = (name || "").match(/(?:round|rd|packet)[ _-]*([a-z])(?:[ _.)\-]|$)/i);
+  return l ? LETTER_ROUND_BASE + (l[1].toUpperCase().charCodeAt(0) - 64) : null;
 };
 
 export function parseFiles(body: { packets?: FileRef[]; games?: FileRef[] }): { packets: PacketFile[]; games: GameFile[] } {

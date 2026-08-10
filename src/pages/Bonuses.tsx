@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { BonusRow } from "../types";
-import { CategoryTag, Html, pct, num, plain, catMatches } from "../util";
+import { CategoryTag, Html, pct, num, plain, catMatches, roundLabel } from "../util";
 import { DataTable, Column } from "../components/DataTable";
 import { PageHeader, Loading, ErrorBox, RoundFilter, SearchInput } from "../components/Common";
 import { useCategoryFilter, CategoryFilterChip } from "../components/CategoryFilter";
@@ -43,7 +43,7 @@ export function Bonuses() {
       sortVal: (b) => b.round * 100 + b.num,
       render: (b) => (
         <Link className="mono link" to={`/set/${slug}/bonus/${b.id}`}>
-          {b.round}-{b.num}
+          {roundLabel(b.round)}-{b.num}
         </Link>
       ),
     },

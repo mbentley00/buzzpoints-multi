@@ -15,6 +15,7 @@ import {
   editionsOf, Edition, SetSource, AccessRequest, readRenames,
 } from "./_lib/sets.js";
 import { VirtualCategory, scanRoundAlignment } from "./_lib/aggregate.js";
+import { LETTER_ROUND_BASE } from "./_lib/publish.js";
 import { sendEmail, appUrl, accessRequestBody, accessGrantedBody } from "./_lib/email.js";
 
 const VIS = new Set<Visibility>(["public", "listed", "private"]);
@@ -304,8 +305,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         for (const [k, v] of entries) {
           const i = Number(k), round = Number(v);
           if (!Number.isInteger(i) || i < 0 || i >= packets.length) return res.status(400).json({ error: "Unknown packet." });
-          if (!Number.isInteger(round) || round < 0 || round > 999)
-            return res.status(400).json({ error: "Round numbers must be whole numbers from 0 to 999." });
+          // Above LETTER_ROUND_BASE are the lettered packets ("Round A"), which the
+          // client sends through as their mapped number.
+          const lettered = round > LETTER_ROUND_BASE && round <= LETTER_ROUND_BASE + 26;
+          if (!Number.isInteger(round) || round < 0 || (round > 999 && !lettered))
+            return res.status(400).json({ error: "Rounds must be whole numbers from 0 to 999, or a single letter." });
           packets[i] = { ...packets[i], round };
         }
         // Two packets on one round overwrite each other, so refuse to CREATE a

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AuthNav, Loading, ErrorBox } from "../components/Common";
-import { Html, CategoryTag, num } from "../util";
+import { Html, CategoryTag, num, roundLabel } from "../util";
 
 type SearchType = "players" | "questions";
 interface CatHit { category: string; points: number }
@@ -147,7 +147,7 @@ export function Search() {
                     <div className="search-result-meta">
                       {qr.category && <CategoryTag cat={qr.category} />}
                       <span className="search-set">{qr.setName}</span>
-                      <span>R{qr.round}-{qr.num}</span>
+                      <span>R{roundLabel(qr.round)}-{qr.num}</span>
                     </div>
                   </Link>
                 ))}

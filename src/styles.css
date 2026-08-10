@@ -530,7 +530,10 @@ mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
 }
 .caret-sub { padding-right: 6px; }
 .caret-spacer { display: inline-block; width: 18px; }
+/* The category name is a link too, but it's set in ink so the table reads as a
+   hierarchy rather than a wall of blue — hovering is what says "clickable". */
 .cat-main-link { display: inline-block; }
+.cat-main-link:hover .cat-tag { color: var(--link); text-decoration: underline; }
 .cat-sub-row td:first-child { padding-left: 26px; }
 .cat-sub-link { color: var(--link); text-decoration: underline; }
 .cat-leaf-row td:first-child { padding-left: 58px; }

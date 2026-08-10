@@ -220,6 +220,7 @@ interface Body {
   name?: string; scoring?: string; hasBonuses?: boolean; packets?: FileRef[]; games?: FileRef[];
   visibility?: string; autoPublicAt?: string | null; editionOf?: string; edition?: string;
   editionId?: string; // when set with editionOf: append files to this existing edition
+  replaceRound?: boolean; // with editionId: swap out the rounds these files cover instead of appending
   yf?: any; // optional companion YellowFruit (.yft) JSON for corrected re-export
   level?: string; tdLink?: string; // tournament type + optional Tournament Database link
   importUrl?: string; // import-start: the Buzzpoints site to import
@@ -300,14 +301,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       let next: SetSource;
       let resultId: string;
       if (targetId) {
-        // Append packets/games to an edition that already exists.
+        // Append packets/games to an edition that already exists, or — when the
+        // owner is fixing a round they got wrong — throw away what's already filed
+        // under the rounds being uploaded and put these in their place.
         const target = eds.find((e) => e.id === targetId);
         if (!target) return res.status(404).json({ error: "Edition not found." });
-        const merged = eds.map((e) =>
-          e.id === targetId
-            ? { ...e, packets: [...(e.packets || []), ...packets], games: [...(e.games || []), ...games] }
-            : e
-        );
+        const replace = !!body.replaceRound;
+        if (replace && [...packets, ...games].some((f) => !f.round))
+          return res.status(400).json({
+            error: "To replace a round, every file has to say which round it is — name them like \"Round_09.json\" (or set the round inside the game file).",
+          });
+        const packetRounds = new Set(packets.map((p) => p.round));
+        const gameRounds = new Set(games.map((g) => g.round));
+        const kept = (e: typeof target) => ({
+          packets: replace ? (e.packets || []).filter((p) => !packetRounds.has(p.round)) : e.packets || [],
+          games: replace ? (e.games || []).filter((g) => !gameRounds.has(g.round)) : e.games || [],
+        });
+        const merged = eds.map((e) => {
+          if (e.id !== targetId) return e;
+          const k = kept(e);
+          return { ...e, packets: [...k.packets, ...packets], games: [...k.games, ...games] };
+        });
         next = { name: source.name, scoring: source.scoring, hasBonuses: source.hasBonuses, editions: merged };
         resultId = targetId;
       } else {

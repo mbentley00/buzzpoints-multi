@@ -3,7 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { clearSetCache, useSetJson } from "../data";
 import { useSetCtx } from "../components/Layout";
 import { TossupDetail, Buzz, Rosters } from "../types";
-import { Html, pct, num } from "../util";
+import { Html, pct, num, roundLabel } from "../util";
 import { Loading, ErrorBox } from "../components/Common";
 import { QuestionNav, useQuestionNav } from "../components/QuestionNav";
 import { Segs, plainTokens, tokenizeQuestion } from "../questionText";
@@ -321,7 +321,7 @@ export function TossupDetailPage() {
 
       <div className="tu-grid">
         <div className="tu-left">
-          <h1>Packet {d.round}: Tossup {d.num}</h1>
+          <h1>Packet {roundLabel(d.round)}: Tossup {d.num}</h1>
           <Question d={d} slug={slug} onHoverWord={setHoverWord} />
           <p className="tu-answer">ANSWER: <Html html={d.answer} /></p>
           <p className="subtitle">{d.category} · <span className="muted">{d.subcategory}</span></p>
@@ -367,6 +367,7 @@ export function TossupDetailPage() {
               {meta.hasPower && <th className="right">Power%</th>}
               {(meta.hasNeg || negs > 0) && <th className="right">Neg%</th>}
               <th className="right">Avg Buzz</th>
+              <th className="right" title="Average position of conversions that came while the question was still live — the first buzz of a reading, before anyone had negged">Avg Live Buzz</th>
             </tr>
           </thead>
           <tbody>
@@ -377,6 +378,7 @@ export function TossupDetailPage() {
               {meta.hasPower && <td className="right mono">{pct(d.powerPct)}</td>}
               {(meta.hasNeg || negs > 0) && <td className="right mono">{pct((100 * negs) / (d.heard || 1))}</td>}
               <td className="right mono">{d.avgBuzzPct === null ? "—" : `${num(d.avgBuzzPct)}%`}</td>
+              <td className="right mono">{d.avgLiveBuzzPct == null ? "—" : `${num(d.avgLiveBuzzPct)}%`}</td>
             </tr>
           </tbody>
         </table>

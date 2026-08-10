@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { FirstSentenceTossup, Buzz } from "../types";
-import { CategoryTag, Html } from "../util";
+import { CategoryTag, Html, roundLabel } from "../util";
 import { PageHeader, Loading, ErrorBox, RoundFilter, SearchInput } from "../components/Common";
 
 function valueClass(v: number): string {
@@ -100,7 +100,7 @@ export function FirstSentence() {
               <Link to={`/set/${slug}/tossup/${x.id}`} className="link answer-cell"><Html html={x.answer} /></Link>
               <div className="fs-head-right">
                 <CategoryTag cat={x.category} />
-                <Link to={`/set/${slug}/tossup/${x.id}`} className="mono link">{x.round}-{x.num}</Link>
+                <Link to={`/set/${slug}/tossup/${x.id}`} className="mono link">{roundLabel(x.round)}-{x.num}</Link>
                 <span className="fs-count" title="First-sentence buzzes">
                   {x.buzzCount}{" "}
                   <span className="mono breakdown">

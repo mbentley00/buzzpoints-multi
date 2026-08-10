@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { refreshIndex } from "../data";
 import { useSetCtx } from "../components/Layout";
 import { PageHeader, Loading, ErrorBox } from "../components/Common";
 import { uploadFiles } from "../upload";
 import { FileDrop } from "../components/FileDrop";
+import { roundLabel, roundFromFileName } from "../util";
 
 type Seg = { op: "eq" | "del" | "add"; text: string };
 // Word-level LCS diff producing a unified inline change (A → B).
@@ -39,7 +40,7 @@ interface DiffResult {
 function ChangedTossup({ c, ae, be }: { c: any; ae: string; be: string }) {
   return (
     <div className="diff-item">
-      <div className="diff-head"><span className="mono">Tossup {c.round}-{c.num}</span>{" "}
+      <div className="diff-head"><span className="mono">Tossup {roundLabel(c.round)}-{c.num}</span>{" "}
         {c.status === "changed"
           ? <>{c.questionChanged && <span className="diff-tag">question</span>} {c.answerChanged && <span className="diff-tag">answer</span>}</>
           : <span className="diff-tag diff-tag-only">{c.status === "only-a" ? `only in ${ae}` : `only in ${be}`}</span>}
@@ -57,7 +58,7 @@ function ChangedBonus({ c, ae, be }: { c: any; ae: string; be: string }) {
   const join = (x: any) => (x ? [x.leadin, ...(x.parts || []), ...(x.answers || [])].join("  ·  ") : "");
   return (
     <div className="diff-item">
-      <div className="diff-head"><span className="mono">Bonus {c.round}-{c.num}</span>{" "}
+      <div className="diff-head"><span className="mono">Bonus {roundLabel(c.round)}-{c.num}</span>{" "}
         {c.status === "changed"
           ? <>{c.leadinChanged && <span className="diff-tag">leadin</span>} {c.partsChanged && <span className="diff-tag">parts</span>} {c.answersChanged && <span className="diff-tag">answers</span>}</>
           : <span className="diff-tag diff-tag-only">{c.status === "only-a" ? `only in ${ae}` : `only in ${be}`}</span>}
@@ -91,6 +92,18 @@ export function Editions() {
   const [intoStatus, setIntoStatus] = useState<string | null>(null);
   const [intoErr, setIntoErr] = useState<string | null>(null);
   const [intoBusy, setIntoBusy] = useState(false);
+  const [intoReplace, setIntoReplace] = useState(false);
+
+  // Which rounds the chosen filenames cover — what "replace" would overwrite.
+  const intoRounds = useMemo(() => {
+    const rs = new Set<number>();
+    for (const f of [...intoPackets, ...intoGames]) {
+      const r = roundFromFileName(f.name);
+      if (r !== null) rs.add(r);
+    }
+    return [...rs].sort((a, b) => a - b);
+  }, [intoPackets, intoGames]);
+  const unnamedRound = [...intoPackets, ...intoGames].some((f) => roundFromFileName(f.name) === null);
 
   async function addFiles(e: React.FormEvent) {
     e.preventDefault();
@@ -104,7 +117,7 @@ export function Editions() {
       setIntoStatus("Aggregating…");
       const r = await fetch("/api/ingest", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ editionOf: slug, editionId: intoId, packets: packetRefs, games: gameRefs }),
+        body: JSON.stringify({ editionOf: slug, editionId: intoId, packets: packetRefs, games: gameRefs, replaceRound: intoReplace }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || `Failed (${r.status})`);
@@ -202,8 +215,11 @@ export function Editions() {
 
       {isOwner && editions.length > 0 && (
         <>
-          <h2 style={{ marginTop: 28 }}>Add files to an existing edition</h2>
-          <p className="muted">Append more packets and/or games (e.g. additional rounds) to an edition that's already here. Its stats are recomputed.</p>
+          <h2 style={{ marginTop: 28 }}>Add or replace files in an edition</h2>
+          <p className="muted">
+            Add more packets and/or games (e.g. additional rounds) to an edition that's already here, or replace a round
+            you need to fix — upload the corrected file and tick the box below. Its stats are recomputed either way.
+          </p>
           <form className="create-form" onSubmit={addFiles} style={{ maxWidth: 520 }}>
             <label className="field">
               <span>Edition</span>
@@ -219,9 +235,29 @@ export function Editions() {
               <span>Game files (QBJ) <span className="muted">(optional)</span></span>
               <FileDrop accept=".json,.qbj" value={intoGames} onChange={setIntoGames} hint="QBJ match files" />
             </div>
+            <label className="field-inline" style={{ alignItems: "flex-start" }}>
+              <input type="checkbox" checked={intoReplace} onChange={(e) => setIntoReplace(e.target.checked)} />
+              <span style={{ fontWeight: 400 }}>
+                Replace the rounds these files cover
+                {intoRounds.length > 0 && (
+                  <> — <strong>round {intoRounds.map(roundLabel).join(", ")}</strong></>
+                )}
+                <span className="muted">
+                  {" "}Anything already filed under {intoRounds.length === 1 ? "that round" : "those rounds"} in this
+                  edition is dropped first, so a re-upload fixes the round instead of stacking a second copy.
+                </span>
+              </span>
+            </label>
+            {intoReplace && unnamedRound && (
+              <span className="error-inline">
+                Every file has to say which round it is — name them like “Round_09.json” (or “Round A.json”).
+              </span>
+            )}
             {intoErr && <div className="error-box">{intoErr}</div>}
             {intoStatus && <div className="caveat">{intoStatus}</div>}
-            <button className="btn-primary" type="submit" disabled={intoBusy}>{intoBusy ? "Working…" : "Add files"}</button>
+            <button className="btn-primary" type="submit" disabled={intoBusy || (intoReplace && unnamedRound)}>
+              {intoBusy ? "Working…" : intoReplace ? "Replace files" : "Add files"}
+            </button>
           </form>
         </>
       )}

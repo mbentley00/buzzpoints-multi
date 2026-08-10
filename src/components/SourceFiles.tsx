@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { clearSetCache, refreshIndex } from "../data";
 import { RoundWarning, PlayerRename } from "../types";
+import { roundLabel, parseRoundInput } from "../util";
 
 // Owner-only repair tools for a tournament's uploaded files.
 //
@@ -33,10 +34,10 @@ async function load<T>(slug: string, op: string): Promise<T> {
 
 export function warningText(w: RoundWarning): string {
   if (w.kind === "packet-unplayed")
-    return `Packet round ${w.round} (${w.tossups} question${w.tossups === 1 ? "" : "s"}) has no games — nothing was ever read from it, so every question there shows 0 heard.`;
+    return `Packet round ${roundLabel(w.round)} (${w.tossups} question${w.tossups === 1 ? "" : "s"}) has no games — nothing was ever read from it, so every question there shows 0 heard.`;
   if (w.kind === "games-unmatched")
-    return `${w.games} game${w.games === 1 ? "" : "s"} were played in round ${w.round}, but no packet is filed under that round, so their buzzes have no questions to attach to.`;
-  return `${w.files} packet files share round ${w.round} — only the last one's questions survive; the rest are silently dropped.`;
+    return `${w.games} game${w.games === 1 ? "" : "s"} were played in round ${roundLabel(w.round)}, but no packet is filed under that round, so their buzzes have no questions to attach to.`;
+  return `${w.files} packet files share round ${roundLabel(w.round)} — only the last one's questions survive; the rest are silently dropped.`;
 }
 
 // Stats are stale the moment the source changes, so blow away the cached JSON
@@ -62,18 +63,18 @@ export function RoundAlignEditor({ slug }: { slug: string }) {
 
   const roundOf = (edId: string, p: PacketRow) => {
     const v = edits[`${edId}:${p.index}`];
-    return v === undefined ? String(p.round) : v;
+    return v === undefined ? roundLabel(p.round) : v;
   };
   const changesFor = (ed: EditionRounds) => {
     const out: Record<number, number> = {};
     for (const p of ed.packets) {
-      const raw = roundOf(ed.id, p).trim();
-      if (raw === "" || !/^\d+$/.test(raw)) continue;
-      if (Number(raw) !== p.round) out[p.index] = Number(raw);
+      const r = parseRoundInput(roundOf(ed.id, p));
+      if (r === null) continue;
+      if (r !== p.round) out[p.index] = r;
     }
     return out;
   };
-  const invalid = (ed: EditionRounds) => ed.packets.some((p) => !/^\d+$/.test(roundOf(ed.id, p).trim()));
+  const invalid = (ed: EditionRounds) => ed.packets.some((p) => parseRoundInput(roundOf(ed.id, p)) === null);
 
   // "Apply suggested" fills every packet whose orphaned round the server could
   // pair with an unmatched game round.
@@ -82,7 +83,7 @@ export function RoundAlignEditor({ slug }: { slug: string }) {
     for (const w of ed.warnings) if (w.kind === "packet-unplayed" && w.suggested !== null) byRound.set(w.round, w.suggested);
     setEdits((e) => {
       const next = { ...e };
-      for (const p of ed.packets) { const s = byRound.get(p.round); if (s !== undefined) next[`${ed.id}:${p.index}`] = String(s); }
+      for (const p of ed.packets) { const s = byRound.get(p.round); if (s !== undefined) next[`${ed.id}:${p.index}`] = roundLabel(s); }
       return next;
     });
   }
@@ -116,7 +117,7 @@ export function RoundAlignEditor({ slug }: { slug: string }) {
             )}
             <p className="muted srcfiles-note">
               Games were played in round{ed.gameRounds.length === 1 ? "" : "s"}{" "}
-              <strong>{ed.gameRounds.length ? ed.gameRounds.map((g) => g.round).join(", ") : "— (no games)"}</strong>. A
+              <strong>{ed.gameRounds.length ? ed.gameRounds.map((g) => roundLabel(g.round)).join(", ") : "— (no games)"}</strong>. A
               packet only collects buzzes when its round matches the round its games were played in.
             </p>
             <table className="data-table srcfiles-table">
@@ -126,13 +127,15 @@ export function RoundAlignEditor({ slug }: { slug: string }) {
               <tbody>
                 {ed.packets.map((p) => {
                   const cur = roundOf(ed.id, p);
-                  const games = ed.gameRounds.find((g) => g.round === Number(cur))?.count ?? 0;
-                  const bad = !/^\d+$/.test(cur.trim());
+                  const parsed = parseRoundInput(cur);
+                  const games = ed.gameRounds.find((g) => g.round === parsed)?.count ?? 0;
+                  const bad = parsed === null;
                   return (
-                    <tr key={p.index} className={Number(cur) !== p.round ? "srcfiles-dirty" : undefined}>
+                    <tr key={p.index} className={parsed !== p.round ? "srcfiles-dirty" : undefined}>
                       <td className="right">
+                        {/* Text, not number: a lettered packet ("A") is a valid round here. */}
                         <input
-                          className="num-input" type="number" min={0} max={999} value={cur} style={{ width: 70 }}
+                          className="num-input" type="text" value={cur} style={{ width: 70 }}
                           onChange={(e) => setEdits((s) => ({ ...s, [`${ed.id}:${p.index}`]: e.target.value }))}
                         />
                       </td>
@@ -299,7 +302,7 @@ export function GameFilesEditor({ slug }: { slug: string }) {
                         <td className="srcfiles-check">
                           <input type="checkbox" checked={!!picked[`${ed.id}:${g.index}`]} onChange={() => toggle(ed.id, g.index)} />
                         </td>
-                        <td className="right mono">{g.round}</td>
+                        <td className="right mono">{roundLabel(g.round)}</td>
                         <td>{g.teams.join(" vs ") || <span className="muted">—</span>}</td>
                         <td className="right mono">{g.tossups}</td>
                         <td className="mono">{g.copies > 1 ? `${g.copy} of ${g.copies}` : ""}</td>

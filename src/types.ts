@@ -158,6 +158,9 @@ export interface TossupRow {
   powerPct: number;
   incorrectPct: number;
   avgBuzzPct: number | null;
+  // Average position of conversions that came while the question was still live —
+  // the first buzz of a room's reading. Absent on sets aggregated before it existed.
+  avgLiveBuzzPct?: number | null;
 }
 
 export interface Buzz {

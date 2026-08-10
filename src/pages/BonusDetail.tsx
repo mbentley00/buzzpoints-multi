@@ -3,7 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { useSetJson } from "../data";
 import { useSetCtx } from "../components/Layout";
 import { BonusDetail, BonusResult, PartConv } from "../types";
-import { CategoryTag, Html, pct, num } from "../util";
+import { CategoryTag, Html, pct, num, roundLabel } from "../util";
 import { Loading, ErrorBox } from "../components/Common";
 import { DataTable, Column } from "../components/DataTable";
 import { QuestionNav, useQuestionNav } from "../components/QuestionNav";
@@ -120,7 +120,7 @@ export function BonusDetailPage() {
 
       <div className="tu-grid">
         <div className="tu-left">
-          <h1>Packet {d.round}: Bonus {d.num}</h1>
+          <h1>Packet {roundLabel(d.round)}: Bonus {d.num}</h1>
           <p className="bonus-leadin"><Html html={d.leadin} /></p>
           <ol className="bonus-parts-list">
             {parts.map((p) => (

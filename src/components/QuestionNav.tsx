@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { roundLabel } from "../util";
 
 // Previous/next links between adjacent questions, so you can read a packet
 // straight through instead of bouncing back to the list for every question.
@@ -63,7 +64,7 @@ export function QuestionNav({ nav, hrefOf, label }: {
   if (!prev && !next) return null;
   // Only spell out the round when stepping across a packet boundary.
   const name = (q: { round: number; num: number }) =>
-    q.round === nav.round ? `${label} ${q.num}` : `Rd ${q.round} · ${label} ${q.num}`;
+    q.round === nav.round ? `${label} ${q.num}` : `Rd ${roundLabel(q.round)} · ${label} ${q.num}`;
 
   return (
     <div className="qnav" role="navigation" aria-label={`Adjacent ${label.toLowerCase()}s`}>

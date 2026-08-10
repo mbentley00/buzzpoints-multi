@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { TossupRow } from "../types";
-import { CategoryTag, Html, pct, num, plain, catMatches } from "../util";
+import { CategoryTag, Html, pct, num, plain, catMatches, roundLabel } from "../util";
 import { DataTable, Column } from "../components/DataTable";
 import { PageHeader, Loading, ErrorBox, RoundFilter, MinHeardFilter, SearchInput } from "../components/Common";
 import { useCategoryFilter, CategoryFilterChip } from "../components/CategoryFilter";
@@ -35,7 +35,7 @@ export function Tossups() {
       sortVal: (t) => t.round * 100 + t.num,
       render: (t) => (
         <Link className="mono link" to={`/set/${slug}/tossup/${t.id}`}>
-          {t.round}-{t.num}
+          {roundLabel(t.round)}-{t.num}
         </Link>
       ),
     },
@@ -65,6 +65,14 @@ export function Tossups() {
       align: "right",
       sortVal: (t) => t.avgBuzzPct ?? 999,
       render: (t) => (t.avgBuzzPct === null ? "—" : `${num(t.avgBuzzPct)}%`),
+    },
+    {
+      key: "livebuzz",
+      label: "Avg Live Buzz",
+      align: "right",
+      title: "Average position of conversions that came while the question was still live — the first buzz of a reading, before anyone had negged",
+      sortVal: (t) => t.avgLiveBuzzPct ?? 999,
+      render: (t) => (t.avgLiveBuzzPct == null ? "—" : `${num(t.avgLiveBuzzPct)}%`),
     },
   ];
 
