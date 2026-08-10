@@ -93,6 +93,7 @@ function Question({ d, slug, onHoverWord }: { d: TossupDetail; slug: string; onH
     return [...counts.entries()].sort((a, b) => b[0] - a[0]);
   };
   const shown = pinned ?? hovered;
+  const endBuzzes = byWord.get(d.words.length);
   let lastIndex: number | null = null; // most recent numbered word, for the marks between words
 
   return (
@@ -139,7 +140,30 @@ function Question({ d, slug, onHoverWord }: { d: TossupDetail; slug: string; onH
           </span>
         );
       })}
-      <span className="q-end">■END■</span>
+      {/* The slot one past the last word: nobody buzzed before the question ran out. */}
+      {endBuzzes ? (
+        <span
+          className="q-tok"
+          onMouseEnter={() => { onHoverWord(d.words.length); setHovered(d.words.length); }}
+          onMouseLeave={() => { onHoverWord(null); setHovered(null); }}
+        >
+          <span className="q-idx" aria-hidden="true">{d.words.length + 1}</span>
+          <span
+            className={"q-word" + (pinned === d.words.length ? " q-word-pinned" : "")}
+            onClick={(e) => { e.stopPropagation(); setPinned((p) => (p === d.words.length ? null : d.words.length)); }}
+          >
+            <span className="q-annots">
+              {annotations(endBuzzes).map(([v, c], j) => (
+                <span key={j} className={`q-annot ${annotClass(v)}`}>{v} [{c}]</span>
+              ))}
+            </span>
+            <span className="q-chip q-end">■END■</span>
+            {shown === d.words.length && <BuzzPop bz={endBuzzes} slug={slug} />}
+          </span>
+        </span>
+      ) : (
+        <span className="q-end">■END■</span>
+      )}
     </p>
   );
 }
@@ -168,7 +192,9 @@ function BuzzEditor({ d, b, slug, isOwner, teammates, onClose, onApplied }: {
   const newWordIdx = toWord.trim() === "" ? null : Number(toWord) - 1;
   const playerChanged = toPlayer !== curPlayer;
   const wordChanged = newWordIdx !== curWord;
-  const wordValid = newWordIdx === null || (Number.isInteger(newWordIdx) && newWordIdx >= 0 && newWordIdx < d.words.length);
+  // The last valid slot is one past the last word — ■END■, i.e. the question was
+  // read out before this buzz came.
+  const wordValid = newWordIdx === null || (Number.isInteger(newWordIdx) && newWordIdx >= 0 && newWordIdx <= d.words.length);
   const canSubmit = (playerChanged || wordChanged) && wordValid && !busy;
 
   async function submit() {
@@ -199,8 +225,10 @@ function BuzzEditor({ d, b, slug, isOwner, teammates, onClose, onApplied }: {
           </select>
         </label>
         <label className="field-inline"><span>Buzz word #</span>
-          <input className="num-input" type="number" min={1} max={d.words.length} value={toWord} onChange={(e) => setToWord(e.target.value)} style={{ width: 70 }} />
-          {newWordIdx !== null && wordValid && <span className="muted">“{d.words[newWordIdx]}”</span>}
+          <input className="num-input" type="number" min={1} max={d.words.length + 1} value={toWord} onChange={(e) => setToWord(e.target.value)} style={{ width: 70 }} />
+          {newWordIdx !== null && wordValid && (
+            <span className="muted">{newWordIdx === d.words.length ? "■END■" : `“${d.words[newWordIdx]}”`}</span>
+          )}
         </label>
         {!isOwner && (
           <label className="field-inline" style={{ flex: "1 1 220px" }}><span>Reason</span>
@@ -211,7 +239,7 @@ function BuzzEditor({ d, b, slug, isOwner, teammates, onClose, onApplied }: {
           <button className="btn-primary btn-sm" disabled={!canSubmit} onClick={submit}>{busy ? "Working…" : isOwner ? "Save" : "Request change"}</button>
           <button className="btn-link" onClick={onClose}>Cancel</button>
         </div>
-        {!wordValid && <span className="error-inline">Word # must be 1–{d.words.length}.</span>}
+        {!wordValid && <span className="error-inline">Word # must be 1–{d.words.length + 1} ({d.words.length + 1} = ■END■).</span>}
         {err && <span className="error-inline">{err}</span>}
       </div>
     </td>
