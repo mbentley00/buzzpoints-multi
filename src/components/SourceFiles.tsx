@@ -269,13 +269,26 @@ export function GameFilesEditor({ slug }: { slug: string }) {
       )}
       {editions.map((ed) => {
         const sel = pickedIn(ed);
+        const dupes = ed.games.filter((g) => g.copy > 1).length;
         return (
           <div className="srcfiles-ed" key={ed.id}>
-            {editions.length > 1 && <h3 className="srcfiles-ed-name">{ed.label}</h3>}
             {ed.games.length === 0 ? (
-              <p className="muted">No games in this edition.</p>
-            ) : (
               <>
+                {editions.length > 1 && <h3 className="srcfiles-ed-name">{ed.label}</h3>}
+                <p className="muted">No games in this edition.</p>
+              </>
+            ) : (
+              // A full season is hundreds of rows; keep it folded away unless the
+              // owner is actually here to prune it. Editions with duplicates open
+              // on their own, since those are the ones needing attention.
+              <details className="srcfiles-fold" open={dupes > 0}>
+                <summary>
+                  {editions.length > 1 ? `${ed.label} — ` : ""}
+                  {ed.games.length} game{ed.games.length === 1 ? "" : "s"}
+                  {dupes > 0 && <span className="srcfiles-fold-warn"> · {dupes} duplicate{dupes === 1 ? "" : "s"}</span>}
+                  {sel.length > 0 && <span className="muted"> · {sel.length} selected</span>}
+                </summary>
+                <div className="srcfiles-scroll">
                 <table className="data-table srcfiles-table">
                   <thead>
                     <tr><th className="srcfiles-check"></th><th className="right">Round</th><th>Teams</th><th className="right">TUH</th><th>Copy</th></tr>
@@ -294,6 +307,7 @@ export function GameFilesEditor({ slug }: { slug: string }) {
                     ))}
                   </tbody>
                 </table>
+                </div>
                 <div className="srcfiles-actions">
                   <button type="button" className="mini-btn" onClick={() => setMany(ed.games.map((g) => ({ edId: ed.id, index: g.index })), true)}>Select all</button>
                   <button type="button" className="mini-btn" onClick={() => setMany(ed.games.map((g) => ({ edId: ed.id, index: g.index })), false)}>Clear</button>
@@ -301,7 +315,7 @@ export function GameFilesEditor({ slug }: { slug: string }) {
                     {busy ? "Removing…" : sel.length ? `Remove ${sel.length} game${sel.length === 1 ? "" : "s"} & rebuild` : "Remove selected"}
                   </button>
                 </div>
-              </>
+              </details>
             )}
           </div>
         );

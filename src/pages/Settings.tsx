@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useSetCtx } from "../components/Layout";
-import { refreshIndex } from "../data";
+import { clearSetCache, refreshIndex } from "../data";
 import { Visibility, TOURNAMENT_LEVELS } from "../types";
 import { Loading } from "../components/Common";
 import { RoundTagsEditor } from "../components/RoundTagsEditor";
@@ -25,6 +25,7 @@ export function Settings() {
   const { slug = "" } = useParams();
   const { isOwner, meta, user } = useSetCtx();
   const loc = useLocation();
+  const navigate = useNavigate();
   const [params] = useSearchParams();
   // Access-request emails deep-link here with ?review=access, so lead with the
   // pending list instead of burying it under the rest of the settings.
@@ -45,6 +46,9 @@ export function Settings() {
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Deleting is irreversible and takes the uploaded files with it, so the name
+  // has to be typed out — a stray click can't do it.
+  const [confirmDelete, setConfirmDelete] = useState("");
 
   useEffect(() => {
     if (!isOwner) { setLoading(false); return; }
@@ -109,6 +113,20 @@ export function Settings() {
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally { setBusy(false); }
+  }
+
+  async function deleteSet() {
+    if (confirmDelete.trim() !== meta.setName) return;
+    setErr(null); setMsg(null); setBusy(true);
+    try {
+      await postJson("/api/manage", { slug, op: "delete" });
+      clearSetCache(slug);
+      refreshIndex();
+      navigate("/", { replace: true });
+    } catch (e) {
+      setErr(String((e as Error).message || e));
+      setBusy(false);
+    }
   }
 
   async function invite(op: "invite" | "uninvite", email: string) {
@@ -361,6 +379,33 @@ export function Settings() {
           )}
         </>
       )}
+
+      <h2 style={{ marginTop: 28 }}>Delete this tournament</h2>
+      <div className="danger-zone">
+        <p style={{ margin: 0 }}>
+          Deleting removes <strong>{meta.setName}</strong> for good: every stat page, buzz correction and uploaded
+          packet and game file goes with it. Links to it stop working, and there's no undo — putting it back means
+          uploading everything again.
+        </p>
+        <label className="field-inline" style={{ marginTop: 12, flexWrap: "wrap" }}>
+          <span>Type <strong>{meta.setName}</strong> to confirm</span>
+          <input
+            value={confirmDelete}
+            onChange={(e) => setConfirmDelete(e.target.value)}
+            placeholder={meta.setName}
+            style={{ padding: "6px 8px", border: "1px solid #cdd5e0", borderRadius: 4, minWidth: 260 }}
+          />
+        </label>
+        <div style={{ marginTop: 12 }}>
+          <button
+            className="btn-primary btn-sm danger-btn"
+            disabled={busy || confirmDelete.trim() !== meta.setName}
+            onClick={deleteSet}
+          >
+            {busy ? "Deleting…" : "Delete tournament"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

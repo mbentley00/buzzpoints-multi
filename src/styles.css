@@ -424,6 +424,19 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
   list-style: none; padding: 12px 14px; margin-bottom: 16px;
   background: #fdf6ec; border: 1px solid #e6d3ab; border-radius: 6px; color: #5c4a24;
 }
+/* Folded game list: a season's worth of rows shouldn't be something you scroll
+   past to reach the rest of the settings. Once open, the rows scroll in place. */
+.srcfiles-fold { max-width: 720px; border: 1px solid var(--line); border-radius: 6px; }
+.srcfiles-fold > summary {
+  cursor: pointer; padding: 8px 12px; font-weight: 600; font-size: 13.5px;
+  border-radius: 6px; user-select: none;
+}
+.srcfiles-fold[open] > summary { border-bottom: 1px solid var(--line); border-radius: 6px 6px 0 0; }
+.srcfiles-fold > summary:hover { background: var(--hover); }
+.srcfiles-fold-warn { color: var(--neg); }
+.srcfiles-scroll { max-height: min(60vh, 520px); overflow: auto; overscroll-behavior: contain; }
+.srcfiles-scroll .data-table thead th { position: sticky; top: 0; background: var(--bg); z-index: 1; }
+.srcfiles-fold > .srcfiles-actions { padding: 10px 12px 12px; margin-top: 0; border-top: 1px solid var(--line); }
 .srcfiles-table { max-width: 720px; }
 .srcfiles-table td, .srcfiles-table th { vertical-align: middle; }
 .srcfiles-check { width: 28px; }
@@ -431,7 +444,15 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
 .srcfiles-dirty > td { background: #eef5ff; }
 .srcfiles-dupe > td { background: #fdf1ef; }
 .srcfiles-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
-.danger-btn { background: var(--neg); border-color: var(--neg); }
+/* Doubled up on purpose: .btn-primary is defined further down, so a single class
+   here would lose the tie and destructive buttons would come out blue. */
+.btn-primary.danger-btn { background: var(--neg); border-color: var(--neg); }
+.btn-primary.danger-btn:hover:not(:disabled) { background: var(--neg-bg-h); }
+/* Irreversible territory — boxed off so it doesn't read as another setting. */
+.danger-zone {
+  margin-top: 10px; padding: 14px 16px; max-width: 620px;
+  border: 1px solid var(--neg); border-radius: 6px; background: #fdf6f5;
+}
 /* Results (YellowFruit) games + box scores */
 .results-round { margin-bottom: 22px; }
 .results-round > h2 { font-size: 15px; margin: 0 0 8px; color: var(--muted); }
