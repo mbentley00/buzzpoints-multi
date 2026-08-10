@@ -22,6 +22,7 @@ import { CategoriesBonus } from "./pages/CategoriesBonus";
 import { Editions } from "./pages/Editions";
 import { Login } from "./pages/Login";
 import { Verify } from "./pages/Verify";
+import { ResetPassword } from "./pages/ResetPassword";
 import { Join } from "./pages/Join";
 import { Admin } from "./pages/Admin";
 import { Requests } from "./pages/Requests";
@@ -35,6 +36,7 @@ export default function App() {
       <Route path="/search" element={<Search />} />
       <Route path="/login" element={<Login />} />
       <Route path="/verify" element={<Verify />} />
+      <Route path="/reset" element={<ResetPassword />} />
       <Route path="/join/:slug" element={<Join />} />
       <Route path="/admin" element={<Admin />} />
       <Route path="/new" element={<CreateSet />} />

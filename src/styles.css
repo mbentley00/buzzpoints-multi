@@ -600,7 +600,9 @@ mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
 .tu-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: start; }
 @media (max-width: 900px) { .tu-grid { grid-template-columns: 1fr; } }
 .tu-left h1 { font-size: 20px; margin-bottom: 14px; }
-.q-text { font-size: 15px; line-height: 3.0; margin: 0; }
+/* The lines are spaced to clear the value[count] annotations that float above a
+   buzzed word and the index that appears below it — enough room, no more. */
+.q-text { font-size: 15px; line-height: 2.15; margin: 0; }
 .q-tok { white-space: normal; position: relative; }
 /* Subtle 1-based word index, revealed on hover — handy when entering corrections. */
 .q-idx {

@@ -18,12 +18,12 @@ export interface QToken {
   spaceAfter: boolean;
 }
 
-// Pronunciation guides. The curly-quoted form is what the aggregator strips
-// before numbering words (keep in sync with PRON_GUIDE in api/_lib/aggregate.ts),
-// so those tokens hold no buzz index. The straight-quoted form IS numbered — it
-// only gets the grey.
-const PG_UNNUMBERED = /\(“[^)]*\)/g;
+// What's on the page but never read aloud: pronunciation guides and the power
+// mark. The aggregator numbers only the spoken words (keep in sync with
+// `tokenize` in api/_lib/aggregate.ts), so these carry no buzz index. Guides also
+// go grey; the mark stays in the question's own formatting.
 const PG_ANY = /\([“"][^)]*\)/g;
+const UNSPOKEN = [PG_ANY, /\(\*\)/g];
 
 interface Fmt { b: boolean; i: boolean; u: boolean }
 interface Span extends Fmt { start: number; end: number }
@@ -63,11 +63,11 @@ function matchRanges(text: string, re: RegExp): Range[] {
   return out;
 }
 
-// The token's text with any unnumbered pronunciation guide taken back out —
-// this is what the aggregator would have counted as a word.
-function numberedText(text: string, start: number, end: number, hidden: Range[]): string {
+// The token's text with the unspoken marks taken back out — this is what the
+// aggregator counted as a word (empty if the token is only marks).
+function spokenText(text: string, start: number, end: number, unspoken: Range[]): string {
   let out = "";
-  for (let i = start; i < end; i++) if (!hidden.some((r) => r.start <= i && i < r.end)) out += text[i];
+  for (let i = start; i < end; i++) if (!unspoken.some((r) => r.start <= i && i < r.end)) out += text[i];
   return out.trim();
 }
 
@@ -94,7 +94,7 @@ function segsOf(text: string, start: number, end: number, spans: Span[], grey: U
 export function tokenizeQuestion(html: string, words: string[]): QToken[] | null {
   if (!html) return null;
   const { text, spans } = flatten(html);
-  const hidden = matchRanges(text, PG_UNNUMBERED);
+  const unspoken = UNSPOKEN.flatMap((re) => matchRanges(text, re));
   const grey = new Uint8Array(text.length);
   for (const r of matchRanges(text, PG_ANY)) for (let i = r.start; i < r.end; i++) grey[i] = 1;
 
@@ -102,7 +102,7 @@ export function tokenizeQuestion(html: string, words: string[]): QToken[] | null
   let n = 0;
   for (const m of text.matchAll(/\S+/g)) {
     const start = m.index!, end = start + m[0].length;
-    const word = numberedText(text, start, end, hidden);
+    const word = spokenText(text, start, end, unspoken);
     let index: number | null = null;
     if (word) {
       if (words[n] !== word) return null;

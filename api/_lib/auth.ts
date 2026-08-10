@@ -135,11 +135,34 @@ function openPurpose(token: string | undefined, purpose: string): { email: strin
     return null;
   }
 }
+// The purpose string for a password-reset link. Binding it to a fingerprint of
+// the CURRENT password hash makes the link single-use without any server-side
+// store: the moment the password changes the fingerprint does too, so a spent
+// (or superseded) link stops opening.
+export const resetPurpose = (u: User): string =>
+  `reset-pw:${crypto.createHash("sha256").update(u.pwHash).digest("base64url").slice(0, 12)}`;
+
 export function readPurpose(token: string | undefined, purpose: string): string | null {
   return openPurpose(token, purpose)?.email ?? null;
 }
 export function readPurposeNext(token: string | undefined, purpose: string): string | undefined {
   return openPurpose(token, purpose)?.next;
+}
+// The account a still-valid token names, without committing to a purpose — for
+// callers whose expected purpose depends on the account (see resetPurpose). The
+// signature and expiry are checked; the caller MUST still check the purpose.
+export function peekPurposeEmail(token: string | undefined): string | null {
+  if (!token || !token.includes(".")) return null;
+  const [payload, sig] = token.split(".");
+  const expected = crypto.createHmac("sha256", SECRET).update(payload).digest("base64url");
+  if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  try {
+    const { email, exp } = JSON.parse(Buffer.from(payload, "base64url").toString());
+    if (!email || typeof exp !== "number" || exp < Date.now()) return null;
+    return normEmail(email as string);
+  } catch {
+    return null;
+  }
 }
 
 export function setSessionCookie(res: VercelResponse, token: string) {

@@ -3,12 +3,12 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth";
 
 export function Login() {
-  const { login, signup, resendVerification, user } = useAuth();
+  const { login, signup, resendVerification, forgotPassword, user } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const next = params.get("next") || "/";
 
-  const [mode, setMode] = useState<"login" | "signup">(params.get("mode") === "signup" ? "signup" : "login");
+  const [mode, setMode] = useState<"login" | "signup" | "forgot">(params.get("mode") === "signup" ? "signup" : "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -18,6 +18,8 @@ export function Login() {
   // verification screen state
   const [pending, setPending] = useState<{ email: string; devUrl?: string; delivered?: boolean } | null>(null);
   const [resent, setResent] = useState<string | null>(null);
+  // "we've sent a reset link" screen
+  const [sentReset, setSentReset] = useState<{ email: string; devUrl?: string } | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -25,7 +27,10 @@ export function Login() {
     if (mode === "signup" && fullName.trim().length < 2) return setError("Enter your real name.");
     setBusy(true);
     try {
-      if (mode === "signup") {
+      if (mode === "forgot") {
+        const r = await forgotPassword(email.trim(), next);
+        setSentReset({ email: email.trim(), devUrl: r.devUrl });
+      } else if (mode === "signup") {
         // Pass `next` along: the verification email carries it, so finishing
         // signup drops them back where they were headed (usually an invite link)
         // instead of on the tournament list.
@@ -49,6 +54,30 @@ export function Login() {
     setResent(null);
     try { const r = await resendVerification(pending!.email, next); setResent(r.devUrl ? `dev:${r.devUrl}` : "sent"); }
     catch (e) { setError(String((e as Error).message || e)); }
+  }
+
+  if (sentReset) {
+    return (
+      <div className="app">
+        <header className="topbar"><div className="topbar-inner"><Link to="/" className="brand">Buzzpoints</Link></div></header>
+        <main className="content">
+          <h1>Check your email</h1>
+          <p>
+            If an account exists for <strong>{sentReset.email}</strong>, a link to choose a new password is on its way.
+            It expires in an hour.
+          </p>
+          {sentReset.devUrl && (
+            <div className="caveat">
+              Email delivery isn't configured yet, so here's your link directly:{" "}
+              <a className="link" href={sentReset.devUrl}>Reset password →</a>
+            </div>
+          )}
+          <p className="muted">
+            <Link to="/login" className="link" onClick={() => { setSentReset(null); setMode("login"); }}>← Back to log in</Link>
+          </p>
+        </main>
+      </div>
+    );
   }
 
   if (pending) {
@@ -87,13 +116,16 @@ export function Login() {
         <div className="breadcrumb">
           <Link to="/" className="link">← All tournaments</Link>
         </div>
-        <h1>{mode === "signup" ? "Create an account" : "Log in"}</h1>
+        <h1>{mode === "signup" ? "Create an account" : mode === "forgot" ? "Reset your password" : "Log in"}</h1>
         {user ? (
           <p className="caveat">
             You are signed in as <strong>{user}</strong>. <Link to={next} className="link">Continue →</Link>
           </p>
         ) : (
           <form className="create-form" onSubmit={submit} style={{ maxWidth: 380 }}>
+            {mode === "forgot" && (
+              <p className="muted" style={{ margin: 0 }}>Enter your email and we'll send you a link to choose a new one.</p>
+            )}
             {mode === "signup" && (
               <>
                 <label className="field">
@@ -110,28 +142,37 @@ export function Login() {
               <span>Email</span>
               <input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
             </label>
-            <label className="field">
-              <span>Password</span>
-              <input
-                type="password"
-                autoComplete={mode === "signup" ? "new-password" : "current-password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder={mode === "signup" ? "At least 8 characters" : "Your password"}
-              />
-            </label>
+            {mode !== "forgot" && (
+              <label className="field">
+                <span>Password</span>
+                <input
+                  type="password"
+                  autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={mode === "signup" ? "At least 8 characters" : "Your password"}
+                />
+              </label>
+            )}
+            {mode === "login" && (
+              <p className="muted" style={{ margin: "-4px 0 0" }}>
+                <button type="button" className="btn-link" onClick={() => { setMode("forgot"); setError(null); }}>
+                  Forgot your password?
+                </button>
+              </p>
+            )}
             {error && <div className="error-box">{error}</div>}
             <button className="btn-primary" type="submit" disabled={busy}>
-              {busy ? "Working…" : mode === "signup" ? "Sign up" : "Log in"}
+              {busy ? "Working…" : mode === "signup" ? "Sign up" : mode === "forgot" ? "Send reset link" : "Log in"}
             </button>
             <p className="muted" style={{ marginTop: 4 }}>
-              {mode === "signup" ? "Already have an account? " : "Need an account? "}
+              {mode === "signup" ? "Already have an account? " : mode === "forgot" ? "Remembered it? " : "Need an account? "}
               <button
                 type="button"
                 className="btn-link"
-                onClick={() => { setMode(mode === "signup" ? "login" : "signup"); setError(null); }}
+                onClick={() => { setMode(mode === "signup" ? "login" : mode === "forgot" ? "login" : "signup"); setError(null); }}
               >
-                {mode === "signup" ? "Log in" : "Sign up"}
+                {mode === "signup" || mode === "forgot" ? "Log in" : "Sign up"}
               </button>
             </p>
           </form>

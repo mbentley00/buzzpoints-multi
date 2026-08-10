@@ -93,16 +93,23 @@ function Question({ d, slug, onHoverWord }: { d: TossupDetail; slug: string; onH
     return [...counts.entries()].sort((a, b) => b[0] - a[0]);
   };
   const shown = pinned ?? hovered;
+  let lastIndex: number | null = null; // most recent numbered word, for the marks between words
 
   return (
     <p className="q-text">
       {tokens.map((t, k) => {
         const i = t.index;
-        // A pronunciation guide the scorekeeper skipped: text only, no buzz slot.
+        // The power mark and pronunciation guides aren't read aloud, so they hold
+        // no buzz slot — but they still sit inside power, hence `lastIndex`.
+        if (i !== null) lastIndex = i;
+        const power = d.powerIndex !== null && lastIndex !== null && lastIndex <= d.powerIndex;
         if (i === null)
-          return <span key={k} className="q-tok"><Segs segs={t.segs} />{t.spaceAfter ? " " : null}</span>;
+          return (
+            <span key={k} className={"q-tok" + (power ? " q-power" : "")}>
+              <Segs segs={t.segs} />{t.spaceAfter ? " " : null}
+            </span>
+          );
         const bz = byWord.get(i);
-        const power = d.powerIndex !== null && i <= d.powerIndex;
         return (
           <span
             key={k}

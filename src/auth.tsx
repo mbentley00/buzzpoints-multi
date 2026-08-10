@@ -18,6 +18,11 @@ interface AuthState {
   // clicked before signing up), or null.
   verify: (token: string) => Promise<string | null>;
   resendVerification: (email: string, next?: string) => Promise<{ devUrl?: string }>;
+  // Mails a reset link. Resolves the same way whether or not the address has an
+  // account, so the form can't be used to enumerate users.
+  forgotPassword: (email: string, next?: string) => Promise<{ devUrl?: string }>;
+  // Sets the new password and signs in; resolves to where the link said to go.
+  resetPassword: (token: string, password: string) => Promise<string | null>;
   logout: () => Promise<void>;
 }
 
@@ -69,6 +74,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signup: async (e, p, n, inst, next) => { const { ok, data } = await call({ action: "signup", email: e, password: p, name: n, institution: inst, next }); if (!ok) fail(data); return data as SignupResult; },
     verify: async (token) => { const { ok, data } = await call({ action: "verify", token }); if (!ok) fail(data); apply(data); return data.next ?? null; },
     resendVerification: async (e, next) => { const { ok, data } = await call({ action: "resend-verification", email: e, next }); if (!ok) fail(data); return { devUrl: data.devUrl }; },
+    forgotPassword: async (e, next) => { const { ok, data } = await call({ action: "forgot-password", email: e, next }); if (!ok) fail(data); return { devUrl: data.devUrl }; },
+    resetPassword: async (token, p) => { const { ok, data } = await call({ action: "reset-password", token, password: p }); if (!ok) fail(data); apply(data); return data.next ?? null; },
     logout: async () => { await call({ action: "logout" }); apply({ email: null, name: null, isAdmin: false }); },
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

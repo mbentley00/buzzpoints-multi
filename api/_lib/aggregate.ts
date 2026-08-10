@@ -109,16 +109,51 @@ const pct = (n: number, d: number) => (d ? round1((100 * n) / d) : 0);
 function stripHtml(s: string): string {
   return (s || "").replace(/<[^>]+>/g, "").replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&");
 }
-// Pronunciation guides — parentheticals beginning with a curly quote, e.g.
-// (“eye-no…”) — are not counted as words by the scorekeeper, so strip them
-// before tokenizing or buzz word indices drift.
-const PRON_GUIDE = /\(“[^)]*\)/g;
-function wordsOf(html: string): string[] {
-  return stripHtml(html).replace(PRON_GUIDE, " ").split(/\s+/).filter(Boolean);
+// A question splits into the words that were actually READ OUT — the ones a buzz
+// can land on — and the marks that are only on the page: the power mark and
+// pronunciation guides (parentheticals opening with a quote, e.g. (“eye-no…”)).
+//
+// Scorekeepers disagree about the marks. Older MODAQ exports step through them
+// while reading, so their word indices count them; newer ones skip them. We
+// tokenize both ways: `words` holds the spoken words alone (what gets numbered
+// and rendered), and `map` converts an index that counted the marks into one that
+// doesn't. `looseIndexing()` below decides which kind of export a set is, from
+// the buzz data itself.
+const PRON_GUIDE = /\([“"][^)]*\)/g;
+const PRON_GUIDE_CURLY = /\(“[^)]*\)/g;
+const POWER_MARK = /\(\*\)/;
+
+interface Tokens {
+  words: string[];      // spoken words only
+  looseLen: number;     // token count when the marks are counted too
+  map: number[];        // loose index -> index in `words` (a mark maps to the word after it)
+  powerIndex: number | null; // index in `words` of the last word inside power
 }
-function powerIndexOf(words: string[]): number | null {
-  const i = words.findIndex((w) => w.includes("(*)"));
-  return i >= 0 ? i : null;
+export function tokenize(html: string): Tokens {
+  // Curly guides come out even in the loose pass — no scorekeeper has ever counted
+  // those. What's left to disagree about is the power mark and straight-quoted
+  // guides, so they stay in the text and get marked by span (a guide can run
+  // across several tokens: ("ballet ROOSE")).
+  const text = stripHtml(html).replace(PRON_GUIDE_CURLY, " ");
+  const marks: [number, number][] = [];
+  for (const re of [PRON_GUIDE, /\(\*\)/g])
+    for (const m of text.matchAll(re)) marks.push([m.index!, m.index! + m[0].length]);
+  const marked = (i: number) => marks.some(([a, b]) => a <= i && i < b);
+
+  const words: string[] = [];
+  const map: number[] = [];
+  let powerIndex: number | null = null;
+  for (const m of text.matchAll(/\S+/g)) {
+    const start = m.index!, end = start + m[0].length;
+    // A mark stands where the next spoken word will be, so a buzz recorded on it
+    // belongs to that word — the mark itself was never read aloud.
+    map.push(words.length);
+    if (powerIndex === null && POWER_MARK.test(m[0])) powerIndex = words.length - 1;
+    let spoken = "";
+    for (let i = start; i < end; i++) if (!marked(i)) spoken += text[i];
+    if (spoken.trim()) words.push(spoken.trim());
+  }
+  return { words, looseLen: map.length, map, powerIndex: powerIndex !== null && powerIndex >= 0 ? powerIndex : null };
 }
 
 /* sentence-end detection (best effort) */
@@ -391,7 +426,7 @@ const bnAdd = (a: CatBnAcc, s: CatBnAcc) => { a.main = a.main || s.main; a.heard
 const bnNew = (): CatBnAcc => ({ main: "", heard: 0, pts: 0, parts: new Map() });
 
 /* ----------------------------- accumulators ----------------------------- */
-interface TUStat { round: number; num: number; questionHtml: string; answer: string; category: string; subcategory: string; categoryMid: string; words: string[]; wordCount: number; powerIndex: number | null; }
+interface TUStat { round: number; num: number; questionHtml: string; answer: string; category: string; subcategory: string; categoryMid: string; words: string[]; wordCount: number; powerIndex: number | null; looseLen: number; map: number[]; }
 interface BNStat { round: number; num: number; leadin: string; parts: string[]; answers: string[]; difficultyModifiers: string[]; category: string; subcategory: string; }
 type Buzz = { player: string | null; team: string | null; value: number; wordIndex: number | null; opponent?: string | null; origPlayer?: string | null; origWordIndex?: number | null; firstInRoom?: boolean; };
 type CatAcc = { powers: number; gets: number; incorrect: number; points: number; posSum: number; posN: number; earliest: number | null };
@@ -416,8 +451,10 @@ export function aggregate(
   const isPower = (v: number) => tierOf(v) === "power";
   const isGet = (v: number) => tierOf(v) === "get";
   const isCorrect = (v: number) => v > 0; // power or get
+  // A get recorded at or before the last power word: the position can't be right
+  // (it would have scored a power), so it's treated as "somewhere after power".
   const imprecise = (v: number, widx: number | null, pIdx: number | null) =>
-    hasPower && isGet(v) && pIdx !== null && widx !== null && widx < pIdx;
+    hasPower && isGet(v) && pIdx !== null && widx !== null && widx <= pIdx;
   // The "neg"/incorrect stat counts penalized wrong buzzes. A 0-point buzz is NOT
   // a neg — it carries no penalty — so in a neg format it must not inflate neg
   // counts (a wrong buzz there is negative). In a no-neg format a wrong buzz
@@ -447,11 +484,12 @@ export function aggregate(
     (p.tossups || []).forEach((t, i) => {
       const num = i + 1;
       const [main, sub] = parseCategory(t.metadata);
-      const words = wordsOf(t.question);
+      const tok = tokenize(t.question);
       tossups.set(`${r}-${num}`, {
         round: r, num, questionHtml: t.question, answer: t.answer,
         category: main, subcategory: sub, categoryMid: categoryMid(sub, main),
-        words, wordCount: words.length, powerIndex: powerIndexOf(words),
+        words: tok.words, wordCount: tok.words.length, powerIndex: tok.powerIndex,
+        looseLen: tok.looseLen, map: tok.map,
       });
     });
     if (cfg.hasBonuses)
@@ -464,6 +502,26 @@ export function aggregate(
         });
       });
   }
+
+  // Which counting did this tournament's scorekeeper use? A buzz index past the
+  // last spoken word can only come from an export that also counted the power
+  // mark and pronunciation guides, so a handful of those settles it. (A couple
+  // could be stray data, hence the floor.)
+  const looseIndexing = (() => {
+    let past = 0, total = 0;
+    for (const g of games)
+      for (const mq of g.match_questions || []) {
+        const t = mq.tossup_question?.question_number != null ? tossups.get(`${g.round}-${mq.tossup_question.question_number}`) : undefined;
+        if (!t || t.looseLen === t.wordCount) continue; // nothing to disagree about
+        for (const bz of mq.buzzes || []) {
+          const w = bz.buzz_position?.word_index;
+          if (w == null) continue;
+          total++;
+          if (w > t.wordCount - 1) past++;
+        }
+      }
+    return past >= 3 && past >= total * 0.002;
+  })();
 
   const tuBuzzes = new Map<string, Buzz[]>();
   const tuHeard = new Map<string, number>();
@@ -561,13 +619,11 @@ export function aggregate(
         // the buzz past the end of the shown text. Pin those to the last word so
         // positions stay within the question. Per-edition views use that edition's
         // own wording, so this is a no-op there.
+        // Translate an index that counted the page marks into one over the spoken
+        // words. Corrections are applied above in the same counting the buzz came
+        // in, so this converts them too.
+        if (looseIndexing && tq && widx !== null && widx < tq.map.length) widx = tq.map[widx];
         if (tq && widx !== null && widx >= tq.wordCount) widx = tq.wordCount - 1;
-        // The power mark is written, not read aloud, so no buzz truly lands on it:
-        // a scorekeeper who was sitting on "(*)" when the buzz came had just
-        // finished the last power word. Move those onto the first word after the
-        // mark, where the buzzer actually was.
-        if (tq && widx !== null && tq.powerIndex !== null && widx === tq.powerIndex)
-          widx = Math.min(widx + 1, tq.wordCount - 1);
         ordered.push({ value, pname, bteam, widx });
         if (tq) {
           const opp = teamNames.find((t) => t !== bteam) ?? null;

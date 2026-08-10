@@ -37,6 +37,9 @@ const btn = (href: string, label: string) =>
 export const verifyEmailBody = (name: string, url: string) =>
   wrap(`<p>Hi ${esc(name)},</p><p>Confirm your email to finish creating your Buzzpoints account.</p>${btn(url, "Verify email")}<p style="font-size:12px;color:#888">This link expires in 24 hours. If you didn't sign up, ignore this email.</p>`);
 
+export const resetPasswordBody = (name: string, url: string) =>
+  wrap(`<p>Hi ${esc(name)},</p><p>Use this link to choose a new Buzzpoints password.</p>${btn(url, "Reset password")}<p style="font-size:12px;color:#888">The link expires in an hour and works once. If you didn't ask to reset your password, ignore this email — your current one still works.</p>`);
+
 export const accessRequestBody = (requester: string, setName: string, url: string, affiliation?: string) =>
   wrap(`<p><strong>${esc(requester)}</strong> requested access to <strong>${esc(setName)}</strong>.</p>${affiliation ? `<p><strong>Affiliation:</strong> ${esc(affiliation)}</p>` : ""}<p>Review and approve or deny the request in the tournament's settings.</p>${btn(url, "Review request")}`);
 
