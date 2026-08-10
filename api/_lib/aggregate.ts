@@ -562,6 +562,12 @@ export function aggregate(
         // positions stay within the question. Per-edition views use that edition's
         // own wording, so this is a no-op there.
         if (tq && widx !== null && widx >= tq.wordCount) widx = tq.wordCount - 1;
+        // The power mark is written, not read aloud, so no buzz truly lands on it:
+        // a scorekeeper who was sitting on "(*)" when the buzz came had just
+        // finished the last power word. Move those onto the first word after the
+        // mark, where the buzzer actually was.
+        if (tq && widx !== null && tq.powerIndex !== null && widx === tq.powerIndex)
+          widx = Math.min(widx + 1, tq.wordCount - 1);
         ordered.push({ value, pname, bteam, widx });
         if (tq) {
           const opp = teamNames.find((t) => t !== bteam) ?? null;

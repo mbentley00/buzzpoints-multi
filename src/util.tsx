@@ -7,9 +7,16 @@ export function roundLabel(r: number): string {
   return String(r);
 }
 
+// Pronunciation guides — a parenthetical opening with a quote, e.g. (“BEE-muh”)
+// — are an aside to the reader, so they're greyed the way MODAQ greys them. The
+// match stops at any tag so wrapping never crosses markup it doesn't own.
+const PRON_GUIDE = /\([“"][^)<]*\)/g;
+export const markPronGuides = (html: string) =>
+  (html || "").replace(PRON_GUIDE, (m) => `<span class="q-pg">${m}</span>`);
+
 // Question/answer markup is trusted, locally-aggregated HTML (<b>, <u>, <em>).
 export function Html({ html, className }: { html: string; className?: string }) {
-  return <span className={className} dangerouslySetInnerHTML={{ __html: html }} />;
+  return <span className={className} dangerouslySetInnerHTML={{ __html: markPronGuides(html) }} />;
 }
 
 // Does a full subcategory path belong to a category filter value? Matches the

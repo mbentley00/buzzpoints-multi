@@ -12,6 +12,7 @@ export interface PendingSubmission {
   name: string;      // tournament name
   scoring: string;
   at: string;        // ISO submitted-at
+  visibility?: string; // requested visibility (absent on entries queued before this was recorded)
 }
 // The full upload, replayed through the normal create path on approval. For a
 // "results" submission, `yf` holds the raw YellowFruit/QBJ JSON and packets/games

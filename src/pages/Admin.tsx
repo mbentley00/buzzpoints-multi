@@ -13,7 +13,7 @@ interface AdminSet {
   visibility: Visibility; effectiveVisibility: Visibility; autoPublicAt: string | null; inviteCount: number;
   numGames: number; numTeams: number; numPlayers: number; numTossups: number; rounds: number; createdAt: string;
 }
-interface PendingSub { id: string; by: string; byName: string; name: string; scoring: string; at: string; }
+interface PendingSub { id: string; by: string; byName: string; name: string; scoring: string; at: string; visibility: Visibility; }
 interface UserRow { email: string; name: string; institution: string | null; createdAt: string; role: Role; }
 
 async function postJson(url: string, body: unknown) {
@@ -24,6 +24,11 @@ async function postJson(url: string, body: unknown) {
 }
 
 const VIS: Visibility[] = ["listed", "private", "public"];
+const VIS_DESC: Record<Visibility, string> = {
+  public: "Shown in the list and viewable by anyone, no login required.",
+  listed: "Shown in the tournament list, but only invited, logged-in people can view it.",
+  private: "Hidden from the list; only the owner and people they invite can view it.",
+};
 const ROLES: Role[] = ["user", "moderator", "admin"];
 
 export function Admin() {
@@ -131,13 +136,14 @@ export function Admin() {
             ) : (
               <div className="table-wrap">
                 <table className="data-table">
-                  <thead><tr><th>Tournament</th><th>Submitted by</th><th>Scoring</th><th>When</th><th>Actions</th></tr></thead>
+                  <thead><tr><th>Tournament</th><th>Submitted by</th><th>Scoring</th><th>Visibility</th><th>When</th><th>Actions</th></tr></thead>
                   <tbody>
                     {pending.map((p) => (
                       <tr key={p.id}>
                         <td>{p.name}</td>
                         <td className="muted">{p.byName}<div className="mono" style={{ fontSize: 12 }}>{p.by}</div></td>
                         <td>{p.scoring}</td>
+                        <td title={VIS_DESC[p.visibility]}>{p.visibility}</td>
                         <td className="muted">{formatDate(p.at)}</td>
                         <td className="admin-actions">
                           <button className="btn-link" disabled={busy === `p:${p.id}`} onClick={() => approve(p)}>Approve</button>

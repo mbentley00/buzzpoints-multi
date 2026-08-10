@@ -7,10 +7,10 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   currentUser, getRole, roleOf, normEmail, isAdminEmail, loadUsers, saveUsers, readPurpose, Role,
 } from "./_lib/auth.js";
-import { createTournament, CreateError } from "./_lib/publish.js";
+import { createTournament, normVisibility, CreateError } from "./_lib/publish.js";
 import {
   readPending, writePending, readPendingPayload, delPendingPayload,
-  readModConfig, writeModConfig,
+  readModConfig, writeModConfig, PendingSubmission,
 } from "./_lib/moderation.js";
 import { sendEmail, appUrl, submissionApprovedBody, submissionRejectedBody } from "./_lib/email.js";
 
@@ -28,6 +28,20 @@ function page(res: VercelResponse, status: number, title: string, body: string) 
 
 const esc = (s: string) => (s || "").replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]!));
 
+const VIS_DESC: Record<string, string> = {
+  public: "shown in the list and viewable by anyone, no login required",
+  listed: "shown in the tournament list, but only invited, logged-in people can view it",
+  private: "hidden from the list; only the owner and people they invite can view it",
+};
+
+// The visibility a submission will get on approval. Older queue entries predate
+// recording it on the index record, so fall back to the stored payload.
+async function visibilityOf(rec: PendingSubmission): Promise<string> {
+  if (rec.visibility) return rec.visibility;
+  const payload = await readPendingPayload(rec.id);
+  return normVisibility(payload?.visibility);
+}
+
 // Approve a queued first-post submission straight from the emailed link. The
 // signed token IS the authorization, so no login is required. A first GET only
 // shows a confirmation (so email link scanners/prefetchers can't auto-approve);
@@ -43,8 +57,10 @@ async function approveByToken(token: string, confirmed: boolean, res: VercelResp
 
   if (!confirmed) {
     const confirmUrl = `${appUrl()}/api/moderate?approve=${encodeURIComponent(token)}&confirm=1`;
+    const vis = await visibilityOf(rec);
     return page(res, 200, "Approve submission?",
       `<p><strong>${esc(rec.name)}</strong> submitted by ${esc(rec.byName)}.</p>` +
+      `<p style="font-size:13px;color:#555">Visibility on approval: <strong>${esc(vis)}</strong>${VIS_DESC[vis] ? ` — ${VIS_DESC[vis]}` : ""}.</p>` +
       `<p><a href="${confirmUrl}" style="display:inline-block;background:#4b8bf5;color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:600">Approve &amp; publish</a></p>` +
       `<p style="font-size:13px;color:#555">Or <a href="${appUrl()}/admin">review it in the dashboard</a> first.</p>`);
   }
@@ -81,7 +97,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method === "GET") {
       const users = await loadUsers();
-      const out: any = { role, pending: await readPending() };
+      const pending = await readPending();
+      const out: any = {
+        role,
+        pending: await Promise.all(pending.map(async (p) => ({ ...p, visibility: await visibilityOf(p) }))),
+      };
       if (isAdmin) {
         out.blocklist = (await readModConfig()).blocklist;
         out.users = Object.values(users)

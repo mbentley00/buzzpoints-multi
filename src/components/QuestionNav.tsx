@@ -5,7 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 // straight through instead of bouncing back to the list for every question.
 // Order is packet order (round, then number) and it runs across round
 // boundaries: the last question of round 1 is followed by the first of round 2.
-// Left/right arrow keys do the same thing.
+// Left/right arrows and p/n do the same thing.
 
 interface Positioned { round: number; num: number }
 
@@ -33,8 +33,8 @@ export function useQuestionNav(
   }, [all, id]);
 }
 
-// Arrow keys shouldn't hijack typing (the buzz editor has number/text inputs) or
-// stomp on a browser shortcut.
+// Shortcut keys shouldn't hijack typing (the buzz editor has number/text inputs)
+// or stomp on a browser shortcut.
 const typingIn = (el: EventTarget | null) => {
   const t = el as HTMLElement | null;
   if (!t || !t.tagName) return false;
@@ -52,8 +52,9 @@ export function QuestionNav({ nav, hrefOf, label }: {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || typingIn(e.target)) return;
-      if (e.key === "ArrowLeft" && prev) { e.preventDefault(); navigate(hrefOf(prev.id)); }
-      if (e.key === "ArrowRight" && next) { e.preventDefault(); navigate(hrefOf(next.id)); }
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if ((k === "ArrowLeft" || k === "p") && prev) { e.preventDefault(); navigate(hrefOf(prev.id)); }
+      if ((k === "ArrowRight" || k === "n") && next) { e.preventDefault(); navigate(hrefOf(next.id)); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -67,13 +68,13 @@ export function QuestionNav({ nav, hrefOf, label }: {
   return (
     <div className="qnav" role="navigation" aria-label={`Adjacent ${label.toLowerCase()}s`}>
       {prev ? (
-        <Link className="qnav-link" to={hrefOf(prev.id)} title="Previous question (←)">← {name(prev)}</Link>
+        <Link className="qnav-link" to={hrefOf(prev.id)} title="Previous question (← or p)">← {name(prev)}</Link>
       ) : (
         <span className="qnav-link qnav-off">← {label}</span>
       )}
       {nav.total > 0 && <span className="qnav-pos muted">{nav.pos} of {nav.total}</span>}
       {next ? (
-        <Link className="qnav-link" to={hrefOf(next.id)} title="Next question (→)">{name(next)} →</Link>
+        <Link className="qnav-link" to={hrefOf(next.id)} title="Next question (→ or n)">{name(next)} →</Link>
       ) : (
         <span className="qnav-link qnav-off">{label} →</span>
       )}

@@ -34,6 +34,9 @@ export function cleanTdLink(link: unknown): string | undefined {
 }
 
 const VISIBILITIES = new Set<Visibility>(["public", "listed", "private"]);
+// The visibility a payload will end up with, defaulting to "listed".
+export const normVisibility = (v: unknown): Visibility =>
+  VISIBILITIES.has(v as Visibility) ? (v as Visibility) : "listed";
 const TWO_YEARS_MS = 2 * 365 * 24 * 60 * 60 * 1000;
 
 export const slugify = (s: string) =>
@@ -66,7 +69,7 @@ export async function createTournament(body: CreateBody, owner: string): Promise
 
   const { packets, games } = parseFiles(body);
   const hasBonuses = !!body.hasBonuses;
-  const visibility: Visibility = VISIBILITIES.has(body.visibility as Visibility) ? (body.visibility as Visibility) : "listed";
+  const visibility = normVisibility(body.visibility);
   const createdAt = new Date().toISOString();
   let autoPublicAt: string | null = null;
   if (visibility !== "public") {
@@ -151,7 +154,7 @@ export async function createFromSource(
   const tdLink = cleanTdLink(opts.tdLink);
   source.name = name;
 
-  const visibility: Visibility = VISIBILITIES.has(opts.visibility as Visibility) ? (opts.visibility as Visibility) : "listed";
+  const visibility = normVisibility(opts.visibility);
   const createdAt = new Date().toISOString();
   let autoPublicAt: string | null = null;
   if (visibility !== "public") {

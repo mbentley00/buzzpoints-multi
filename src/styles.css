@@ -628,6 +628,12 @@ mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
 .q-annot.an-neg { color: var(--neg); }
 .q-annot.an-zero { color: #8a8a8a; }
 .q-chip { background: #d3e0fb; border-radius: 4px; padding: 0 4px; color: #1c2530; }
+/* MODAQ-style reading cues: the power is bold and pronunciation guides step back
+   into grey. The packet's own <b>/<i>/<u> come through as written. */
+.q-power { font-weight: 700; }
+.q-pg { color: var(--muted); }
+.q-text i, .q-text em { font-style: italic; }
+.q-text u { text-decoration: underline; }
 .q-avg { display: inline-block; width: 0; border-left: 2px dashed #e08a1e; height: 1.2em; vertical-align: middle; margin: 0 1px; }
 .q-end { font-weight: 700; color: #555; }
 /* The word index, the value[count] annotations, the average-buzz mark and the
@@ -687,7 +693,32 @@ mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
 
 /* auth nav in topbar */
 .auth-nav { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; }
-.auth-link { margin-left: auto; }
+/* A nav item that acts rather than navigates (Feedback) — a button styled to sit
+   flush with the links beside it. */
+.btn-nav { background: none; border: none; cursor: pointer; font-family: inherit; }
+
+/* Centred dialog over a dimmed page. Used by the feedback form. */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  background: rgba(20, 26, 34, 0.45);
+}
+.modal {
+  width: min(520px, 100%); max-height: 90vh; overflow-y: auto;
+  /* The dialog is mounted inside the topbar, which paints its text white — reset
+     to page ink so the heading and labels are legible. */
+  background: var(--bg); color: var(--ink); text-align: left;
+  border-radius: 8px; padding: 20px 22px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.modal h2 { margin: 0; font-size: 18px; }
+.modal p { margin: 0; }
+.modal-actions { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+.feedback-input {
+  width: 100%; font: inherit; font-size: 14px; padding: 8px 10px;
+  border: 1px solid var(--line-strong); border-radius: 6px; resize: vertical;
+}
 .auth-user { font-size: 13px; color: rgba(255, 255, 255, 0.85); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* inline buzz editor */

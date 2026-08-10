@@ -6,6 +6,7 @@ import { TossupDetail, Buzz, Rosters } from "../types";
 import { Html, pct, num } from "../util";
 import { Loading, ErrorBox } from "../components/Common";
 import { QuestionNav, useQuestionNav } from "../components/QuestionNav";
+import { Segs, plainTokens, tokenizeQuestion } from "../questionText";
 
 function tier(v: number): "power" | "get" | "neg" | "zero" {
   if (v > 10) return "power";
@@ -21,9 +22,12 @@ function annotClass(v: number): string {
   return "an-zero";
 }
 
-// Effective buzz position: imprecise buzzes collapse to the power mark.
+// Effective buzz position. An imprecise buzz — a get the scorekeeper recorded
+// before the power mark — is only known to have come after power, so it collapses
+// to the first word past the mark. (The mark itself is never a buzz position: it
+// isn't read aloud.)
 const effIdx = (d: TossupDetail, b: Buzz) =>
-  b.imprecise && d.powerIndex !== null ? d.powerIndex : b.wordIndex;
+  b.imprecise && d.powerIndex !== null ? Math.min(d.powerIndex + 1, d.words.length - 1) : b.wordIndex;
 
 // Who buzzed at one word, shown on hover (and pinned on click) over the chip.
 function BuzzPop({ bz, slug }: { bz: Buzz[]; slug: string }) {
@@ -54,6 +58,12 @@ function Question({ d, slug, onHoverWord }: { d: TossupDetail; slug: string; onH
   const eff = (b: Buzz) => effIdx(d, b);
   const [pinned, setPinned] = useState<number | null>(null);
   const [hovered, setHovered] = useState<number | null>(null);
+  // Formatted tokens when the packet's markup lines up with the numbered words,
+  // plain words when it doesn't.
+  const tokens = useMemo(
+    () => tokenizeQuestion(d.questionHtml, d.words) ?? plainTokens(d.words),
+    [d.questionHtml, d.words]
+  );
 
   // A pinned popup closes on the next click anywhere outside it.
   useEffect(() => {
@@ -86,12 +96,17 @@ function Question({ d, slug, onHoverWord }: { d: TossupDetail; slug: string; onH
 
   return (
     <p className="q-text">
-      {d.words.map((w, i) => {
+      {tokens.map((t, k) => {
+        const i = t.index;
+        // A pronunciation guide the scorekeeper skipped: text only, no buzz slot.
+        if (i === null)
+          return <span key={k} className="q-tok"><Segs segs={t.segs} />{t.spaceAfter ? " " : null}</span>;
         const bz = byWord.get(i);
+        const power = d.powerIndex !== null && i <= d.powerIndex;
         return (
           <span
-            key={i}
-            className="q-tok"
+            key={k}
+            className={"q-tok" + (power ? " q-power" : "")}
             onMouseEnter={() => { onHoverWord(i); setHovered(i); }}
             onMouseLeave={() => { onHoverWord(null); setHovered(null); }}
           >
@@ -106,13 +121,14 @@ function Question({ d, slug, onHoverWord }: { d: TossupDetail; slug: string; onH
                     <span key={j} className={`q-annot ${annotClass(v)}`}>{v} [{c}]</span>
                   ))}
                 </span>
-                <span className="q-chip">{w}</span>
+                <span className="q-chip"><Segs segs={t.segs} /></span>
                 {shown === i && <BuzzPop bz={bz} slug={slug} />}
               </span>
             ) : (
-              w
+              <Segs segs={t.segs} />
             )}
-            {avgIdx === i && <span className="q-avg" title="Average buzz position" />}{" "}
+            {avgIdx === i && <span className="q-avg" title="Average buzz position" />}
+            {t.spaceAfter ? " " : null}
           </span>
         );
       })}

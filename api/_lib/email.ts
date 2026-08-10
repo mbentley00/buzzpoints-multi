@@ -9,13 +9,16 @@ export const emailEnabled = () => !!RESEND_API_KEY;
 export const appUrl = () =>
   (process.env.APP_URL || "https://buzzpoints.buzz").replace(/\/+$/, "");
 
-export async function sendEmail(opts: { to: string; subject: string; html: string; text?: string }): Promise<boolean> {
+export async function sendEmail(opts: { to: string; subject: string; html: string; text?: string; replyTo?: string }): Promise<boolean> {
   if (!RESEND_API_KEY) return false;
   try {
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "content-type": "application/json" },
-      body: JSON.stringify({ from: EMAIL_FROM, to: opts.to, subject: opts.subject, html: opts.html, text: opts.text }),
+      body: JSON.stringify({
+        from: EMAIL_FROM, to: opts.to, subject: opts.subject, html: opts.html, text: opts.text,
+        ...(opts.replyTo ? { reply_to: opts.replyTo } : {}),
+      }),
     });
     if (!r.ok) { console.warn("[email] resend failed", r.status, await r.text().catch(() => "")); return false; }
     return true;
@@ -52,6 +55,14 @@ export const submissionPendingBody = (submitter: string, setName: string, review
 // Sent to the submitter once their first tournament is approved.
 export const submissionApprovedBody = (setName: string, url: string) =>
   wrap(`<p>Your tournament <strong>${esc(setName)}</strong> has been approved and is now live on Buzzpoints.</p><p>Future tournaments you post will publish immediately.</p>${btn(url, "Open tournament")}`);
+
+// Site feedback from the "Send feedback" button. The message is user-written, so
+// it's escaped and only newlines become markup.
+export const feedbackBody = (from: string, page: string, message: string) =>
+  wrap(
+    `<p><strong>${esc(from)}</strong> sent feedback${page ? ` from <a href="${esc(page)}">${esc(page)}</a>` : ""}.</p>` +
+    `<blockquote style="margin:0;padding:10px 14px;border-left:3px solid #cbd5e1;color:#333;white-space:pre-wrap">${esc(message)}</blockquote>`
+  );
 
 // Sent to the submitter if their first tournament is rejected.
 export const submissionRejectedBody = (setName: string, reason: string) =>

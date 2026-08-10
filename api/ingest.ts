@@ -15,7 +15,7 @@ import {
   readIndex, writeIndex, readSource, writeSource, writeCorrections, readCorrections,
   aggregateAndWrite, editionsOf, SetSource,
 } from "./_lib/sets.js";
-import { createTournament, createFromSource, updateFromSource, parseFiles, validLevel, cleanTdLink, CreateError, FileRef } from "./_lib/publish.js";
+import { createTournament, createFromSource, updateFromSource, parseFiles, validLevel, cleanTdLink, normVisibility, CreateError, FileRef } from "./_lib/publish.js";
 import { parseYellowFruit } from "./_lib/yellowfruit.js";
 import { scrapeEdition, scrapeBonusResults, applyBonusResults, applyBonusText, listEditions, listSets, setEditions, parseTarget, slugToName, scoringFor, setNameFrom } from "./_lib/importBuzzpoints.js";
 import {
@@ -363,7 +363,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(body.yf ? { yf: body.yf } : {}),
       });
       const byName = (await loadUsers())[owner]?.name || owner;
-      const rec: PendingSubmission = { id, by: owner, byName, name, scoring: body.scoring!, at: new Date().toISOString() };
+      const rec: PendingSubmission = {
+        id, by: owner, byName, name, scoring: body.scoring!, at: new Date().toISOString(),
+        visibility: normVisibility(body.visibility),
+      };
       await writePending([rec, ...(await readPending()).filter((p) => p.id !== id)]);
 
       const reviewUrl = `${appUrl()}/admin`;
