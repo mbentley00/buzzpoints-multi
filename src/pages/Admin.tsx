@@ -7,6 +7,7 @@ import { Loading, AuthNav } from "../components/Common";
 import { BulkImport } from "../components/BulkImport";
 import { LocalImport } from "../components/LocalImport";
 import { BonusTextRepair } from "../components/BonusTextRepair";
+import { BackupPanel } from "../components/BackupPanel";
 import { formatDate } from "../util";
 
 interface AdminSet {
@@ -219,6 +220,9 @@ export function Admin() {
 
                 <h2 style={{ marginTop: 28 }}>Missing bonus text</h2>
                 <BonusTextRepair />
+
+                <h2 style={{ marginTop: 28 }}>Backup &amp; restore</h2>
+                <BackupPanel sets={(sets ?? []).map((s) => ({ slug: s.slug, name: s.name }))} />
               </>
             )}
 

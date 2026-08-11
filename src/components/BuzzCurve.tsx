@@ -8,7 +8,7 @@ import { TossupDetail, Buzz } from "../types";
 //
 // Colours are the validated pair for this chart (see the palette check in
 // dataviz): a neutral #8a929c against #2f8a55 clears CVD and normal-vision
-// separation against a white surface. The neutral reads grey on purpose — it's
+// separation against BOTH the light and dark surfaces, so one pair serves both. The neutral reads grey on purpose — it's
 // context for the green, not a competing series.
 const TOTAL = "#8a929c";
 const CORRECT = "#2f8a55";
@@ -105,7 +105,7 @@ export function BuzzCurve({ d }: { d: TossupDetail }) {
         <path d={stepPath(cumT)} fill="none" stroke={TOTAL} strokeWidth={2} />
         {/* A 2px surface ring keeps the green edge legible where it rides on the grey fill. */}
         <path d={areaPath(cumC)} fill={CORRECT} fillOpacity={0.32} />
-        <path d={stepPath(cumC)} fill="none" stroke="#fff" strokeWidth={4} />
+        <path d={stepPath(cumC)} fill="none" stroke="var(--surface)" strokeWidth={4} />
         <path d={stepPath(cumC)} fill="none" stroke={CORRECT} strokeWidth={2} />
 
         {avgIdx !== null && (
@@ -122,8 +122,8 @@ export function BuzzCurve({ d }: { d: TossupDetail }) {
         {hover !== null && (
           <g>
             <line x1={x(hover)} x2={x(hover)} y1={M.top} y2={M.top + PH} className="bc-crosshair" />
-            <circle cx={x(hover)} cy={y(cumT[hover])} r={4} fill={TOTAL} stroke="#fff" strokeWidth={2} />
-            <circle cx={x(hover)} cy={y(cumC[hover])} r={4} fill={CORRECT} stroke="#fff" strokeWidth={2} />
+            <circle cx={x(hover)} cy={y(cumT[hover])} r={4} fill={TOTAL} stroke="var(--surface)" strokeWidth={2} />
+            <circle cx={x(hover)} cy={y(cumC[hover])} r={4} fill={CORRECT} stroke="var(--surface)" strokeWidth={2} />
           </g>
         )}
         <line x1={M.left} x2={M.left + PW} y1={M.top + PH} y2={M.top + PH} className="bc-axis" />

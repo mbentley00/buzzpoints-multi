@@ -27,8 +27,13 @@ export function Feedback() {
     if (state === "sent") { setMessage(""); setState("idle"); setErr(null); }
   }
 
+  // Signed-in senders are identified by their account; everyone else has to leave
+  // an address, so a reply is always possible.
+  const emailOk = !!user || /^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(email.trim());
+
   async function send() {
     if (!message.trim()) { setErr("Write a message first."); return; }
+    if (!emailOk) { setErr("Add your email so I can reply."); return; }
     setState("sending"); setErr(null);
     try {
       const r = await fetch("/api/index", {
@@ -75,14 +80,14 @@ export function Feedback() {
                 ) : (
                   <label className="field-inline"><span>Your email</span>
                     <input
-                      type="email" value={email} placeholder="optional, so I can reply"
+                      type="email" value={email} placeholder="so I can reply" required
                       style={{ flex: 1 }} onChange={(e) => setEmail(e.target.value)}
                     />
                   </label>
                 )}
                 {err && <span className="error-inline">{err}</span>}
                 <div className="modal-actions">
-                  <button className="btn-primary btn-sm" disabled={state === "sending" || !message.trim()} onClick={send}>
+                  <button className="btn-primary btn-sm" disabled={state === "sending" || !message.trim() || !emailOk} onClick={send}>
                     {state === "sending" ? "Sending…" : "Send"}
                   </button>
                   <button className="btn-link" onClick={close}>Cancel</button>

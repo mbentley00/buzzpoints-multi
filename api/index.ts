@@ -100,21 +100,24 @@ async function feedback(req: VercelRequest, res: VercelResponse, user: string | 
   if (!message) return res.status(400).json({ error: "Write a message first." });
   if (message.length > MAX_MESSAGE) return res.status(400).json({ error: `Please keep it under ${MAX_MESSAGE} characters.` });
 
+  // An address is required so feedback can be answered — a signed-in sender's
+  // account supplies it, anyone else types one.
   const replyTo = user || String(body.email ?? "").trim().slice(0, 200);
-  if (replyTo && !/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(replyTo)) return res.status(400).json({ error: "That email address doesn't look right." });
+  if (!replyTo) return res.status(400).json({ error: "Add your email so I can reply." });
+  if (!/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(replyTo)) return res.status(400).json({ error: "That email address doesn't look right." });
   const page = String(body.page ?? "").trim().slice(0, 300);
 
   const ip = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || "unknown";
   if (throttled(ip)) return res.status(429).json({ error: "That's a lot of feedback in one go — try again in a few minutes." });
 
   if (!emailEnabled()) return res.status(503).json({ error: "Feedback isn't set up to send right now. Please try again later." });
-  const from = user ? user : replyTo || "someone not signed in";
+  const from = replyTo; // always set: an account address, or the one they typed
   const sent = await sendEmail({
     to: FEEDBACK_TO,
     subject: `Buzzpoints feedback from ${from}`,
     html: feedbackBody(from, page, message),
     text: `From: ${from}\nPage: ${page || "—"}\n\n${message}`,
-    ...(replyTo ? { replyTo } : {}),
+    replyTo,
   });
   if (!sent) return res.status(502).json({ error: "Couldn't send that just now. Please try again later." });
   return res.status(200).json({ ok: true });

@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../auth";
 import { EditionSummary } from "../types";
 import { Feedback } from "./Feedback";
+import { ThemeToggle } from "./ThemeToggle";
 
 // Small labels naming which edition(s) a team/player appeared in. Rendered only
 // in the combined view of a multi-edition set; rows without editionIds (older
@@ -27,6 +28,7 @@ export function AuthNav() {
     const next = encodeURIComponent(loc.pathname + loc.search);
     return (
       <span className="auth-nav">
+        <ThemeToggle />
         <Feedback />
         <Link to={`/login?mode=signup&next=${next}`} className="nav-link">
           Sign up
@@ -39,6 +41,7 @@ export function AuthNav() {
   }
   return (
     <span className="auth-nav">
+      <ThemeToggle />
       <Feedback />
       {isModerator && <Link to="/admin" className="nav-link">{isAdmin ? "Admin" : "Moderation"}</Link>}
       <span className="auth-user" title={user}>{name || user}</span>
