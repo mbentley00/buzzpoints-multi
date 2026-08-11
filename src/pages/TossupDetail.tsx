@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams, Link, useSearchParams } from "react-router-dom";
 import { clearSetCache, useSetJson } from "../data";
 import { useSetCtx } from "../components/Layout";
 import { TossupDetail, Buzz, Rosters } from "../types";
@@ -8,6 +8,7 @@ import { Loading, ErrorBox } from "../components/Common";
 import { QuestionNav, useQuestionNav } from "../components/QuestionNav";
 import { Segs, plainTokens, tokenizeQuestion } from "../questionText";
 import { QuestionTags } from "../components/QuestionTags";
+import { BuzzCurve } from "../components/BuzzCurve";
 
 function tier(v: number): "power" | "get" | "neg" | "zero" {
   if (v > 10) return "power";
@@ -55,7 +56,7 @@ function BuzzPop({ bz, slug }: { bz: Buzz[]; slug: string }) {
  *  onHoverWord, highlights the buzzers at that word in the buzz list. Hovering a
  *  buzzed word also pops up everyone who buzzed there; clicking pins that popup
  *  so you can follow the player/team links inside it. */
-function Question({ d, slug, onHoverWord }: { d: TossupDetail; slug: string; onHoverWord: (i: number | null) => void }) {
+function Question({ d, slug, onHoverWord, focus }: { d: TossupDetail; slug: string; onHoverWord: (i: number | null) => void; focus: number | null }) {
   const eff = (b: Buzz) => effIdx(d, b);
   const [pinned, setPinned] = useState<number | null>(null);
   const [hovered, setHovered] = useState<number | null>(null);
@@ -95,6 +96,12 @@ function Question({ d, slug, onHoverWord }: { d: TossupDetail; slug: string; onH
   };
   const shown = pinned ?? hovered;
   const endBuzzes = byWord.get(d.words.length);
+  // Arrived from a buzz link: bring that word into view rather than making the
+  // reader hunt for the ring.
+  const focusRef = useRef<HTMLSpanElement | null>(null);
+  useEffect(() => {
+    focusRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [focus]);
   let lastIndex: number | null = null; // most recent numbered word, for the marks between words
 
   return (
@@ -115,7 +122,8 @@ function Question({ d, slug, onHoverWord }: { d: TossupDetail; slug: string; onH
         return (
           <span
             key={k}
-            className={"q-tok" + (power ? " q-power" : "")}
+            ref={i === focus ? focusRef : undefined}
+            className={"q-tok" + (power ? " q-power" : "") + (i === focus ? " q-tok-focus" : "")}
             onMouseEnter={() => { onHoverWord(i); setHovered(i); }}
             onMouseLeave={() => { onHoverWord(null); setHovered(null); }}
           >
@@ -289,6 +297,10 @@ export function TossupDetailPage() {
   const { data: rosters } = useSetJson<Rosters>(slug, version !== "all" ? `editions/${version}/rosters.json` : "rosters.json", nonce);
   const [editing, setEditing] = useState<number | null>(null);
   const [hoverWord, setHoverWord] = useState<number | null>(null);
+  // ?w=<1-based word number> — set by the buzzpoint links on a player's page.
+  const [params] = useSearchParams();
+  const wParam = Number(params.get("w"));
+  const focusWord = Number.isInteger(wParam) && wParam > 0 ? wParam - 1 : null;
   const nav = useQuestionNav(data, id);
 
   if (loading) return <Loading />;
@@ -323,10 +335,11 @@ export function TossupDetailPage() {
       <div className="tu-grid">
         <div className="tu-left">
           <h1>Packet {roundLabel(d.round)}: Tossup {d.num}</h1>
-          <Question d={d} slug={slug} onHoverWord={setHoverWord} />
+          <Question d={d} slug={slug} onHoverWord={setHoverWord} focus={focusWord} />
           <p className="tu-answer">ANSWER: <Html html={d.answer} /></p>
           <p className="subtitle">{d.category} · <span className="muted">{d.subcategory}</span></p>
           <QuestionTags slug={slug} id={d.id} kind="tossups" tags={d.tags || []} isOwner={isOwner} />
+          {d.buzzes.length > 0 && <BuzzCurve d={d} />}
         </div>
 
         <div className="tu-right">
@@ -346,7 +359,7 @@ export function TossupDetailPage() {
                 {sorted.map((b, i) => (
                   <BuzzRow
                     key={i} d={d} b={b} slug={slug} i={i} isOwner={isOwner} canEdit={!!user}
-                    editing={editing === i} highlight={hoverWord !== null && effIdx(d, b) === hoverWord}
+                    editing={editing === i} highlight={(hoverWord !== null && effIdx(d, b) === hoverWord) || (focusWord !== null && b.wordIndex === focusWord)}
                     teammates={rosters?.[b.team] ?? []}
                     onEdit={() => setEditing(i)} onClose={() => setEditing(null)}
                     onApplied={() => { setEditing(null); setNonce((n) => n + 1); }}

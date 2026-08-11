@@ -6,6 +6,7 @@ import { Visibility } from "../types";
 import { Loading, AuthNav } from "../components/Common";
 import { BulkImport } from "../components/BulkImport";
 import { LocalImport } from "../components/LocalImport";
+import { BonusTextRepair } from "../components/BonusTextRepair";
 import { formatDate } from "../util";
 
 interface AdminSet {
@@ -215,6 +216,9 @@ export function Admin() {
 
                 <h2 style={{ marginTop: 28 }}>Bulk import (scrape from a Buzzpoints site)</h2>
                 <BulkImport />
+
+                <h2 style={{ marginTop: 28 }}>Missing bonus text</h2>
+                <BonusTextRepair />
               </>
             )}
 

@@ -105,6 +105,73 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
   }
 
   // start: figure out which editions to import and open a job
+
+  // How much bonus text is missing, per edition. No network — just reads the source.
+  if (body.op === "bonus-text-scan") {
+    const slug = String(body.slug || "");
+    const index = await readIndex();
+    const entry = index.sets.find((s) => s.slug === slug);
+    if (!entry) return res.status(404).json({ error: "Tournament not found." });
+    if (entry.owner !== owner && !(await canModerate(owner))) return res.status(403).json({ error: "Owner only." });
+    const source = await readSource(slug);
+    if (!source) return res.status(200).json({ slug, editions: [], missing: 0 });
+    const editions = editionsOf(source).map((ed, index2) => {
+      const total = (ed.packets || []).reduce((n, p) => n + (p.bonuses || []).length, 0);
+      return { index: index2, label: ed.label, total, missing: missingBonusPairs(ed).length };
+    });
+    return res.status(200).json({ slug, name: entry.name, editions, missing: editions.reduce((n, e) => n + e.missing, 0) });
+  }
+
+  // Scrape one slice of an edition's missing bonus pages and bake the text into
+  // the stored source. Resumable: the client calls until `done`.
+  if (body.op === "bonus-text-chunk") {
+    const slug = String(body.slug || "");
+    const edIndex = Number(body.edition) || 0;
+    const index = await readIndex();
+    const entry = index.sets.find((s) => s.slug === slug);
+    if (!entry) return res.status(404).json({ error: "Tournament not found." });
+    if (entry.owner !== owner && !(await canModerate(owner))) return res.status(403).json({ error: "Owner only." });
+    const source = await readSource(slug);
+    if (!source) return res.status(400).json({ error: "Source data not found." });
+    const eds = editionsOf(source);
+    const ed = eds[edIndex];
+    if (!ed) return res.status(404).json({ error: "Edition not found." });
+
+    const pairs = missingBonusPairs(ed);
+    if (!pairs.length) return res.status(200).json({ done: true, fetched: 0, remaining: 0 });
+
+    let src: { base: string; eds: { slug: string; name: string }[] };
+    try { src = await sourceTournaments(String(body.importUrl || ""), entry.name); }
+    catch (e) { return res.status(400).json({ error: (e as Error).message }); }
+    const target = src.eds[edIndex] || src.eds[0];
+    if (!target) return res.status(400).json({ error: "No matching tournament at that link." });
+
+    const CHUNK = 45;
+    const deadline = Date.now() + 50000; // headroom under the function limit
+    const { results } = await scrapeBonusResults(src.base, target.slug, pairs.slice(0, CHUNK), deadline);
+    const withText = results.filter((r) => r.text);
+    applyBonusText(ed.packets as any, results);
+    await writeSource(slug, { name: source.name, scoring: source.scoring, hasBonuses: source.hasBonuses, editions: eds });
+    const remaining = missingBonusPairs(ed).length;
+    // Nothing came back and nothing moved: the source is refusing the detail pages,
+    // so say so instead of spinning through every chunk to no effect.
+    if (!withText.length) return res.status(200).json({ done: true, fetched: 0, remaining, stalled: true });
+    return res.status(200).json({ done: remaining === 0, fetched: withText.length, remaining });
+  }
+
+  // Fold the refreshed text into the published stats.
+  if (body.op === "bonus-text-finish") {
+    const slug = String(body.slug || "");
+    const index = await readIndex();
+    const entry = index.sets.find((s) => s.slug === slug);
+    if (!entry) return res.status(404).json({ error: "Tournament not found." });
+    if (entry.owner !== owner && !(await canModerate(owner))) return res.status(403).json({ error: "Owner only." });
+    const source = await readSource(slug);
+    if (!source) return res.status(400).json({ error: "Source data not found." });
+    await aggregateAndWrite(slug, source, await readCorrections(slug));
+    return res.status(200).json({ ok: true });
+  }
+
   if (body.op === "import-start") {
     let base: string, eds: { slug: string; name: string }[];
     try {
@@ -248,6 +315,44 @@ async function resolveRefs(refs: FileRef[] | undefined, tempPaths: string[]): Pr
 }
 const cleanupTemp = (paths: string[]) => (paths.length ? del(paths).catch(() => {}) : Promise.resolve());
 
+
+/* ---------------------- missing bonus text repair ------------------------- */
+// A scraped import gets bonus ANSWERS and conversion from one cheap index page;
+// the leadin and part prompts live only on the per-bonus detail pages, which are
+// slow and often 504. When that pass fails the set lands with stats but no bonus
+// text, and nothing said so. These ops re-run just that pass against an existing
+// set, in resumable chunks (the detail pages are far too slow for one request).
+
+export const bonusHasText = (b: { leadin?: string; parts?: string[] }) =>
+  !!(b?.leadin || "").trim() || (b?.parts || []).some((p) => (p || "").trim());
+
+// The (round, num) pairs in one edition whose bonus text never arrived.
+export function missingBonusPairs(ed: { packets?: any[] }): [number, number][] {
+  const out: [number, number][] = [];
+  for (const p of ed.packets || [])
+    (p.bonuses || []).forEach((b: any, i: number) => { if (!bonusHasText(b)) out.push([p.round, i + 1]); });
+  return out;
+}
+
+// Which source tournament feeds each stored edition. A tournament link names one
+// directly; a set/site link is resolved the same way the import did, and editions
+// keep the order they were created in, so index lines up with index.
+async function sourceTournaments(importUrl: string, setName: string): Promise<{ base: string; eds: { slug: string; name: string }[] }> {
+  const t = parseTarget(importUrl);
+  if (t.kind === "tournament") return { base: t.base, eds: [{ slug: t.slug!, name: slugToName(t.slug!) }] };
+  if (t.kind === "set") return { base: t.base, eds: await setEditions(t.base, t.slug!) };
+  // A bare site link: find the source set whose name matches this tournament's,
+  // which is what makes a run across every imported set possible.
+  const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const sets = await listSets(t.base);
+  const hit = sets.find((x) => norm(x.name) === norm(setName)) || sets.find((x) => norm(x.slug) === norm(setName));
+  if (hit) return { base: t.base, eds: await setEditions(t.base, hit.slug) };
+  const all = await listEditions(t.base, "/tournament");
+  const one = all.find((x) => norm(x.name) === norm(setName) || norm(x.slug) === norm(setName));
+  if (!one) throw new Error(`Couldn't find "${setName}" at that site — open its page there and paste that link instead.`);
+  return { base: t.base, eds: [one] };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
   const owner = currentUser(req);
@@ -257,7 +362,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Async import from another Buzzpoints site, or a local native-file import
   // (browser drives start/edition/finish).
-  if (typeof body.op === "string" && (body.op.startsWith("import-") || body.op.startsWith("local-"))) return handleImport(body, owner, res);
+  if (typeof body.op === "string" && (body.op.startsWith("import-") || body.op.startsWith("local-") || body.op.startsWith("bonus-text-"))) return handleImport(body, owner, res);
 
   // Validate the optional companion YellowFruit file up front (so a first-post
   // submission isn't queued with an unreadable file).

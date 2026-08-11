@@ -40,7 +40,12 @@ export function PlayerDetailPage() {
     { key: "num", label: "#", align: "right", sortVal: (b) => b.num, render: (b) => b.num },
     { key: "cat", label: "Category", sortVal: (b) => b.category, render: (b) => <Link className="link" to={`/set/${slug}/tossup?subcategory=${encodeURIComponent(b.category)}`}>{b.category}</Link> },
     { key: "ans", label: "Answer", sortVal: (b) => b.id, render: (b) => <Link className="link answer-cell" to={`/set/${slug}/tossup/${b.id}`}><Html html={b.answer} /></Link> },
-    { key: "bp", label: "Buzzpoint", align: "right", sortVal: (b) => b.buzzpoint ?? 1e9, render: (b) => b.buzzpoint ?? "—" },
+    // Links into the question with the buzz word highlighted, so "where did they
+    // buzz?" is one click rather than counting words.
+    { key: "bp", label: "Buzzpoint", align: "right", sortVal: (b) => b.buzzpoint ?? 1e9,
+      render: (b) => (b.buzzpoint == null
+        ? "—"
+        : <Link className="link" to={`/set/${slug}/tossup/${b.id}?w=${b.buzzpoint}`} title="Show this buzz in the question">{b.buzzpoint}</Link>) },
     { key: "val", label: "Value", align: "right", sortVal: (b) => b.value, render: (b) => b.value },
     { key: "first", label: "First", align: "center", sortVal: (b) => (b.first ? 1 : 0), render: (b) => (b.first ? "✓" : "") },
     { key: "top3", label: "Top 3", align: "center", sortVal: (b) => (b.top3 ? 1 : 0), render: (b) => (b.top3 ? "✓" : "") },
