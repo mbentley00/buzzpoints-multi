@@ -523,6 +523,7 @@ export function aggregate(
 
   const tossups = new Map<string, TUStat>();
   const bonuses = new Map<string, BNStat>();
+  let bonusTagCount = 0;
   // A set nobody has mapped yet, whose metadata carries more than one field, is
   // being categorized on a guess about field order — the guess that files a set
   // under its writers' initials. Worth telling the owner about.
@@ -854,6 +855,8 @@ export function aggregate(
     const bnSumm: Record<string, unknown>[] = [];
     const bnDetail: Record<string, unknown> = {};
     const catBnSub = new Map<string, CatBnAcc>();
+    // The same bonus numbers grouped by tag rather than by category.
+    const tagBnAcc = new Map<string, CatBnAcc>();
     for (const [id, b] of [...bonuses.entries()].sort()) {
       const results = bnResults.get(id) || [];
       const heard = results.length;
@@ -872,6 +875,16 @@ export function aggregate(
         const slot = cb.parts.get(diff) || [0, 0]; slot[0] += got; slot[1] += heard; cb.parts.set(diff, slot);
       }
       cb.main = b.category; cb.heard += heard; cb.pts += totalPts;
+      for (const tag of b.tags) {
+        let ta = tagBnAcc.get(tag);
+        if (!ta) { ta = bnNew(); ta.main = tagDim(tag); tagBnAcc.set(tag, ta); }
+        ta.heard += heard; ta.pts += totalPts;
+        for (let i = 0; i < b.parts.length; i++) {
+          const got = results.filter((r) => (r.partPts[i] || 0) > 0 || (r.bbPts[i] || 0) > 0).length;
+          const diff = b.difficultyModifiers[i] || "m";
+          const slot = ta.parts.get(diff) || [0, 0]; slot[0] += got; slot[1] += heard; ta.parts.set(diff, slot);
+        }
+      }
       bnSumm.push({
         id, round: b.round, num: b.num, category: b.category, subcategory: b.subcategory, tags: b.tags, heard, ppb,
         easyPct: byDiff.e?.convPct ?? null, medPct: byDiff.m?.convPct ?? null, hardPct: byDiff.h?.convPct ?? null,
@@ -890,6 +903,21 @@ export function aggregate(
       if (node) bnTree.push(node);
     }
     files["categories_bonus.json"] = bnTree;
+    // Same grouping-by-dimension as the tossup tags, with bonus columns.
+    const bnTagDims = new Map<string, { tag: string; value: string; stats: ReturnType<typeof bnFin> }[]>();
+    for (const [tag, acc] of tagBnAcc) {
+      const dim = tagDim(tag) || "Tag";
+      const list = bnTagDims.get(dim) || [];
+      list.push({ tag, value: tagValue(tag), stats: bnFin(acc) });
+      bnTagDims.set(dim, list);
+    }
+    files["tags_bonus.json"] = [...bnTagDims.entries()]
+      .map(([dim, values]) => ({
+        dim,
+        values: values.map((v) => ({ tag: v.tag, value: v.value, ...v.stats })).sort((a, b) => b.heard - a.heard || a.value.localeCompare(b.value)),
+      }))
+      .sort((a, b) => a.dim.localeCompare(b.dim));
+    bonusTagCount = tagBnAcc.size;
   }
 
   /* ----------------------------- players (list + detail) ----------------------------- */
@@ -1177,7 +1205,7 @@ export function aggregate(
     hasTeamBonuses: bnResults.size > 0,
     // Whether any question carries a tag, so the client only offers the Tags tab
     // and filters once the owner has marked a metadata field as one.
-    hasTags: tagTuAcc.size > 0,
+    hasTags: tagTuAcc.size > 0 || bonusTagCount > 0,
     // Nobody has confirmed what this set's metadata fields mean, and there's more
     // than one of them — so the categories below are a guess. Owner-facing.
     needsCategoryMapping: ambiguousMeta,

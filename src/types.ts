@@ -178,6 +178,12 @@ export interface TagGroup {
   }[];
 }
 
+// The bonus half of a tag dimension.
+export interface BonusTagGroup {
+  dim: string;
+  values: { tag: string; value: string; heard: number; ppb: number; easyPct: number | null; medPct: number | null; hardPct: number | null }[];
+}
+
 // How to read a set's question metadata: one entry per comma-separated field.
 export interface MetaField { role: "category" | "tag" | "ignore"; tag?: string }
 export interface MetaMap { fields: MetaField[] }
