@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { TossupRow } from "../types";
 import { CategoryTag, Html, pct, num, plain, catMatches, roundLabel } from "../util";
@@ -15,18 +15,22 @@ export function Tossups() {
   const [minHeard, setMinHeard] = useState(0);
   const [q, setQ] = useState("");
   const cat = useCategoryFilter();
+  // ?tag=Writer: JL — set by the Tags page and by a tag chip on a question.
+  const [params, setParams] = useSearchParams();
+  const tag = params.get("tag");
 
   const rows = useMemo(() => {
     let r = data ?? [];
     if (round !== "all") r = r.filter((t) => t.round === round);
     if (minHeard > 0) r = r.filter((t) => t.heard >= minHeard);
     if (cat.values.length) r = r.filter((t) => cat.values.some((v) => catMatches(t.subcategory, v)));
+    if (tag) r = r.filter((t) => (t.tags || []).includes(tag));
     if (q.trim()) {
       const n = q.toLowerCase();
       r = r.filter((t) => plain(t.answer).toLowerCase().includes(n) || t.subcategory.toLowerCase().includes(n));
     }
     return r;
-  }, [data, round, minHeard, q, cat.values]);
+  }, [data, round, minHeard, q, cat.values, tag]);
 
   const columns: Column<TossupRow>[] = [
     {
@@ -84,6 +88,12 @@ export function Tossups() {
         <SearchInput value={q} onChange={setQ} placeholder="Search answer / category" />
       </PageHeader>
       {cat.active && <CategoryFilterChip label={cat.label} onClear={cat.clear} />}
+      {tag && (
+        <CategoryFilterChip
+          label={tag}
+          onClear={() => { const n = new URLSearchParams(params); n.delete("tag"); setParams(n, { replace: true }); }}
+        />
+      )}
       {loading && <Loading />}
       {error && <ErrorBox error={error} />}
       {data && <DataTable rows={rows} columns={columns} initialSort="rn" initialDir="asc" rowKey={(t) => t.id} />}

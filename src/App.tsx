@@ -19,6 +19,7 @@ import { TeamDetailPage } from "./pages/TeamDetail";
 import { CategoriesTossup } from "./pages/CategoriesTossup";
 import { CategoryPlayersPage } from "./pages/CategoryPlayers";
 import { CategoriesBonus } from "./pages/CategoriesBonus";
+import { Tags } from "./pages/Tags";
 import { Editions } from "./pages/Editions";
 import { Login } from "./pages/Login";
 import { Verify } from "./pages/Verify";
@@ -56,6 +57,7 @@ export default function App() {
         <Route path="category/tossup" element={<CategoriesTossup />} />
         <Route path="category/tossup/:cid/players" element={<CategoryPlayersPage />} />
         <Route path="category/bonus" element={<CategoriesBonus />} />
+        <Route path="tags" element={<Tags />} />
         <Route path="editions" element={<Editions />} />
         <Route path="requests" element={<Requests />} />
         <Route path="settings" element={<Settings />} />

@@ -7,6 +7,7 @@ import { Html, pct, num, roundLabel } from "../util";
 import { Loading, ErrorBox } from "../components/Common";
 import { QuestionNav, useQuestionNav } from "../components/QuestionNav";
 import { Segs, plainTokens, tokenizeQuestion } from "../questionText";
+import { QuestionTags } from "../components/QuestionTags";
 
 function tier(v: number): "power" | "get" | "neg" | "zero" {
   if (v > 10) return "power";
@@ -325,6 +326,7 @@ export function TossupDetailPage() {
           <Question d={d} slug={slug} onHoverWord={setHoverWord} />
           <p className="tu-answer">ANSWER: <Html html={d.answer} /></p>
           <p className="subtitle">{d.category} · <span className="muted">{d.subcategory}</span></p>
+          <QuestionTags slug={slug} id={d.id} kind="tossups" tags={d.tags || []} isOwner={isOwner} />
         </div>
 
         <div className="tu-right">

@@ -120,6 +120,8 @@ export interface Meta {
   // Whether per-team/per-player bonus data exists. Absent on older sets => treat
   // as true. False for imports that only carry aggregate bonus conversion.
   hasTeamBonuses?: boolean;
+  hasTags?: boolean;
+  needsCategoryMapping?: boolean;
   kind?: "buzz" | "results";
   numGames: number;
   numTeams: number;
@@ -161,6 +163,30 @@ export interface TossupRow {
   // Average position of conversions that came while the question was still live —
   // the first buzz of a room's reading. Absent on sets aggregated before it existed.
   avgLiveBuzzPct?: number | null;
+  // "Dimension: value" pairs read from the question's metadata, plus any the owner
+  // added by hand. Absent on sets aggregated before tags existed.
+  tags?: string[];
+}
+
+// One tag dimension ("Writer") and how each of its values played.
+export interface TagGroup {
+  dim: string;
+  values: {
+    tag: string; value: string;
+    heard: number; powers: number; gets: number; convPct: number; powerPct: number;
+    avgBuzzPct: number | null; firstSentConvPct: number; secondSentConvPct: number; incorrectPct: number;
+  }[];
+}
+
+// How to read a set's question metadata: one entry per comma-separated field.
+export interface MetaField { role: "category" | "tag" | "ignore"; tag?: string }
+export interface MetaMap { fields: MetaField[] }
+export interface MetaShape {
+  fieldCount: number;
+  questions: number;
+  examples: string[];
+  samples: string[][];
+  distinct: number[];
 }
 
 export interface Buzz {
@@ -208,6 +234,7 @@ export interface BonusRow {
   easyAnswer: string | null;
   medAnswer: string | null;
   hardAnswer: string | null;
+  tags?: string[];
 }
 
 export interface PartConv {
@@ -227,6 +254,7 @@ export interface BonusResult {
 }
 export interface BonusDetail {
   id: string;
+  tags?: string[];
   round: number;
   num: number;
   category: string;

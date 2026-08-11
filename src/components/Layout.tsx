@@ -83,6 +83,8 @@ export function SetLayout() {
     { to: `${base}/team`, label: "Teams" },
     { to: `${base}/category/tossup`, label: "Categories (Tossup)" },
     ...(meta?.hasBonuses ? [{ to: `${base}/category/bonus`, label: "Categories (Bonus)" }] : []),
+    // Only worth a tab once the owner has marked a metadata field as a tag.
+    ...(meta?.hasTags ? [{ to: `${base}/tags`, label: "Tags" }] : []),
     ...(hasEditions || isOwner ? [{ to: `${base}/editions`, label: "Editions" }] : []),
     ...(isOwner ? [{ to: `${base}/requests`, label: "Corrections" }] : []),
     ...(isOwner ? [{ to: `${base}/settings`, label: "Settings" }] : []),

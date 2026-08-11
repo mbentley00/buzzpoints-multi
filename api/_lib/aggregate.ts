@@ -50,7 +50,21 @@ export interface AggregateConfig {
   slug: string;
   scoring: Scoring;
   hasBonuses: boolean;
+  // How to read each question's metadata line, once the owner has confirmed it.
+  metaMap?: MetaMap | null;
+  // Per-question tag edits the owner made by hand, keyed "<round>-<num>".
+  tagEdits?: TagEdits | null;
 }
+
+// Hand edits layered over the tags derived from metadata.
+export interface TagEdit { add?: string[]; remove?: string[] }
+export interface TagEdits { tossups?: Record<string, TagEdit>; bonuses?: Record<string, TagEdit> }
+const applyTagEdits = (tags: string[], e?: TagEdit): string[] => {
+  if (!e) return tags;
+  const out = tags.filter((t) => !(e.remove || []).includes(t));
+  for (const t of e.add || []) if (!out.includes(t)) out.push(t);
+  return out;
+};
 
 // A buzz reassignment / move keyed on the buzz's original attributes.
 export interface Correction {
@@ -178,18 +192,62 @@ const nthSentenceEnd = (words: string[], n: number) => {
 };
 
 /* category parsing -> (main, full subcategory) */
-function parseCategory(meta?: string): [string, string] {
-  if (!meta) return ["Other", "Other"];
+/* --------------------------- question metadata ---------------------------- */
+// A packet's metadata line is comma-separated, but sets disagree about what the
+// parts MEAN: "<Mike Bentley, Painting - 1800-1900>" leads with the writer,
+// "<Poetry, JL>" leads with the category. Guessing gets it wrong half the time —
+// that's how a set ended up with "JL" for a category — so the owner tells us,
+// once, via a MetaMap, and everything re-derives from the raw line.
+
+// Strip the wrapper punctuation and split into the comma-separated fields the
+// owner assigns roles to. Exported: the settings scan shows these to the owner.
+export function metaFields(meta?: string): string[] {
+  if (!meta) return [];
   let s = meta.split(/<Editor/i)[0];
   s = s.replace(/&lt;/g, "<").replace(/&gt;/g, ">");
-  s = s.split("~")[0].split(">")[0];
-  if (s.includes(",")) s = s.slice(s.indexOf(",") + 1);
+  s = s.split("~")[0].split(">")[0].replace(/^\s*</, "");
   s = s.replace(/�/g, "-").replace(/\s*[–—]\s*/g, " - ");
-  s = s.trim().replace(/>+$/, "").trim();
-  if (!s) return ["Other", "Other"];
-  const main = s.split(" - ")[0].trim();
-  return [main, s];
+  return s.split(",").map((p) => p.trim().replace(/>+$/, "").trim());
 }
+
+export type MetaRole = "category" | "tag" | "ignore";
+export interface MetaField { role: MetaRole; tag?: string }
+export interface MetaMap { fields: MetaField[] }
+
+// Until an owner maps a set, its categories keep coming out exactly as they
+// always have: everything after the first comma is the category. That's the
+// "<writer, category>" convention, and it's what puts "JL" in the category column
+// for sets written the other way round — deliberately left alone here so mapping
+// a set is the only thing that ever moves its categories.
+const legacyCategory = (fields: string[]) => (fields.length > 1 ? fields.slice(1).join(", ") : fields[0]) || "Other";
+
+export interface ResolvedMeta { main: string; full: string; tags: string[] }
+export function resolveMeta(meta: string | undefined, map: MetaMap | null): ResolvedMeta {
+  const fields = metaFields(meta);
+  if (!fields.length) return { main: "Other", full: "Other", tags: [] };
+  let cat = "";
+  const tags: string[] = [];
+  if (map?.fields?.length) {
+    fields.forEach((value, i) => {
+      const r = map.fields[i];
+      if (!value || !r || r.role === "ignore") return;
+      if (r.role === "category") { if (!cat) cat = value; }
+      else if (r.role === "tag" && r.tag) tags.push(tagKey(r.tag, value));
+    });
+  } else {
+    cat = legacyCategory(fields);
+  }
+  if (!cat) cat = "Other";
+  return { main: cat.split(" - ")[0].trim(), full: cat, tags };
+}
+
+// A tag is a named dimension plus a value ("Writer: JL"). One string keeps it
+// easy to filter on and to put in a URL; the dimension is everything before the
+// first ": ".
+export const TAG_SEP = ": ";
+export const tagKey = (dim: string, value: string) => `${dim}${TAG_SEP}${value}`;
+export const tagDim = (t: string) => { const i = t.indexOf(TAG_SEP); return i < 0 ? "" : t.slice(0, i); };
+export const tagValue = (t: string) => { const i = t.indexOf(TAG_SEP); return i < 0 ? t : t.slice(i + TAG_SEP.length); };
 function categoryMid(full: string, main: string): string {
   const parts = full.split(" - ").map((p) => p.trim());
   return parts.length >= 2 ? `${parts[0]} - ${parts[1]}` : main;
@@ -412,8 +470,8 @@ const bnAdd = (a: CatBnAcc, s: CatBnAcc) => { a.main = a.main || s.main; a.heard
 const bnNew = (): CatBnAcc => ({ main: "", heard: 0, pts: 0, parts: new Map() });
 
 /* ----------------------------- accumulators ----------------------------- */
-interface TUStat { round: number; num: number; questionHtml: string; answer: string; category: string; subcategory: string; categoryMid: string; words: string[]; wordCount: number; powerIndex: number | null; }
-interface BNStat { round: number; num: number; leadin: string; parts: string[]; answers: string[]; difficultyModifiers: string[]; category: string; subcategory: string; }
+interface TUStat { round: number; num: number; questionHtml: string; answer: string; category: string; subcategory: string; categoryMid: string; tags: string[]; words: string[]; wordCount: number; powerIndex: number | null; }
+interface BNStat { round: number; num: number; leadin: string; parts: string[]; answers: string[]; difficultyModifiers: string[]; category: string; subcategory: string; tags: string[]; }
 type Buzz = { player: string | null; team: string | null; value: number; wordIndex: number | null; opponent?: string | null; origPlayer?: string | null; origWordIndex?: number | null; firstInRoom?: boolean; };
 type CatAcc = { powers: number; gets: number; incorrect: number; points: number; posSum: number; posN: number; earliest: number | null };
 const newCatAcc = (): CatAcc => ({ powers: 0, gets: 0, incorrect: 0, points: 0, posSum: 0, posN: 0, earliest: null });
@@ -465,25 +523,34 @@ export function aggregate(
 
   const tossups = new Map<string, TUStat>();
   const bonuses = new Map<string, BNStat>();
+  // A set nobody has mapped yet, whose metadata carries more than one field, is
+  // being categorized on a guess about field order — the guess that files a set
+  // under its writers' initials. Worth telling the owner about.
+  let ambiguousMeta = false;
+  const noteAmbiguous = (meta?: string) => { if (!cfg.metaMap && metaFields(meta).length > 1) ambiguousMeta = true; };
   for (const p of packets) {
     const r = p.round;
     (p.tossups || []).forEach((t, i) => {
       const num = i + 1;
-      const [main, sub] = parseCategory(t.metadata);
+      noteAmbiguous(t.metadata);
+      const rm = resolveMeta(t.metadata, cfg.metaMap ?? null);
       const tok = tokenize(t.question);
       tossups.set(`${r}-${num}`, {
         round: r, num, questionHtml: t.question, answer: t.answer,
-        category: main, subcategory: sub, categoryMid: categoryMid(sub, main),
+        category: rm.main, subcategory: rm.full, categoryMid: categoryMid(rm.full, rm.main),
+        tags: applyTagEdits(rm.tags, cfg.tagEdits?.tossups?.[`${r}-${num}`]),
         words: tok.words, wordCount: tok.words.length, powerIndex: tok.powerIndex,
       });
     });
     if (cfg.hasBonuses)
       (p.bonuses || []).forEach((b, i) => {
         const num = i + 1;
-        const [main, sub] = parseCategory(b.metadata);
+        noteAmbiguous(b.metadata);
+        const rmb = resolveMeta(b.metadata, cfg.metaMap ?? null);
         bonuses.set(`${r}-${num}`, {
           round: r, num, leadin: b.leadin || "", parts: b.parts || [], answers: b.answers || [],
-          difficultyModifiers: b.difficultyModifiers || [], category: main, subcategory: sub,
+          difficultyModifiers: b.difficultyModifiers || [], category: rmb.main, subcategory: rmb.full,
+          tags: applyTagEdits(rmb.tags, cfg.tagEdits?.bonuses?.[`${r}-${num}`]),
         });
       });
   }
@@ -716,6 +783,9 @@ export function aggregate(
   const tuSumm: Record<string, unknown>[] = [];
   const tuDetail: Record<string, unknown> = {};
   const catTuSub = new Map<string, CatTuAcc>();
+  // The same numbers again, grouped by tag instead of by category. A question
+  // counts once per tag it carries.
+  const tagTuAcc = new Map<string, CatTuAcc>();
   for (const [id, t] of [...tossups.entries()].sort()) {
     const heard = tuHeard.get(id) || 0;
     const buzzes = tuBuzzes.get(id) || [];
@@ -749,13 +819,15 @@ export function aggregate(
     const convPct = pct(powers + gets, heard);
     tuSumm.push({
       id, round: t.round, num: t.num, answer: t.answer, category: t.category, subcategory: t.subcategory,
+      tags: t.tags,
       heard, powers, gets, convPct, powerPct: pct(powers, heard), incorrectPct: pct(incorrectBefore, heard),
       avgBuzzPct: avgFrac == null ? null : round1(100 * avgFrac),
       avgLiveBuzzPct: avgLiveFrac == null ? null : round1(100 * avgLiveFrac),
     });
     tuDetail[id] = {
       id, round: t.round, num: t.num, answer: t.answer, questionHtml: t.questionHtml,
-      category: t.category, subcategory: t.subcategory, words: t.words, powerIndex: t.powerIndex, wordCount: t.wordCount,
+      category: t.category, subcategory: t.subcategory, tags: t.tags,
+      words: t.words, powerIndex: t.powerIndex, wordCount: t.wordCount,
       heard, powers, gets, convPct, powerPct: pct(powers, heard), incorrectPct: pct(incorrectBefore, heard),
       avgBuzzPct: avgFrac == null ? null : round1(100 * avgFrac),
       avgLiveBuzzPct: avgLiveFrac == null ? null : round1(100 * avgLiveFrac),
@@ -766,6 +838,13 @@ export function aggregate(
     cs.main = t.category; cs.heard += heard; cs.powers += powers; cs.gets += gets;
     cs.firstConv += firstConv; cs.secondConv += secondConv; cs.incorrectBefore += incorrectBefore;
     if (avgFrac != null) { cs.buzzSum += fracs.reduce((a, b) => a + b, 0); cs.buzzN += fracs.length; }
+    for (const tag of t.tags) {
+      let ta = tagTuAcc.get(tag);
+      if (!ta) { ta = { main: tagDim(tag), heard: 0, powers: 0, gets: 0, buzzSum: 0, buzzN: 0, firstConv: 0, secondConv: 0, incorrectBefore: 0 }; tagTuAcc.set(tag, ta); }
+      ta.heard += heard; ta.powers += powers; ta.gets += gets;
+      ta.firstConv += firstConv; ta.secondConv += secondConv; ta.incorrectBefore += incorrectBefore;
+      if (avgFrac != null) { ta.buzzSum += fracs.reduce((a, b) => a + b, 0); ta.buzzN += fracs.length; }
+    }
   }
   files["tossups.json"] = tuSumm;
   files["tossups_detail.json"] = tuDetail;
@@ -794,12 +873,12 @@ export function aggregate(
       }
       cb.main = b.category; cb.heard += heard; cb.pts += totalPts;
       bnSumm.push({
-        id, round: b.round, num: b.num, category: b.category, subcategory: b.subcategory, heard, ppb,
+        id, round: b.round, num: b.num, category: b.category, subcategory: b.subcategory, tags: b.tags, heard, ppb,
         easyPct: byDiff.e?.convPct ?? null, medPct: byDiff.m?.convPct ?? null, hardPct: byDiff.h?.convPct ?? null,
         easyAnswer: byDiff.e?.answer ?? null, medAnswer: byDiff.m?.answer ?? null, hardAnswer: byDiff.h?.answer ?? null,
       });
       bnDetail[id] = {
-        id, round: b.round, num: b.num, category: b.category, subcategory: b.subcategory, leadin: b.leadin,
+        id, round: b.round, num: b.num, category: b.category, subcategory: b.subcategory, tags: b.tags, leadin: b.leadin,
         parts: b.parts, answers: b.answers, difficultyModifiers: b.difficultyModifiers, heard, ppb, totalPts, partConv, results,
       };
     }
@@ -1021,6 +1100,22 @@ export function aggregate(
     ct.push(node);
   }
   files["categories_tossup.json"] = ct;
+
+  // Tags, grouped by dimension ("Writer", "Difficulty", …) and ordered by how
+  // much of the set each one covers.
+  const tagDims = new Map<string, { tag: string; value: string; stats: ReturnType<typeof tuCatFin> }[]>();
+  for (const [tag, acc] of tagTuAcc) {
+    const dim = tagDim(tag) || "Tag";
+    const list = tagDims.get(dim) || [];
+    list.push({ tag, value: tagValue(tag), stats: tuCatFin(acc) });
+    tagDims.set(dim, list);
+  }
+  files["tags_tossup.json"] = [...tagDims.entries()]
+    .map(([dim, values]) => ({
+      dim,
+      values: values.map((v) => ({ tag: v.tag, value: v.value, ...v.stats })).sort((a, b) => b.heard - a.heard || a.value.localeCompare(b.value)),
+    }))
+    .sort((a, b) => a.dim.localeCompare(b.dim));
   files["categories_players.json"] = categoriesPlayers;
 
   /* ----------------------------- buzzer races ----------------------------- */
@@ -1080,6 +1175,12 @@ export function aggregate(
     // only expose aggregate bonus conversion (no per-game results), so the client
     // hides team-level PPB while still showing tournament/category bonus stats.
     hasTeamBonuses: bnResults.size > 0,
+    // Whether any question carries a tag, so the client only offers the Tags tab
+    // and filters once the owner has marked a metadata field as one.
+    hasTags: tagTuAcc.size > 0,
+    // Nobody has confirmed what this set's metadata fields mean, and there's more
+    // than one of them — so the categories below are a guess. Owner-facing.
+    needsCategoryMapping: ambiguousMeta,
     numGames: games.length, numTeams: tm.size, numPlayers: pl.size,
     numTossups: tossups.size, numBonuses: cfg.hasBonuses ? bonuses.size : 0,
     rounds: [...new Set([...tossups.values()].map((t) => t.round))].sort((a, b) => a - b),
@@ -1117,7 +1218,7 @@ export interface ImportedBonus {
 // pre-aggregated bonus data, matching the shapes aggregate() emits so the UI is
 // identical. Entries with the same round-num (across mirrors) are summed. No
 // per-team/per-game breakdown is possible from this data.
-export function bonusFilesFromImported(list: ImportedBonus[], virtualCats: VirtualCategory[] = []): Record<string, unknown> {
+export function bonusFilesFromImported(list: ImportedBonus[], virtualCats: VirtualCategory[] = [], metaMap: MetaMap | null = null): Record<string, unknown> {
   // merge by position id (round-num), summing counts across editions
   const merged = new Map<string, ImportedBonus>();
   for (const b of list) {
@@ -1133,7 +1234,8 @@ export function bonusFilesFromImported(list: ImportedBonus[], virtualCats: Virtu
   const bnDetail: Record<string, unknown> = {};
   const catBnSub = new Map<string, CatBnAcc>();
   for (const [id, b] of [...merged.entries()].sort()) {
-    const [main, sub] = parseCategory(b.category);
+    // Imported bonus stats carry their category as a raw metadata string.
+    const { main, full: sub } = resolveMeta(b.category, metaMap ?? null);
     const heard = b.heard;
     const totalPts = b.points;
     const ppb = heard ? Math.round((100 * totalPts) / heard) / 100 : 0;

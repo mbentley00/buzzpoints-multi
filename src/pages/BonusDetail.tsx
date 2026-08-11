@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useSetJson } from "../data";
 import { useSetCtx } from "../components/Layout";
+import { QuestionTags } from "../components/QuestionTags";
 import { BonusDetail, BonusResult, PartConv } from "../types";
 import { CategoryTag, Html, pct, num, roundLabel } from "../util";
 import { Loading, ErrorBox } from "../components/Common";
@@ -68,7 +69,7 @@ function rowClass(r: BonusResult, parts: PartConv[]): string {
 }
 
 export function BonusDetailPage() {
-  const { slug, scope } = useSetCtx();
+  const { slug, scope, isOwner } = useSetCtx();
   const { id = "" } = useParams();
   // A tag (phase) scope has no per-edition file; fall back to combined for it.
   const [version, setVersion] = useState(scope.startsWith("tag:") ? "all" : scope);
@@ -137,6 +138,7 @@ export function BonusDetailPage() {
             ))}
           </ol>
           <p className="subtitle"><CategoryTag cat={d.category} /> · <span className="muted">{d.subcategory}</span></p>
+          <QuestionTags slug={slug} id={d.id} kind="bonuses" tags={d.tags || []} isOwner={isOwner} />
 
           <div className="table-wrap" style={{ maxWidth: 460, marginTop: 8 }}>
             <table className="data-table">

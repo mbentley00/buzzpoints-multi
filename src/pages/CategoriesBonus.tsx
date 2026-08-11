@@ -1,12 +1,14 @@
 import { useParams } from "react-router-dom";
-import { useScopedJson } from "../components/Layout";
+import { useScopedJson, useSetCtx } from "../components/Layout";
 import { CatBonusRow, CatBonusSub } from "../types";
 import { pct, num } from "../util";
 import { CategoryGroups, CatColumn } from "../components/CategoryGroups";
 import { PageHeader, Loading, ErrorBox } from "../components/Common";
+import { CategoryMappingNotice } from "../components/CategoryMappingNotice";
 
 export function CategoriesBonus() {
   const { slug = "" } = useParams();
+  const { meta, isOwner } = useSetCtx();
   const { data, error, loading } = useScopedJson<CatBonusRow[]>("categories_bonus.json");
 
   const columns: CatColumn<CatBonusRow, CatBonusSub>[] = [
@@ -20,6 +22,7 @@ export function CategoriesBonus() {
   return (
     <div>
       <PageHeader title="Categories — Bonuses" subtitle="PPB & part conversion by subject" />
+      <CategoryMappingNotice slug={slug} show={!!isOwner && !!meta.needsCategoryMapping} />
       {loading && <Loading />}
       {error && <ErrorBox error={error} />}
       {data && <CategoryGroups groups={data} columns={columns} linkBase={`/set/${slug}/bonus`} mainParam="category" subParam="subcategory" />}

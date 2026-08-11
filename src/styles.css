@@ -540,6 +540,15 @@ mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
 .cat-leaf-link { color: var(--link); text-decoration: underline; font-weight: 400; }
 .cat-leaf-row td { font-size: 13px; }
 
+/* Tags on a question: links into the filtered list, plus the owner's editor. */
+.q-tags { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 0; font-size: 13px; }
+.q-tag {
+  background: #eef2f8; border: 1px solid var(--line); border-radius: 10px;
+  padding: 1px 9px; color: var(--link); text-decoration: none; white-space: nowrap;
+}
+.q-tag:hover { background: #e3eaf5; text-decoration: none; }
+.q-tag-edit { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
 /* active category filter chip on the tossups/bonuses lists */
 .cat-filter-chip {
   display: inline-flex; align-items: center; gap: 10px;

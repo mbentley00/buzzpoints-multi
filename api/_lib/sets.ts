@@ -2,7 +2,7 @@
 // re-aggregation helper used by ingest and the edit endpoints.
 import { put, del } from "@vercel/blob";
 import { readBlobJson } from "./blob.js";
-import { aggregate, bonusFilesFromImported, ImportedBonus, PacketFile, GameFile, Correction, VirtualCategory, PlayerRename } from "./aggregate.js";
+import { aggregate, bonusFilesFromImported, ImportedBonus, PacketFile, GameFile, Correction, VirtualCategory, PlayerRename, MetaMap, TagEdits, AggregateConfig } from "./aggregate.js";
 import { getScoring } from "./scoring.js";
 
 export interface Edition {
@@ -198,6 +198,16 @@ export function mergeRename(list: PlayerRename[], incoming: PlayerRename): Playe
 export const readVirtualCats = (slug: string) =>
   readBlobJson<VirtualCategory[]>(`sets/${slug}/_virtualcats.json`, false).then((c) => c || []);
 export const writeVirtualCats = (slug: string, c: VirtualCategory[]) => writeJson(`sets/${slug}/_virtualcats.json`, c);
+
+// How the owner said to read this set's question metadata (which comma-separated
+// field is the category, which are tag dimensions), and any hand edits to the
+// tags that mapping produces. Both are applied on (re-)aggregation.
+export const readMetaMap = (slug: string) =>
+  readBlobJson<MetaMap>(`sets/${slug}/_metamap.json`, false).then((m) => (m?.fields?.length ? m : null));
+export const writeMetaMap = (slug: string, m: MetaMap) => writeJson(`sets/${slug}/_metamap.json`, m);
+export const readTagEdits = (slug: string) =>
+  readBlobJson<TagEdits>(`sets/${slug}/_tagedits.json`, false).then((t) => t || {});
+export const writeTagEdits = (slug: string, t: TagEdits) => writeJson(`sets/${slug}/_tagedits.json`, t);
 
 // Owner-assigned round tags ("phases"): a map of round number -> tag names. Used
 // to write per-tag scoped stat files so viewers can filter every page to a phase.
@@ -502,13 +512,17 @@ function attachVersions(out: Record<string, unknown>, editions: Edition[]) {
 // at the top level and, when there are 2+ editions, each edition under
 // editions/<id>/. Returns the combined meta and the per-edition summaries.
 export async function aggregateAndWrite(slug: string, source: SetSource, corrections: Correction[]) {
-  const cfg = { name: source.name, slug, scoring: getScoring(source.scoring), hasBonuses: source.hasBonuses };
+  const cfg: AggregateConfig = { name: source.name, slug, scoring: getScoring(source.scoring), hasBonuses: source.hasBonuses };
   // Align mirrors that read the packets in different round orders onto a common
   // packet numbering, so combined stats key each question consistently.
   const editions = canonicalizeEditions(editionsOf(source));
   const multi = editions.length > 1;
   const virtualCats = await readVirtualCats(slug);
   const renames = await readRenames(slug);
+  const metaMap = await readMetaMap(slug);
+  const tagEdits = await readTagEdits(slug);
+  cfg.metaMap = metaMap;
+  cfg.tagEdits = tagEdits;
 
   // Bonuses imported as aggregate-only stats: rebuild the bonus files from those
   // stats when there's no per-game bonus data. If per-team results WERE scraped
@@ -519,7 +533,7 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
     if (!hasImportedBonuses) return;
     const b = out["bonuses.json"] as { heard?: number }[] | undefined;
     if (b && b.some((r) => (r.heard || 0) > 0)) return; // real per-game bonus data present; keep it
-    Object.assign(out, bonusFilesFromImported(collectImportedBonuses(eds, roundFilter), virtualCats));
+    Object.assign(out, bonusFilesFromImported(collectImportedBonuses(eds, roundFilter), virtualCats, metaMap));
   };
 
   const editionSummaries: EditionSummary[] = [];

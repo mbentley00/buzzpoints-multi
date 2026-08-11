@@ -6,6 +6,7 @@ import { Visibility, TOURNAMENT_LEVELS } from "../types";
 import { Loading } from "../components/Common";
 import { RoundTagsEditor } from "../components/RoundTagsEditor";
 import { RoundAlignEditor, GameFilesEditor, RenamesEditor } from "../components/SourceFiles";
+import { MetaMapEditor } from "../components/MetaMapEditor";
 
 const VIS_OPTIONS: { id: Visibility; label: string; desc: string }[] = [
   { id: "listed", label: "Listed (login + invite)", desc: "Shown in the list; only invited, logged-in people can view." },
@@ -286,6 +287,15 @@ export function Settings() {
 
       {meta?.kind !== "results" && (
         <>
+          <h2 id="categories" style={{ marginTop: 28 }}>Question categories &amp; tags</h2>
+          <p className="muted">
+            Each question's metadata is a comma-separated line, but sets order it differently — some lead with the
+            writer, some with the category — so a set can end up filed under a writer's initials. Say what each field
+            means here and every question is re-read. Fields marked <strong>Tag</strong> become extra dimensions you can
+            filter and compare on, like the writer.
+          </p>
+          <MetaMapEditor slug={slug} />
+
           <h2 id="rounds" style={{ marginTop: 28 }}>Round alignment</h2>
           <p className="muted">
             Each packet's round is taken from its <strong>filename</strong> when you upload it ("Round_3.json" → round

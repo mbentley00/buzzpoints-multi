@@ -5,6 +5,7 @@ import { pct, num } from "../util";
 import { CategoryGroups, CatColumn } from "../components/CategoryGroups";
 import { MergeCategoriesEditor } from "../components/MergeCategoriesEditor";
 import { PageHeader, Loading, ErrorBox } from "../components/Common";
+import { CategoryMappingNotice } from "../components/CategoryMappingNotice";
 
 const buzz = (v: number | null) => (v === null ? "—" : `${num(v)}%`);
 
@@ -33,6 +34,7 @@ export function CategoriesTossup() {
   return (
     <div>
       <PageHeader title="Categories — Tossups" subtitle="Conversion & buzz speed by subject" />
+      <CategoryMappingNotice slug={slug} show={!!isOwner && !!meta.needsCategoryMapping} />
       {loading && <Loading />}
       {error && <ErrorBox error={error} />}
       {data && isOwner && <MergeCategoriesEditor slug={slug} groups={data} />}

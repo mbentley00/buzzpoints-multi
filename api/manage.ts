@@ -13,8 +13,9 @@ import {
   readAccess, writeAccess, readLinks, writeLinks, canViewContent, InviteLink, Visibility, AccessRole,
   writeVirtualCats, readRoundTags, writeRoundTags, DEFAULT_ROUND_TAGS, RoundTags, TOURNAMENT_LEVELS,
   editionsOf, Edition, SetSource, AccessRequest, readRenames,
+  readMetaMap, writeMetaMap, readTagEdits, writeTagEdits,
 } from "./_lib/sets.js";
-import { VirtualCategory, scanRoundAlignment } from "./_lib/aggregate.js";
+import { VirtualCategory, scanRoundAlignment, metaFields, MetaMap, MetaField } from "./_lib/aggregate.js";
 import { LETTER_ROUND_BASE } from "./_lib/publish.js";
 import { sendEmail, appUrl, accessRequestBody, accessGrantedBody } from "./_lib/email.js";
 
@@ -53,6 +54,35 @@ function sanitizeRoundTags(input: unknown): RoundTags | null {
     if (names.length) out[k] = names;
   }
   return out;
+}
+
+// ---- metadata mapping ("op: metamap") + per-question tags ------------------
+const MAX_META_FIELDS = 8, MAX_DIM_NAME = 40, MAX_TAGS_PER_QUESTION = 12, MAX_TAG_LEN = 120;
+function sanitizeMetaMap(input: unknown): MetaMap | null {
+  if (!input || typeof input !== "object") return null;
+  const fields = (input as { fields?: unknown }).fields;
+  if (!Array.isArray(fields) || !fields.length || fields.length > MAX_META_FIELDS) return null;
+  const out: MetaField[] = [];
+  let categories = 0;
+  for (const f of fields as any[]) {
+    const role = f?.role;
+    if (role !== "category" && role !== "tag" && role !== "ignore") return null;
+    if (role === "category") categories++;
+    if (role === "tag") {
+      const tag = String(f.tag ?? "").trim().slice(0, MAX_DIM_NAME);
+      // A dimension name with the separator in it would split wrong on the way back out.
+      if (!tag || tag.includes(":")) return null;
+      out.push({ role, tag });
+    } else out.push({ role });
+  }
+  // Exactly one field can be the category; none would leave every question "Other".
+  if (categories !== 1) return null;
+  return { fields: out };
+}
+function cleanTagList(v: unknown): string[] | null {
+  if (v === undefined) return [];
+  if (!Array.isArray(v) || v.length > MAX_TAGS_PER_QUESTION) return null;
+  return [...new Set(v.filter((t): t is string => typeof t === "string").map((t) => t.trim().slice(0, MAX_TAG_LEN)).filter(Boolean))];
 }
 
 // ---- source-file inspection ("op: rounds" / "op: games") --------------------
@@ -188,6 +218,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Applied player renames, so the owner can see and undo them (undo itself
       // goes through /api/correct, which owns the renames file).
       if (req.query.op === "renames") return res.status(200).json({ renames: await readRenames(slug) });
+      // What the question metadata actually looks like across the set: every
+      // distinct comma-separated shape, with how often it occurs and sample
+      // values per field, so the owner can say which field means what.
+      if (req.query.op === "metascan") {
+        const source = await readSource(slug);
+        if (!source) return res.status(500).json({ error: "Source data not found." });
+        const counts = new Map<number, { rows: number; samples: string[][]; examples: string[] }>();
+        let total = 0;
+        for (const ed of editionsOf(source))
+          for (const p of ed.packets || [])
+            for (const q of [...(p.tossups || []), ...(source.hasBonuses ? p.bonuses || [] : [])]) {
+              const fields = metaFields((q as { metadata?: string }).metadata);
+              if (!fields.length) continue;
+              total++;
+              let c = counts.get(fields.length);
+              if (!c) { c = { rows: 0, samples: fields.map(() => []), examples: [] }; counts.set(fields.length, c); }
+              c.rows++;
+              fields.forEach((f, i) => { if (f && c!.samples[i].length < 40 && !c!.samples[i].includes(f)) c!.samples[i].push(f); });
+              if (c.examples.length < 3) { const raw = String((q as { metadata?: string }).metadata || ""); if (!c.examples.includes(raw)) c.examples.push(raw); }
+            }
+        const shapes = [...counts.entries()]
+          .map(([fieldCount, c]) => ({ fieldCount, questions: c.rows, examples: c.examples, samples: c.samples.map((v) => v.slice(0, 12)), distinct: c.samples.map((v) => v.length) }))
+          .sort((a, b) => b.questions - a.questions);
+        return res.status(200).json({ total, shapes, metaMap: await readMetaMap(slug), tagEdits: await readTagEdits(slug) });
+      }
       if (req.query.op === "rounds" || req.query.op === "games") {
         const source = await readSource(slug);
         if (!source) return res.status(500).json({ error: "Source data not found (set predates source storage; re-create it)." });
@@ -273,6 +328,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await writeVirtualCats(slug, clean);
       await aggregateAndWrite(slug, source, await readCorrections(slug));
       return res.status(200).json({ ok: true });
+    } else if (op === "metamap") {
+      if (entry.kind === "results") return res.status(400).json({ error: "Metadata mapping applies to buzz tournaments only." });
+      const clean = sanitizeMetaMap(body.metaMap);
+      if (!clean) return res.status(400).json({ error: "Invalid metadata mapping." });
+      const source = await readSource(slug);
+      if (!source) return res.status(500).json({ error: "Source data not found." });
+      await writeMetaMap(slug, clean);
+      await aggregateAndWrite(slug, source, await readCorrections(slug));
+      return res.status(200).json({ ok: true, metaMap: clean });
+    } else if (op === "question-tags") {
+      // One question's hand-edited tags, layered over whatever the mapping derived.
+      if (entry.kind === "results") return res.status(400).json({ error: "Tags apply to buzz tournaments only." });
+      const kind = body.kind === "bonuses" ? "bonuses" : "tossups";
+      const id = String(body.id || "");
+      if (!/^\d+-\d+$/.test(id)) return res.status(400).json({ error: "Unknown question." });
+      const add = cleanTagList(body.add), remove = cleanTagList(body.remove);
+      if (!add || !remove) return res.status(400).json({ error: "Invalid tags." });
+      const edits = await readTagEdits(slug);
+      const bucket = { ...(edits[kind] || {}) };
+      if (!add.length && !remove.length) delete bucket[id];
+      else bucket[id] = { ...(add.length ? { add } : {}), ...(remove.length ? { remove } : {}) };
+      const next = { ...edits, [kind]: bucket };
+      const source = await readSource(slug);
+      if (!source) return res.status(500).json({ error: "Source data not found." });
+      await writeTagEdits(slug, next);
+      await aggregateAndWrite(slug, source, await readCorrections(slug));
+      return res.status(200).json({ ok: true, tagEdits: next });
     } else if (op === "roundtags") {
       if (entry.kind === "results") return res.status(400).json({ error: "Round tags apply to buzz tournaments only." });
       const clean = sanitizeRoundTags(body.roundTags);
