@@ -37,6 +37,11 @@ export function Settings() {
   const [date, setDate] = useState("");
   const [invites, setInvites] = useState<string[]>([]);
   const [newInvite, setNewInvite] = useState("");
+  const [coOwners, setCoOwners] = useState<string[]>([]);
+  const [newCoOwner, setNewCoOwner] = useState("");
+  // The creator alone may edit the co-owner list and delete the set; a co-owner
+  // looking at this page gets everything else.
+  const [isPrimary, setIsPrimary] = useState(false);
   const [hasYf, setHasYf] = useState(false);
   const [level, setLevel] = useState("");
   const [tdLink, setTdLink] = useState("");
@@ -61,6 +66,8 @@ export function Settings() {
         setAutoPublish(!!d.autoPublicAt);
         setDate(toDateInput(d.autoPublicAt) || new Date(Date.now() + 2 * 365 * 864e5).toISOString().slice(0, 10));
         setInvites(d.invites || []);
+        setCoOwners(d.coOwners || []);
+        setIsPrimary(!!d.isPrimaryOwner);
         setHasYf(!!d.hasYf);
         setLevel(d.level || "");
         setTdLink(d.tdLink || "");
@@ -136,6 +143,21 @@ export function Settings() {
       const d = await postJson("/api/manage", { slug, op, email });
       setInvites(d.invites || []);
       if (op === "invite") setNewInvite("");
+    } catch (e) {
+      setErr(String((e as Error).message || e));
+    } finally { setBusy(false); }
+  }
+
+  async function coOwner(op: "coowner" | "uncoowner", email: string) {
+    setErr(null); setMsg(null); setBusy(true);
+    try {
+      const d = await postJson("/api/manage", { slug, op, email });
+      setCoOwners(d.coOwners || []);
+      // Adding a co-owner drops them from the invite list — they can see
+      // everything now, so listing them twice would be confusing.
+      setInvites(d.invites || []);
+      if (op === "coowner") { setNewCoOwner(""); setMsg(`${email} can now manage this tournament.`); }
+      refreshIndex();
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally { setBusy(false); }
@@ -390,6 +412,42 @@ export function Settings() {
         </>
       )}
 
+      <h2 style={{ marginTop: 28 }}>Co-owners ({coOwners.length})</h2>
+      <p className="muted">
+        Co-owners manage this tournament alongside you: uploading files, fixing buzzes, approving edit and access
+        requests, and changing these settings. Only you can delete the tournament or change who co-owns it.
+        They need a Buzzpoints account before you can add them.
+      </p>
+      {isPrimary && (
+        <div className="buzz-edit" style={{ marginBottom: 12 }}>
+          <input
+            type="email"
+            placeholder="person@example.com"
+            value={newCoOwner}
+            onChange={(e) => setNewCoOwner(e.target.value)}
+            style={{ padding: "6px 8px", border: "1px solid #cdd5e0", borderRadius: 4, minWidth: 260 }}
+          />
+          <button className="btn-primary btn-sm" disabled={busy || !newCoOwner.trim()} onClick={() => coOwner("coowner", newCoOwner.trim())}>
+            Add co-owner
+          </button>
+        </div>
+      )}
+      {coOwners.length === 0 ? (
+        <p className="muted">No co-owners yet.</p>
+      ) : (
+        <ul className="invite-list">
+          {coOwners.map((e) => (
+            <li key={e}>
+              <span>{e}</span>
+              {isPrimary && <button className="btn-link" disabled={busy} onClick={() => coOwner("uncoowner", e)}>Remove</button>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {!isPrimary && <p className="muted">You're a co-owner here — only the tournament's owner can change this list.</p>}
+
+      {isPrimary && (
+        <>
       <h2 style={{ marginTop: 28 }}>Delete this tournament</h2>
       <div className="danger-zone">
         <p style={{ margin: 0 }}>
@@ -416,6 +474,8 @@ export function Settings() {
           </button>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

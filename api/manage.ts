@@ -13,11 +13,11 @@ import {
   readAccess, writeAccess, readLinks, writeLinks, canViewContent, InviteLink, Visibility, AccessRole,
   writeVirtualCats, readRoundTags, writeRoundTags, DEFAULT_ROUND_TAGS, RoundTags, TOURNAMENT_LEVELS,
   editionsOf, Edition, SetSource, AccessRequest, readRenames,
-  readMetaMap, writeMetaMap, readTagEdits, writeTagEdits,
+  readMetaMap, writeMetaMap, readTagEdits, writeTagEdits, isSetOwner, isPrimaryOwner, ownerEmails,
 } from "./_lib/sets.js";
 import { VirtualCategory, scanRoundAlignment, metaFields, MetaMap, MetaField } from "./_lib/aggregate.js";
 import { LETTER_ROUND_BASE } from "./_lib/publish.js";
-import { sendEmail, appUrl, accessRequestBody, accessGrantedBody } from "./_lib/email.js";
+import { sendEmail, appUrl, accessRequestBody, accessGrantedBody, coOwnerBody } from "./_lib/email.js";
 
 const VIS = new Set<Visibility>(["public", "listed", "private"]);
 const ROLES = new Set<string>(["player", "staff", "coach"]);
@@ -179,8 +179,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (prior && prior.status === "pending") return res.status(200).json({ ok: true, already: true });
         const rec = { email: user, name: u?.name || user, at: new Date().toISOString(), status: "pending" as const, role: role as AccessRole, team };
         await writeAccess(slug, [rec, ...access.filter((a) => a.email !== user)]);
-        if (entry.owner)
-          await sendEmail({ to: entry.owner, subject: `Access request — ${entry.name}`, html: accessRequestBody(`${rec.name} (${user})`, entry.name, `${setUrl(slug)}/settings?review=access`, `${role}, ${team}`) });
+        // Anyone who can approve it hears about it — co-owners included.
+        for (const to of ownerEmails(entry))
+          await sendEmail({ to, subject: `Access request — ${entry.name}`, html: accessRequestBody(`${rec.name} (${user})`, entry.name, `${setUrl(slug)}/settings?review=access`, `${role}, ${team}`) });
         return res.status(200).json({ ok: true });
       }
 
@@ -208,7 +209,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // ---------------- owner / moderator / admin only ----------------
-    if (!user || (entry.owner !== user && !(await canModerate(user)))) return res.status(403).json({ error: "Owner only." });
+    if (!user || (!isSetOwner(entry, user) && !(await canModerate(user)))) return res.status(403).json({ error: "Owner only." });
+    // Two ops stay with the creator (or a moderator/admin): editing the co-owner
+    // list and deleting the set. Otherwise a co-owner could remove the creator.
+    const creatorOnly = async () => isPrimaryOwner(entry, user) || (await canModerate(user));
 
     if (req.method === "GET") {
       if (req.query.op === "roundtags")
@@ -256,6 +260,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         visibility: entry.visibility ?? "listed",
         autoPublicAt: entry.autoPublicAt ?? null,
         invites: entry.invites ?? [],
+        owner: entry.owner,
+        coOwners: entry.coOwners ?? [],
+        // Only the creator may edit the co-owner list or delete the set, so the
+        // UI needs to know which kind of owner is looking.
+        isPrimaryOwner: await creatorOnly(),
         hasYf: !!entry.hasYf,
         level: entry.level ?? "",
         tdLink: entry.tdLink ?? "",
@@ -292,6 +301,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const set = new Set(entry.invites ?? []);
       if (op === "invite") set.add(email); else set.delete(email);
       entry.invites = [...set].sort();
+    } else if (op === "coowner" || op === "uncoowner") {
+      // Co-owners can do everything the creator can except manage this list and
+      // delete the set, so only the creator may change it.
+      if (!(await creatorOnly())) return res.status(403).json({ error: "Only the tournament's owner can change who co-owns it." });
+      const email = normEmail(body.email);
+      if (!isEmail(email)) return res.status(400).json({ error: "Enter a valid email." });
+      if (email === entry.owner) return res.status(400).json({ error: "That's the tournament's owner already." });
+      const set = new Set(entry.coOwners ?? []);
+      if (op === "coowner") {
+        if (!(await loadUsers())[email]) return res.status(400).json({ error: "No Buzzpoints account uses that email — ask them to sign up first." });
+        set.add(email);
+        // A co-owner can already see everything; keeping them on the invite list
+        // too would double-list them in the access UI.
+        entry.invites = (entry.invites ?? []).filter((e) => e !== email);
+      } else set.delete(email);
+      entry.coOwners = [...set].sort();
+      await writeIndex(index);
+      if (op === "coowner")
+        await sendEmail({ to: email, subject: `You can now manage ${entry.name}`, html: coOwnerBody(entry.name, setUrl(slug)) });
+      return res.status(200).json({ ok: true, coOwners: entry.coOwners, invites: entry.invites ?? [] });
     } else if (op === "approve-access" || op === "deny-access") {
       const email = normEmail(body.email);
       const access = await readAccess(slug);
@@ -437,6 +466,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         roundWarnings: meta.roundWarnings || [],
       });
     } else if (op === "delete") {
+      if (!(await creatorOnly())) return res.status(403).json({ error: "Only the tournament's owner can delete it." });
       const { blobs } = await list({ prefix: `sets/${slug}/` });
       if (blobs.length) await del(blobs.map((b) => b.url));
       await writeIndex({ sets: index.sets.filter((s) => s.slug !== slug) });

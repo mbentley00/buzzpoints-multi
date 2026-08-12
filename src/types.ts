@@ -37,6 +37,9 @@ export interface SetEntry {
   hasBonuses: boolean;
   kind?: "buzz" | "results";
   owner?: string;
+  // Accounts the creator added as co-owners; only sent to owners. They manage the
+  // set alongside the creator, who alone edits this list and deletes the set.
+  coOwners?: string[];
   editions?: EditionSummary[];
   visibility?: Visibility;
   inviteCount?: number;

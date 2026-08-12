@@ -15,7 +15,7 @@ const GROUP_LABELS = [
 // 0 = owned or granted access, 1 = public, 2 = invite-only without access yet.
 function groupOf(s: SetEntry, user: string | null): 0 | 1 | 2 {
   const isPublic = (s.visibility ?? "public") === "public";
-  const owned = !!user && s.owner === user;
+  const owned = !!user && (s.owner === user || (s.coOwners ?? []).includes(user));
   if (owned || (s.hasAccess && !isPublic)) return 0;
   if (isPublic) return 1;
   return 2;

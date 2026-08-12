@@ -5,7 +5,7 @@ import { PacketFile, GameFile } from "./aggregate.js";
 import { SCORINGS } from "./scoring.js";
 import {
   readIndex, writeIndex, writeSource, writeCorrections, writeRequests, readCorrections,
-  aggregateAndWrite, SetSource, SetEntry, Visibility, writeYf, TOURNAMENT_LEVELS,
+  aggregateAndWrite, SetSource, SetEntry, Visibility, writeYf, TOURNAMENT_LEVELS, isSetOwner,
 } from "./sets.js";
 import { parseYellowFruit } from "./yellowfruit.js";
 
@@ -133,7 +133,7 @@ export async function updateFromSource(
   const index = await readIndex();
   const entry = index.sets.find((s) => s.slug === slug);
   if (!entry) throw new CreateError(404, "Tournament to refresh not found.");
-  if (entry.owner !== owner && !isPrivileged) throw new CreateError(403, "Only the tournament's owner can refresh it.");
+  if (!isSetOwner(entry, owner) && !isPrivileged) throw new CreateError(403, "Only the tournament's owner can refresh it.");
 
   // Keep the existing display name; only the underlying data is refreshed.
   source.name = entry.name || source.name;

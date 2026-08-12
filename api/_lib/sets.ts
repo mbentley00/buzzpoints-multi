@@ -40,6 +40,10 @@ export interface SetEntry {
   // absent/"buzz" = the default packet + QBJ buzz-level tournament.
   kind?: "buzz" | "results";
   owner: string;
+  // Additional accounts that may manage the set, added by the creator. They get
+  // every editing power the creator has EXCEPT changing this list and deleting
+  // the set — see isSetOwner(). Absent on sets created before co-owners existed.
+  coOwners?: string[];
   // A tournament may have multiple editions (mirrors). Top-level counts are the
   // COMBINED totals; per-edition summaries live here. Absent => single edition.
   editions?: EditionSummary[];
@@ -67,6 +71,20 @@ export interface SetEntry {
   createdAt: string;
 }
 
+// Who may MANAGE the set: the creator plus the co-owners they've added. Every
+// owner-gated endpoint uses this.
+export function isSetOwner(e: SetEntry, user: string | null): boolean {
+  return !!user && (user === e.owner || (e.coOwners || []).includes(user));
+}
+// Two powers stay with the creator alone: editing the co-owner list and deleting
+// the set. Otherwise a co-owner could remove the creator and take the set.
+export function isPrimaryOwner(e: SetEntry, user: string | null): boolean {
+  return !!user && user === e.owner;
+}
+// Everyone to notify about set activity (access requests, correction requests).
+export const ownerEmails = (e: SetEntry): string[] =>
+  [...new Set([e.owner, ...(e.coOwners || [])].filter(Boolean))];
+
 // Effective visibility, applying the auto-publish date: a non-public set whose
 // autoPublicAt has passed is treated as public.
 export function effectiveVisibility(e: SetEntry): Visibility {
@@ -78,7 +96,7 @@ export function effectiveVisibility(e: SetEntry): Visibility {
 export function canViewContent(e: SetEntry, user: string | null): boolean {
   if (effectiveVisibility(e) === "public") return true;
   if (!user) return false;
-  if (user === e.owner) return true;
+  if (isSetOwner(e, user)) return true;
   return (e.invites || []).includes(user);
 }
 // Admins may reach a set (for management), but their content is redacted unless
@@ -90,7 +108,7 @@ export function canList(e: SetEntry, user: string | null, isAdmin = false): bool
   if (isAdmin) return true;
   const v = effectiveVisibility(e);
   if (v === "public" || v === "listed") return true;
-  return !!user && (user === e.owner || (e.invites || []).includes(user));
+  return !!user && (isSetOwner(e, user) || (e.invites || []).includes(user));
 }
 
 // Strip question content (questions + answers + leadins) from a computed file,
@@ -129,9 +147,15 @@ export function redactContent(file: string, data: any): any {
 // `hasAccess` lets the list group sets the viewer can already open (owned, invited,
 // or public) without exposing who else is invited.
 export function sanitizeEntry(e: SetEntry, user: string | null) {
-  const isOwner = !!user && user === e.owner;
-  const { invites, ...rest } = e;
-  return { ...rest, visibility: effectiveVisibility(e), inviteCount: (invites || []).length, hasAccess: canViewContent(e, user), ...(isOwner ? { invites } : {}) };
+  const owns = isSetOwner(e, user);
+  const { invites, coOwners, ...rest } = e;
+  return {
+    ...rest, visibility: effectiveVisibility(e), inviteCount: (invites || []).length,
+    hasAccess: canViewContent(e, user),
+    // Owners (creator and co-owners alike) see the management lists; everyone
+    // else sees neither who's invited nor who else can edit.
+    ...(owns ? { invites, coOwners: coOwners || [] } : {}),
+  };
 }
 // A proposed edit awaiting the owner. Exactly one of `correction` (one buzz) or
 // `rename` (a player across the whole tournament) is set; `correction` stays

@@ -48,6 +48,10 @@ export const accessRequestBody = (requester: string, setName: string, url: strin
 export const accessGrantedBody = (setName: string, url: string) =>
   wrap(`<p>You've been granted access to <strong>${esc(setName)}</strong> on Buzzpoints.</p>${btn(url, "Open tournament")}`);
 
+// Sent when the creator adds someone as a co-owner of their tournament.
+export const coOwnerBody = (setName: string, url: string) =>
+  wrap(`<p>You've been added as a co-owner of <strong>${esc(setName)}</strong> on Buzzpoints.</p><p>You can now upload files, fix buzzes, approve edit requests, and change the tournament's settings — everything except deleting it or changing who co-owns it, which stay with the tournament's owner.</p>${btn(url, "Open tournament")}`);
+
 // Sent to the owner when a viewer submits a correction (edit) request.
 export const correctionRequestBody = (requester: string, setName: string, summary: string, desc: string, url: string) =>
   wrap(`<p><strong>${esc(requester)}</strong> suggested an edit to <strong>${esc(setName)}</strong>.</p><p>${esc(summary)}</p>${desc ? `<p><strong>Note:</strong> ${esc(desc)}</p>` : ""}<p>Review and approve or reject it on the tournament's Requests page.</p>${btn(url, "Review edit")}`);

@@ -8,7 +8,7 @@ import { currentUser } from "./_lib/auth.js";
 import {
   getSetEntry, readRequests, writeRequests, readSource, readCorrections, writeCorrections,
   aggregateAndWrite, mergeCorrection, validCorrection, canView, CorrectionRequest,
-  readRenames, writeRenames, mergeRename, validRename,
+  readRenames, writeRenames, mergeRename, validRename, isSetOwner, ownerEmails,
 } from "./_lib/sets.js";
 import { sendEmail, appUrl, correctionRequestBody } from "./_lib/email.js";
 
@@ -36,7 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const slug = String(req.query.slug || "");
     const entry = await getSetEntry(slug);
     if (!entry) return res.status(404).json({ error: "Tournament not found." });
-    const isOwner = !!user && entry.owner === user;
+    const isOwner = isSetOwner(entry, user);
     if (!isOwner) return res.status(200).json({ requests: [], isOwner: false });
     return res.status(200).json({ requests: await readRequests(slug), isOwner: true });
   }
@@ -66,9 +66,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       };
       reqs.unshift(r);
       await writeRequests(slug, reqs);
-      if (entry.owner && entry.owner !== user)
+      // Everyone who can act on it hears about it — co-owners included.
+      for (const to of ownerEmails(entry).filter((e) => e !== user))
         await sendEmail({
-          to: entry.owner,
+          to,
           subject: `Edit suggested — ${entry.name}`,
           html: correctionRequestBody(user, entry.name, requestSummary(r), r.desc || "", `${appUrl()}/set/${slug}/requests`),
         });
@@ -86,7 +87,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const entry = await getSetEntry(slug);
     if (!entry) return res.status(404).json({ error: "Tournament not found." });
-    if (entry.owner !== user) return res.status(403).json({ error: "Owner only." });
+    if (!isSetOwner(entry, user)) return res.status(403).json({ error: "Owner only." });
 
     const reqs = await readRequests(slug);
     const r = reqs.find((x) => x.id === id);

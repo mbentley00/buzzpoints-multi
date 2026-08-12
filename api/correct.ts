@@ -6,7 +6,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { currentUser } from "./_lib/auth.js";
 import {
   getSetEntry, readSource, readCorrections, writeCorrections, aggregateAndWrite, mergeCorrection, validCorrection,
-  readRenames, writeRenames, mergeRename, validRename,
+  readRenames, writeRenames, mergeRename, validRename, isSetOwner,
 } from "./_lib/sets.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -27,7 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const entry = await getSetEntry(slug);
     if (!entry) return res.status(404).json({ error: "Tournament not found." });
-    if (entry.owner !== user)
+    if (!isSetOwner(entry, user))
       return res.status(403).json({ error: "Only the owner can edit directly. Submit a request instead." });
 
     const source = await readSource(slug);

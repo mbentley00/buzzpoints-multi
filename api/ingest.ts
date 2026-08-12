@@ -13,7 +13,7 @@ import { readBlobJson } from "./_lib/blob.js";
 import { currentUser, isAdminEmail, canModerate, loadUsers, moderatorEmails, signPurpose } from "./_lib/auth.js";
 import {
   readIndex, writeIndex, readSource, writeSource, writeCorrections, readCorrections,
-  aggregateAndWrite, editionsOf, SetSource,
+  aggregateAndWrite, editionsOf, SetSource, isSetOwner,
 } from "./_lib/sets.js";
 import { createTournament, createFromSource, updateFromSource, parseFiles, validLevel, cleanTdLink, normVisibility, CreateError, FileRef } from "./_lib/publish.js";
 import { parseYellowFruit } from "./_lib/yellowfruit.js";
@@ -112,7 +112,7 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     const index = await readIndex();
     const entry = index.sets.find((s) => s.slug === slug);
     if (!entry) return res.status(404).json({ error: "Tournament not found." });
-    if (entry.owner !== owner && !(await canModerate(owner))) return res.status(403).json({ error: "Owner only." });
+    if (!isSetOwner(entry, owner) && !(await canModerate(owner))) return res.status(403).json({ error: "Owner only." });
     const source = await readSource(slug);
     if (!source) return res.status(200).json({ slug, editions: [], missing: 0 });
     const editions = editionsOf(source).map((ed, index2) => {
@@ -130,7 +130,7 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     const index = await readIndex();
     const entry = index.sets.find((s) => s.slug === slug);
     if (!entry) return res.status(404).json({ error: "Tournament not found." });
-    if (entry.owner !== owner && !(await canModerate(owner))) return res.status(403).json({ error: "Owner only." });
+    if (!isSetOwner(entry, owner) && !(await canModerate(owner))) return res.status(403).json({ error: "Owner only." });
     const source = await readSource(slug);
     if (!source) return res.status(400).json({ error: "Source data not found." });
     const eds = editionsOf(source);
@@ -165,7 +165,7 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     const index = await readIndex();
     const entry = index.sets.find((s) => s.slug === slug);
     if (!entry) return res.status(404).json({ error: "Tournament not found." });
-    if (entry.owner !== owner && !(await canModerate(owner))) return res.status(403).json({ error: "Owner only." });
+    if (!isSetOwner(entry, owner) && !(await canModerate(owner))) return res.status(403).json({ error: "Owner only." });
     const source = await readSource(slug);
     if (!source) return res.status(400).json({ error: "Source data not found." });
     await aggregateAndWrite(slug, source, await readCorrections(slug));
@@ -394,7 +394,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const index = await readIndex();
       const parent = index.sets.find((s) => s.slug === editionOf);
       if (!parent) return res.status(404).json({ error: "Tournament not found." });
-      if (parent.owner !== owner && !isAdminEmail(owner))
+      if (!isSetOwner(parent, owner) && !isAdminEmail(owner))
         return res.status(403).json({ error: "Only the tournament's owner can add files." });
 
       const source = await readSource(editionOf);

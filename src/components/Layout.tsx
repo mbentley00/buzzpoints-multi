@@ -36,7 +36,9 @@ export function SetLayout() {
   const { data: meta, error, loading } = useSetJson<Meta>(slug, scopedPath(scope, "meta.json"));
 
   const owner = entry?.owner ?? null;
-  const isOwner = !!user && !!owner && user === owner;
+  // Co-owners manage the set alongside its creator, so every owner-gated tab and
+  // control treats them the same. `coOwners` only comes back to owners.
+  const isOwner = !!user && (user === owner || (entry?.coOwners ?? []).includes(user));
   const editions = entry?.editions ?? meta?.editions ?? [];
   const hasEditions = editions.length > 1;
   const tags = entry?.tags ?? [];
