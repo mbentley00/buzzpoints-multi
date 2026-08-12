@@ -43,6 +43,15 @@
      wrong buzz in a no-neg format): a neutral slate, NOT red, so they don't read
      as negs. */
   --zero-bg: #7e828a;     --zero-bg-h: #74777f;
+  /* Buzz table rows use pale washes of the same family instead of the filled *-bg
+     steps: the row reads as ordinary text on a tint, so player and team names keep
+     the normal ink and link colors. The chips and buttons keep the deeper steps,
+     which are built for white text. */
+  --power-row: #e5edf8;   --power-row-h: #d7e3f4;
+  --get-row:   #e7f3e9;   --get-row-h:   #d8ecdc;
+  --neg-row:   #fbe9e6;   --neg-row-h:   #f5dad5;
+  --zero-row:  #eef0f3;   --zero-row-h:  #e4e7eb;
+  --row-wash: rgba(0, 0, 0, 0.055); --row-edge: #5b6472;
   /* Bonus conversion tiers: a green → gold → clay → red gradient in the same family. */
   --tier-gold: #a98c45;   --tier-gold-h: #9b8040;
   --tier-clay: #b06f49;   --tier-clay-h: #a26542;
@@ -96,6 +105,12 @@
   --get-bg: #35624a;      --get-bg-h: #3d7055;
   --neg-bg: #7e4640;      --neg-bg-h: #8e504a;
   --zero-bg: #4a4f57;     --zero-bg-h: #545a63;
+  /* The same pale row washes, chosen against the dark surface rather than flipped. */
+  --power-row: #1f2a3a;   --power-row-h: #26344a;
+  --get-row:   #1d2c23;   --get-row-h:   #24382c;
+  --neg-row:   #33221f;   --neg-row-h:   #402a26;
+  --zero-row:  #23282f;   --zero-row-h:  #2b3038;
+  --row-wash: rgba(255, 255, 255, 0.085); --row-edge: #9aa3ad;
   --tier-gold: #b09250;   --tier-gold-h: #c0a05a;
   --tier-clay: #b8784f;   --tier-clay-h: #c88459;
   --bonus-full: #4a5da0;  --bonus-full-h: #5468b0;
@@ -141,6 +156,12 @@
   --get-bg: #35624a;      --get-bg-h: #3d7055;
   --neg-bg: #7e4640;      --neg-bg-h: #8e504a;
   --zero-bg: #4a4f57;     --zero-bg-h: #545a63;
+  /* The same pale row washes, chosen against the dark surface rather than flipped. */
+  --power-row: #1f2a3a;   --power-row-h: #26344a;
+  --get-row:   #1d2c23;   --get-row-h:   #24382c;
+  --neg-row:   #33221f;   --neg-row-h:   #402a26;
+  --zero-row:  #23282f;   --zero-row-h:  #2b3038;
+  --row-wash: rgba(255, 255, 255, 0.085); --row-edge: #9aa3ad;
   --tier-gold: #b09250;   --tier-gold-h: #c0a05a;
   --tier-clay: #b8784f;   --tier-clay-h: #c88459;
   --bonus-full: #4a5da0;  --bonus-full-h: #5468b0;
@@ -745,8 +766,6 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
 .btn-link:disabled { color: #9db8e6; cursor: default; }
 .btn-edit { margin-left: 8px; font-size: 12px; opacity: 0.75; }
 .data-table tbody tr:hover .btn-edit { opacity: 1; }
-/* keep the Edit link / row links legible on the colored buzz rows */
-.data-table tbody tr.buzz-row .btn-edit, .data-table tbody tr.buzz-row .btn-link { color: #fff; }
 
 /* ---- redesigned tossup detail ---- */
 .tu-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: start; }
@@ -799,15 +818,18 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
 .buzzcurve { margin: 18px 0 0; max-width: 720px; }
 .buzzcurve figcaption { color: var(--muted); font-size: 12.5px; margin-bottom: 4px; }
 .buzzcurve-svg { width: 100%; height: auto; display: block; }
-.bc-grid { stroke: var(--line); stroke-width: 1; }
+/* Dashed grid, solid axes — the old Buzzpoints chart's frame. */
+.bc-grid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 4 4; }
 .bc-axis { stroke: var(--line-strong); stroke-width: 1; }
 .bc-crosshair { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 3; }
 .bc-tick { fill: var(--muted); font-size: 11px; }
 .bc-label { fill: var(--muted); font-size: 11.5px; font-weight: 600; }
-.buzzcurve-foot { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 12.5px; margin-top: 2px; }
-.bc-legend { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
-.bc-legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
-.bc-legend i.bc-dash { width: 12px; height: 3px; border-radius: 0; }
+/* The average-buzz key sits above the plot, the series legend centred below it. */
+.bc-key { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; margin-bottom: 2px; }
+.bc-key-mark { flex: none; }
+.buzzcurve-foot { display: flex; align-items: center; justify-content: center; gap: 26px; flex-wrap: wrap; font-size: 13px; margin-top: 4px; }
+.buzzcurve-read { text-align: center; font-size: 12.5px; margin-top: 2px; }
+.bc-legend { display: inline-flex; align-items: center; gap: 7px; color: var(--ink-soft); }
 
 /* The word a buzz link pointed at: ringed, and it pulses once on arrival so the
    eye lands on it without the ring having to stay loud. */
@@ -974,9 +996,9 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
 .btn-link.danger { color: #c0392b; }
 .btn-link.danger:hover { color: #a02718; }
 
-/* colored buzz rows on the player buzz view */
-.data-table tbody tr.buzz-row td { color: #fff; border-bottom-color: rgba(255, 255, 255, 0.18); }
-.data-table tbody tr.buzz-row a { color: #fff; text-decoration: underline; }
+/* tinted buzz rows on the tossup and player buzz views */
+.data-table tbody tr.buzz-row td { border-bottom-color: var(--line); }
+.data-table tbody tr.buzz-row a { color: var(--link); text-decoration: underline; }
 
 /* compact buzz list: stack player over team so long names get the full column
    width, tighten spacing, and keep the long opponent name from dominating. */
@@ -986,18 +1008,18 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
 .buzz-who .buzz-team { display: block; font-size: 12.5px; opacity: 0.82; }
 .buzz-opp { font-size: 12.5px; opacity: 0.9; max-width: 220px; }
 .buzz-row .btn-edit { font-weight: 400; font-size: 12px; margin-left: 6px; }
-.data-table tbody tr.buzz-row-power td { background: var(--power-bg); }
-.data-table tbody tr.buzz-row-power:hover td { background: var(--power-bg-h); }
-.data-table tbody tr.buzz-row-get td { background: var(--get-bg); }
-.data-table tbody tr.buzz-row-get:hover td { background: var(--get-bg-h); }
-.data-table tbody tr.buzz-row-neg td { background: var(--neg-bg); }
-.data-table tbody tr.buzz-row-neg:hover td { background: var(--neg-bg-h); }
-.data-table tbody tr.buzz-row-zero td { background: var(--zero-bg); }
-.data-table tbody tr.buzz-row-zero:hover td { background: var(--zero-bg-h); }
+.data-table tbody tr.buzz-row-power td { background: var(--power-row); }
+.data-table tbody tr.buzz-row-power:hover td { background: var(--power-row-h); }
+.data-table tbody tr.buzz-row-get td { background: var(--get-row); }
+.data-table tbody tr.buzz-row-get:hover td { background: var(--get-row-h); }
+.data-table tbody tr.buzz-row-neg td { background: var(--neg-row); }
+.data-table tbody tr.buzz-row-neg:hover td { background: var(--neg-row-h); }
+.data-table tbody tr.buzz-row-zero td { background: var(--zero-row); }
+.data-table tbody tr.buzz-row-zero:hover td { background: var(--zero-row-h); }
 /* Highlight buzzers at the word currently hovered in the question text. The inset
-   overlay lightens whatever tier background the row has; a white left edge marks it. */
-.data-table tbody tr.buzz-row.buzz-hl td { box-shadow: inset 0 0 0 9999px rgba(255, 255, 255, 0.18); }
-.data-table tbody tr.buzz-row.buzz-hl td:first-child { box-shadow: inset 0 0 0 9999px rgba(255, 255, 255, 0.18), inset 3px 0 0 #fff; }
+   wash deepens whatever tier tint the row has; a left edge marks it. */
+.data-table tbody tr.buzz-row.buzz-hl td { box-shadow: inset 0 0 0 9999px var(--row-wash); }
+.data-table tbody tr.buzz-row.buzz-hl td:first-child { box-shadow: inset 0 0 0 9999px var(--row-wash), inset 3px 0 0 var(--row-edge); }
 
 /* colored conversion rows on the bonus detail view (by parts converted) */
 .data-table tbody tr.bonus-row td { color: #fff; border-bottom-color: rgba(255, 255, 255, 0.18); }

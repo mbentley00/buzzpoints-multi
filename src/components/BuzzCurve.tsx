@@ -7,12 +7,23 @@ import { TossupDetail, Buzz } from "../types";
 // them is the negs. Restores the curve the old Buzzpoints site drew.
 //
 // Colours are the validated pair for this chart (see the palette check in
-// dataviz): a neutral #8a929c against #2f8a55 clears CVD and normal-vision
-// separation against BOTH the light and dark surfaces, so one pair serves both. The neutral reads grey on purpose — it's
-// context for the green, not a competing series.
+// dataviz): a neutral #8a929c against #2a9c50 clears CVD (ΔE 9.4) and
+// normal-vision (16.2) separation and the 3:1 contrast floor against BOTH the
+// light and dark surfaces, so one pair serves both. The neutral reads grey on
+// purpose — it's context for the green, not a competing series. The green is the
+// vivid step rather than the sage one, and the fills are heavy, to match the
+// filled look of the old Buzzpoints curve.
 const TOTAL = "#8a929c";
-const CORRECT = "#2f8a55";
+const CORRECT = "#2a9c50";
 const AVG = "#e08a1e"; // same marker colour the question text uses for average buzz
+
+// The old site's legend key: a 2px rule through an open circle.
+const KeyLine = ({ c }: { c: string }) => (
+  <svg width="26" height="10" viewBox="0 0 26 10" aria-hidden="true" className="bc-key-mark">
+    <line x1="0" y1="5" x2="26" y2="5" stroke={c} strokeWidth="2" />
+    <circle cx="13" cy="5" r="3.2" fill="var(--surface)" stroke={c} strokeWidth="2" />
+  </svg>
+);
 
 const W = 720, H = 250;
 const M = { top: 14, right: 16, bottom: 34, left: 40 };
@@ -84,13 +95,22 @@ export function BuzzCurve({ d }: { d: TossupDetail }) {
   return (
     <figure className="buzzcurve">
       <figcaption>
-        Cumulative buzzes as the question is read — the gap between the two is interrupted wrong buzzes.
+        Cumulative buzzes as the question is read: the gap between the two is interrupted wrong buzzes.
       </figcaption>
+      {avgIdx !== null && (
+        <div className="bc-key">
+          <svg width="8" height="13" viewBox="0 0 8 13" aria-hidden="true" className="bc-key-mark">
+            <line x1="4" y1="0" x2="4" y2="13" stroke={AVG} strokeWidth="3" strokeDasharray="3 3" />
+          </svg>
+          = Average correct buzz position
+        </div>
+      )}
       <svg
         ref={svg} viewBox={`0 0 ${W} ${H}`} className="buzzcurve-svg" role="img"
         aria-label={`Cumulative buzzes by word position: ${cumT[n]} in total, ${cumC[n]} correct`}
         onMouseMove={onMove} onMouseLeave={() => setHover(null)}
       >
+        {/* Dashed grid in both directions, as the old site drew it. */}
         {yTicks.map((v) => (
           <g key={v}>
             <line x1={M.left} x2={M.left + PW} y1={y(v)} y2={y(v)} className="bc-grid" />
@@ -98,13 +118,16 @@ export function BuzzCurve({ d }: { d: TossupDetail }) {
           </g>
         ))}
         {xTicks.map((v) => (
-          <text key={v} x={x(v)} y={M.top + PH + 20} className="bc-tick" textAnchor="middle">{v}</text>
+          <g key={v}>
+            <line x1={x(v)} x2={x(v)} y1={M.top} y2={M.top + PH} className="bc-grid" />
+            <text x={x(v)} y={M.top + PH + 20} className="bc-tick" textAnchor="middle">{v}</text>
+          </g>
         ))}
 
-        <path d={areaPath(cumT)} fill={TOTAL} fillOpacity={0.22} />
+        <path d={areaPath(cumT)} fill={TOTAL} fillOpacity={0.45} />
         <path d={stepPath(cumT)} fill="none" stroke={TOTAL} strokeWidth={2} />
         {/* A 2px surface ring keeps the green edge legible where it rides on the grey fill. */}
-        <path d={areaPath(cumC)} fill={CORRECT} fillOpacity={0.32} />
+        <path d={areaPath(cumC)} fill={CORRECT} fillOpacity={0.6} />
         <path d={stepPath(cumC)} fill="none" stroke="var(--surface)" strokeWidth={4} />
         <path d={stepPath(cumC)} fill="none" stroke={CORRECT} strokeWidth={2} />
 
@@ -127,17 +150,17 @@ export function BuzzCurve({ d }: { d: TossupDetail }) {
           </g>
         )}
         <line x1={M.left} x2={M.left + PW} y1={M.top + PH} y2={M.top + PH} className="bc-axis" />
+        <line x1={M.left} x2={M.left} y1={M.top} y2={M.top + PH} className="bc-axis" />
       </svg>
 
       <div className="buzzcurve-foot">
-        <span className="bc-legend"><i style={{ background: TOTAL }} /> Total</span>
-        <span className="bc-legend"><i style={{ background: CORRECT }} /> Correct</span>
-        <span className="bc-legend"><i className="bc-dash" style={{ background: AVG }} /> Average correct buzz</span>
-        <span className="muted">
-          {hover === null
-            ? "Word position →"
-            : `Word ${hover + 1}${hover < d.words.length ? ` “${d.words[hover]}”` : " (END)"} · ${cumT[hover]} buzzed, ${cumC[hover]} correct`}
-        </span>
+        <span className="bc-legend"><KeyLine c={TOTAL} /> Total Buzzes</span>
+        <span className="bc-legend"><KeyLine c={CORRECT} /> Correct Buzzes</span>
+      </div>
+      <div className="buzzcurve-read muted">
+        {hover === null
+          ? "Word position →"
+          : `Word ${hover + 1}${hover < d.words.length ? ` “${d.words[hover]}”` : " (END)"} · ${cumT[hover]} buzzed, ${cumC[hover]} correct`}
       </div>
     </figure>
   );
