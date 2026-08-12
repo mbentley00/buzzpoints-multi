@@ -52,6 +52,16 @@ export const accessGrantedBody = (setName: string, url: string) =>
 export const coOwnerBody = (setName: string, url: string) =>
   wrap(`<p>You've been added as a co-owner of <strong>${esc(setName)}</strong> on Buzzpoints.</p><p>You can now upload files, fix buzzes, approve edit requests, and change the tournament's settings — everything except deleting it or changing who co-owns it, which stay with the tournament's owner.</p>${btn(url, "Open tournament")}`);
 
+// Sent once, six months after a tournament was uploaded, if it still isn't
+// public — a nudge, not a deadline, so it says plainly that doing nothing is fine.
+export const publishReminderBody = (setName: string, uploaded: string, url: string) =>
+  wrap(
+    `<p>You uploaded <strong>${esc(setName)}</strong> to Buzzpoints in ${esc(uploaded)}, and it's still not public.</p>` +
+    `<p>Six months on, most tournaments have finished their mirrors and there's no longer a reason to hold the questions back. Making it public puts it in the tournament list and lets anyone read the questions and study the buzz data — which is where most of Buzzpoints' value comes from.</p>` +
+    `<p>If it still needs to stay private, no action is needed. This is the only reminder you'll get for this tournament.</p>` +
+    btn(url, "Review visibility")
+  );
+
 // Sent to the owner when a viewer submits a correction (edit) request.
 export const correctionRequestBody = (requester: string, setName: string, summary: string, desc: string, url: string) =>
   wrap(`<p><strong>${esc(requester)}</strong> suggested an edit to <strong>${esc(setName)}</strong>.</p><p>${esc(summary)}</p>${desc ? `<p><strong>Note:</strong> ${esc(desc)}</p>` : ""}<p>Review and approve or reject it on the tournament's Requests page.</p>${btn(url, "Review edit")}`);

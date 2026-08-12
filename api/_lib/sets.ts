@@ -53,6 +53,9 @@ export interface SetEntry {
   invites: string[]; // normalized emails allowed to view (besides the owner)
   // ISO date when a non-public set auto-publishes, or null if the owner opted out.
   autoPublicAt: string | null;
+  // When the "consider making this public" nudge was emailed, so it only ever
+  // goes out once per set. Absent until the reminder fires.
+  publicReminderAt?: string;
   // Phase/tag summaries (present when the owner has tagged rounds) used to build
   // the phase filter; each tag also has a scoped set of stat files.
   tags?: TagSummary[];

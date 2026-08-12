@@ -1,5 +1,6 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "rewrites": [{ "source": "/((?!api).*)", "destination": "/index.html" }]
+  "rewrites": [{ "source": "/((?!api).*)", "destination": "/index.html" }],
+  "crons": [{ "path": "/api/admin?op=publish-reminders", "schedule": "0 15 * * *" }]
 }
