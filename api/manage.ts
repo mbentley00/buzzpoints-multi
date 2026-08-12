@@ -13,7 +13,7 @@ import {
   readAccess, writeAccess, readLinks, writeLinks, canViewContent, InviteLink, Visibility, AccessRole,
   writeVirtualCats, readRoundTags, writeRoundTags, DEFAULT_ROUND_TAGS, RoundTags, TOURNAMENT_LEVELS,
   editionsOf, Edition, SetSource, AccessRequest, readRenames,
-  readMetaMap, writeMetaMap, readTagEdits, writeTagEdits, isSetOwner, isPrimaryOwner, ownerEmails,
+  readMetaMap, writeMetaMap, readTagEdits, writeTagEdits, isSetOwner, isPrimaryOwner, ownerEmails, requestsAllowed,
 } from "./_lib/sets.js";
 import { VirtualCategory, scanRoundAlignment, metaFields, MetaMap, MetaField } from "./_lib/aggregate.js";
 import { LETTER_ROUND_BASE } from "./_lib/publish.js";
@@ -259,6 +259,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({
         visibility: entry.visibility ?? "listed",
         autoPublicAt: entry.autoPublicAt ?? null,
+        allowRequests: requestsAllowed(entry),
         invites: entry.invites ?? [],
         owner: entry.owner,
         coOwners: entry.coOwners ?? [],
@@ -288,6 +289,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         else return res.status(400).json({ error: "Invalid date." });
       }
       if (entry.visibility === "public") entry.autoPublicAt = null;
+      // Whether viewers may propose buzz corrections and player renames.
+      if (body.allowRequests !== undefined) entry.allowRequests = !!body.allowRequests;
     } else if (op === "reaggregate") {
       const source = await readSource(slug);
       if (!source) return res.status(500).json({ error: "Source data not found (set predates source storage; re-create it)." });
@@ -486,7 +489,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     await writeIndex(index);
-    return res.status(200).json({ ok: true, visibility: entry.visibility, autoPublicAt: entry.autoPublicAt ?? null, invites: entry.invites ?? [] });
+    return res.status(200).json({ ok: true, visibility: entry.visibility, autoPublicAt: entry.autoPublicAt ?? null, allowRequests: requestsAllowed(entry), invites: entry.invites ?? [] });
   } catch (e) {
     return res.status(500).json({ error: (e as Error).message });
   }

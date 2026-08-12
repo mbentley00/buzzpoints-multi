@@ -866,6 +866,10 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
 }
 .bn-got:hover { color: var(--chip-ink); }
 
+/* The "this isn't for set corrections" note in the feedback dialog: tighter and
+   quieter than a page-level caveat, but still clearly a boundary. */
+.feedback-scope { margin: 0 0 10px; font-size: 13px; line-height: 1.45; }
+
 /* Roster card on a team name. Fixed so a scrolling buzz list can't clip it; the
    coordinates come from the name's own position, and it's portaled to <body> so
    the faded buzz cells (opacity < 1 = a stacking context) can't trap or dim it.

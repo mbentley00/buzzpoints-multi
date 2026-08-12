@@ -49,7 +49,7 @@ function Title({ slug, r }: { slug: string; r: CorrectionRequest }) {
 
 export function Requests() {
   const { slug = "" } = useParams();
-  const { isOwner } = useSetCtx();
+  const { isOwner, allowRequests } = useSetCtx();
   const [reqs, setReqs] = useState<CorrectionRequest[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -92,6 +92,13 @@ export function Requests() {
     <div className="detail">
       <h1>Correction requests</h1>
       {err && <div className="error-box">{err}</div>}
+      {!allowRequests && (
+        <p className="caveat">
+          You've turned off correction requests for this tournament, so viewers can't submit new ones. Anything already
+          submitted is still below, and you can still edit buzzes directly.{" "}
+          <Link className="link" to={`/set/${slug}/settings`}>Change this in Settings</Link>.
+        </p>
+      )}
 
       <h2>Pending ({pending.length})</h2>
       {pending.length === 0 ? (

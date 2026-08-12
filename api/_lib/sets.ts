@@ -56,6 +56,10 @@ export interface SetEntry {
   // When the "consider making this public" nudge was emailed, so it only ever
   // goes out once per set. Absent until the reminder fires.
   publicReminderAt?: string;
+  // Whether viewers may propose buzz corrections and player renames. Absent =>
+  // allowed, which is the behaviour every set had before this was addable.
+  // Owners still edit directly either way; this only closes the request queue.
+  allowRequests?: boolean;
   // Phase/tag summaries (present when the owner has tagged rounds) used to build
   // the phase filter; each tag also has a scoped set of stat files.
   tags?: TagSummary[];
@@ -84,6 +88,10 @@ export function isSetOwner(e: SetEntry, user: string | null): boolean {
 export function isPrimaryOwner(e: SetEntry, user: string | null): boolean {
   return !!user && user === e.owner;
 }
+// May non-owners propose corrections? Absent means yes — every set predating the
+// setting keeps its open request queue.
+export const requestsAllowed = (e: SetEntry): boolean => e.allowRequests !== false;
+
 // Everyone to notify about set activity (access requests, correction requests).
 export const ownerEmails = (e: SetEntry): string[] =>
   [...new Set([e.owner, ...(e.coOwners || [])].filter(Boolean))];
@@ -155,6 +163,8 @@ export function sanitizeEntry(e: SetEntry, user: string | null) {
   return {
     ...rest, visibility: effectiveVisibility(e), inviteCount: (invites || []).length,
     hasAccess: canViewContent(e, user),
+    // Normalized so the client never has to special-case the absent default.
+    allowRequests: requestsAllowed(e),
     // Owners (creator and co-owners alike) see the management lists; everyone
     // else sees neither who's invited nor who else can edit.
     ...(owns ? { invites, coOwners: coOwners || [] } : {}),

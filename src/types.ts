@@ -46,6 +46,9 @@ export interface SetEntry {
   hasAccess?: boolean; // viewer can already open this set (owned, invited, or public)
   invites?: string[]; // only present for the owner
   autoPublicAt?: string | null;
+  // Whether viewers may propose buzz corrections / player renames. The server
+  // normalizes the absent default to true.
+  allowRequests?: boolean;
   tags?: TagSummary[]; // round-tag phases, if the owner has tagged rounds
   hasYf?: boolean; // owner uploaded a companion YellowFruit file (corrected export available)
   level?: string; // tournament type (see TOURNAMENT_LEVELS)
@@ -67,6 +70,8 @@ export interface SetCtx {
   owner: string | null;
   isOwner: boolean;
   user: string | null;
+  // Whether non-owners may propose corrections. Owners always can edit directly.
+  allowRequests: boolean;
   level?: string;
   tdLink?: string;
 }

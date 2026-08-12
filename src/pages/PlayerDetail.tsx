@@ -18,7 +18,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 export function PlayerDetailPage() {
-  const { meta, scope, editions, isOwner, user } = useSetCtx();
+  const { meta, scope, editions, isOwner, user, allowRequests } = useSetCtx();
   const { slug = "", id = "" } = useParams();
   const { data: all, error, loading } = useScopedJson<Record<string, PlayerDetail>>("players_detail.json");
   const [view, setView] = useState<"cat" | "buzz">("cat");
@@ -64,7 +64,7 @@ export function PlayerDetailPage() {
           <p className="subtitle">
             <Link to={`/set/${slug}/team/${d.teamId}`} className="link">{d.team}</Link>
             {scope === "all" && !!d.editionIds?.length && <> · <EditionBadges ids={d.editionIds} editions={editions} /></>}
-            {user && <> · <RenamePlayer slug={slug} name={d.name} team={d.team} isOwner={isOwner} /></>}
+            {user && (isOwner || allowRequests) && <> · <RenamePlayer slug={slug} name={d.name} team={d.team} isOwner={isOwner} /></>}
           </p>
         </div>
         <button className="btn-primary" onClick={() => setView(view === "cat" ? "buzz" : "cat")}>

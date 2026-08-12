@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../auth";
 
 // "Send feedback" in the topbar: a small dialog that mails the site owner. Signed-in
@@ -6,6 +7,11 @@ import { useAuth } from "../auth";
 // replied to (or not — the message goes either way).
 export function Feedback() {
   const { user } = useAuth();
+  const loc = useLocation();
+  // On a tournament page this button is one click from the buzz data, and people
+  // reach for it to report a wrong buzz — which goes to the site owner, who can't
+  // fix another person's tournament. Point them at that set's own Edit flow.
+  const setSlug = loc.pathname.match(/^\/set\/([^/]+)/)?.[1] ?? null;
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [email, setEmail] = useState("");
@@ -64,14 +70,33 @@ export function Feedback() {
               </>
             ) : (
               <>
-                <h2>Send feedback</h2>
-                <p className="muted">Found a bug, or something looks wrong in a tournament? Tell me about it.</p>
+                <h2>Send feedback about the site</h2>
+                <p className="muted">
+                  This goes to whoever runs Buzzpoints — for bugs, confusing pages, and ideas for features. It's the
+                  right place for “this chart is unreadable on mobile” or “I wish I could sort by…”.
+                </p>
+                <div className="caveat feedback-scope">
+                  <strong>Not for fixing a tournament's data.</strong> A misattributed buzz, a wrong buzz position, or a
+                  player's name spelled two ways is the tournament owner's to fix, and I can't change someone else's
+                  tournament from here.{" "}
+                  {setSlug ? (
+                    <>
+                      Use <strong>Edit</strong> next to the buzz on its tossup page, or{" "}
+                      <Link className="link" to={`/set/${setSlug}/tossup`} onClick={() => setOpen(false)}>
+                        open this tournament's tossups
+                      </Link>{" "}
+                      to find it.
+                    </>
+                  ) : (
+                    <>Open the tossup in question and use the <strong>Edit</strong> link beside the buzz.</>
+                  )}
+                </div>
                 <textarea
                   ref={box}
                   rows={6}
                   className="feedback-input"
                   value={message}
-                  placeholder="What's on your mind?"
+                  placeholder="What could work better on the site?"
                   maxLength={4000}
                   onChange={(e) => setMessage(e.target.value)}
                 />

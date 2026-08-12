@@ -8,7 +8,7 @@ import { currentUser } from "./_lib/auth.js";
 import {
   getSetEntry, readRequests, writeRequests, readSource, readCorrections, writeCorrections,
   aggregateAndWrite, mergeCorrection, validCorrection, canView, CorrectionRequest,
-  readRenames, writeRenames, mergeRename, validRename, isSetOwner, ownerEmails,
+  readRenames, writeRenames, mergeRename, validRename, isSetOwner, ownerEmails, requestsAllowed,
 } from "./_lib/sets.js";
 import { sendEmail, appUrl, correctionRequestBody } from "./_lib/email.js";
 
@@ -56,6 +56,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const entry = await getSetEntry(slug);
       if (!entry) return res.status(404).json({ error: "Tournament not found." });
       if (!canView(entry, user)) return res.status(403).json({ error: "You don't have access to this tournament." });
+      // The owner has closed the request queue for this tournament. Owners and
+      // co-owners still edit directly, so they bypass it.
+      if (!requestsAllowed(entry) && !isSetOwner(entry, user))
+        return res.status(403).json({ error: "This tournament's owner isn't accepting correction requests." });
       const reqs = await readRequests(slug);
       const stamp = { by: user, at: new Date().toISOString() };
       const r: CorrectionRequest = {

@@ -34,6 +34,8 @@ export function Settings() {
   const [loading, setLoading] = useState(true);
   const [visibility, setVisibility] = useState<Visibility>("listed");
   const [autoPublish, setAutoPublish] = useState(false);
+  // Whether viewers may propose buzz corrections / player renames.
+  const [allowRequests, setAllowRequests] = useState(true);
   const [date, setDate] = useState("");
   const [invites, setInvites] = useState<string[]>([]);
   const [newInvite, setNewInvite] = useState("");
@@ -64,6 +66,7 @@ export function Settings() {
         if (!ok) throw new Error(d.error || "Failed to load settings");
         setVisibility(d.visibility);
         setAutoPublish(!!d.autoPublicAt);
+        setAllowRequests(d.allowRequests !== false);
         setDate(toDateInput(d.autoPublicAt) || new Date(Date.now() + 2 * 365 * 864e5).toISOString().slice(0, 10));
         setInvites(d.invites || []);
         setCoOwners(d.coOwners || []);
@@ -93,7 +96,7 @@ export function Settings() {
     setErr(null); setMsg(null); setBusy(true);
     try {
       const autoPublicAt = visibility === "public" ? null : autoPublish ? new Date(date).toISOString() : null;
-      await postJson("/api/manage", { slug, op: "settings", visibility, autoPublicAt });
+      await postJson("/api/manage", { slug, op: "settings", visibility, autoPublicAt, allowRequests });
       refreshIndex();
       setMsg("Settings saved.");
     } catch (e) {
@@ -293,6 +296,17 @@ export function Settings() {
             </small>
           </div>
         )}
+        <div className="field">
+          <label className="field-inline">
+            <input type="checkbox" checked={allowRequests} onChange={(e) => setAllowRequests(e.target.checked)} />
+            <span>Let viewers suggest corrections</span>
+          </label>
+          <small className="muted">
+            {allowRequests
+              ? "Anyone who can view this tournament can propose a buzz fix or a player rename, and you approve or reject it on the Corrections page."
+              : "Off — the Edit and rename controls are hidden from viewers, and no new requests can be submitted. You and any co-owners still edit directly."}
+          </small>
+        </div>
         <button className="btn-primary" disabled={busy} onClick={saveSettings}>Save settings</button>
       </div>
 

@@ -288,7 +288,7 @@ function BuzzRow({ d, b, slug, i, isOwner, canEdit, editing, highlight, teammate
 }
 
 export function TossupDetailPage() {
-  const { meta, isOwner, user, slug, scope, editions } = useSetCtx();
+  const { meta, isOwner, user, slug, scope, editions, allowRequests } = useSetCtx();
   const { id = "" } = useParams();
   const [nonce, setNonce] = useState(0);
   // Question detail switches between edition wordings, not phases; a tag scope
@@ -351,12 +351,13 @@ export function TossupDetailPage() {
 
         <div className="tu-right">
           <h2 style={{ marginTop: 0 }}>Buzzes ({d.buzzes.length})</h2>
-          {!user && (
+          {!user && allowRequests && (
             <p className="muted">
               <Link to={`/login?next=${encodeURIComponent(`/set/${slug}/tossup/${id}`)}`} className="link">Log in</Link> to correct a buzz or request a change.
             </p>
           )}
-          {user && !isOwner && <p className="muted">Spot a mistake? Use <strong>Edit</strong> to send the owner a correction request.</p>}
+          {user && !isOwner && allowRequests && <p className="muted">Spot a mistake in this data? Use <strong>Edit</strong> to send the owner a correction request.</p>}
+          {!isOwner && !allowRequests && <p className="muted">This tournament's owner isn't taking correction requests.</p>}
           <div className={scrollBuzzes ? "buzz-scroll" : "table-wrap"}>
             <table className="data-table">
               <thead>
@@ -369,7 +370,7 @@ export function TossupDetailPage() {
               <tbody>
                 {sorted.map((b, i) => (
                   <BuzzRow
-                    key={i} d={d} b={b} slug={slug} i={i} isOwner={isOwner} canEdit={!!user}
+                    key={i} d={d} b={b} slug={slug} i={i} isOwner={isOwner} canEdit={!!user && (isOwner || allowRequests)}
                     editing={editing === i} highlight={(hoverWord !== null && effIdx(d, b) === hoverWord) || (focusWord !== null && b.wordIndex === focusWord)}
                     teammates={rosters?.[b.team] ?? []} opponents={rosters?.[b.opponent ?? ""] ?? []}
                     editions={editions} showEdition={showEdition}
