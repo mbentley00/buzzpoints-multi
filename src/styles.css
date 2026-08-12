@@ -19,6 +19,17 @@
   --chip: #d3e0fb;          /* a buzzed word in the question */
   --chip-ink: #1c2530;
   --panel-line: #e2e8f0;
+  /* Notice families. Each is a fill + the ink that sits on it, so a dark theme
+     restates both together instead of leaving light text on a light card. */
+  --notice-bg: #f7f7f5;
+  --warn-bg: #fdf6ec;   --warn-ink: #5c4a24;  --warn-line: #e6d3ab;  --warn-strong: #7a3f12;
+  --danger-bg: #fbf0f1; --danger-ink: #b3261e;
+  --ok-bg: #d8f5dc;     --ok-ink: #2e7d32;
+  --info-bg: #eef5ff;
+  --accent2-bg: #f3e8ff; --accent2-ink: #7c3aed;
+  --neutral-chip: #eef1f5; --neutral-chip-ink: #475569;
+  --track: #eeeeee;     --track-fill: #b9c2cc;
+  --mark-bg: #f3efe1;
   /* Buzz palette — muted, coordinated tones (~38% saturation) so power/get/neg
      read as a harmonious family rather than primary blue/green/red. The *-bg
      variants are deeper for legible white text on filled table rows. */
@@ -68,6 +79,15 @@
   --chip: #27405f;
   --chip-ink: #dbe6f7;
   --panel-line: #2b3037;
+  --notice-bg: #20252c;
+  --warn-bg: #2e2617;   --warn-ink: #e0cfa8;  --warn-line: #4b3f26;  --warn-strong: #e5b473;
+  --danger-bg: #34211f; --danger-ink: #f0a49b;
+  --ok-bg: #1e3324;     --ok-ink: #8fd39c;
+  --info-bg: #1c2a3d;
+  --accent2-bg: #2b2340; --accent2-ink: #c7a8f5;
+  --neutral-chip: #262c34; --neutral-chip-ink: #b3bdc8;
+  --track: #2b3037;     --track-fill: #57616d;
+  --mark-bg: #3a3423;
   /* The buzz family, lifted so it holds up on a dark surface. */
   --power: #6f9bd4;
   --get: #6aae84;
@@ -104,6 +124,15 @@
   --chip: #27405f;
   --chip-ink: #dbe6f7;
   --panel-line: #2b3037;
+  --notice-bg: #20252c;
+  --warn-bg: #2e2617;   --warn-ink: #e0cfa8;  --warn-line: #4b3f26;  --warn-strong: #e5b473;
+  --danger-bg: #34211f; --danger-ink: #f0a49b;
+  --ok-bg: #1e3324;     --ok-ink: #8fd39c;
+  --info-bg: #1c2a3d;
+  --accent2-bg: #2b2340; --accent2-ink: #c7a8f5;
+  --neutral-chip: #262c34; --neutral-chip-ink: #b3bdc8;
+  --track: #2b3037;     --track-fill: #57616d;
+  --mark-bg: #3a3423;
   /* The buzz family, lifted so it holds up on a dark surface. */
   --power: #6f9bd4;
   --get: #6aae84;
@@ -327,7 +356,7 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
 .search-cat b { color: var(--ink); font-weight: 600; margin-left: 5px; font-variant-numeric: tabular-nums; }
 
 /* about page — restrained, document-style layout with careful typography */
-.about-doc { flex: 1; width: 100%; background: #fbfbf9; }
+.about-doc { flex: 1; width: 100%; background: var(--notice-bg); }
 .about-doc article {
   max-width: 660px;
   margin: 0 auto;
@@ -404,7 +433,7 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
 }
 
 .question-text { font-size: 15px; line-height: 2.0; margin: 0; }
-.pw-word { background: #f3efe1; }
+.pw-word { background: var(--mark-bg); }
 .buzz-dot {
   display: inline-block;
   width: 9px;
@@ -452,12 +481,12 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
   position: relative;
   flex: 1;
   height: 14px;
-  background: #eee;
+  background: var(--track);
   border-radius: 2px;
   max-width: 300px;
   overflow: hidden;
 }
-.conv-bar { position: absolute; left: 0; top: 0; bottom: 0; background: #b9c2cc; }
+.conv-bar { position: absolute; left: 0; top: 0; bottom: 0; background: var(--track-fill); }
 .conv-bar-label {
   position: absolute;
   right: 6px;
@@ -476,7 +505,7 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
 .bonus-part-tag { font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .caveat {
-  background: #f7f7f5;
+  background: var(--notice-bg);
   border: 1px solid var(--line);
   color: var(--ink-soft);
   border-radius: 4px;
@@ -484,19 +513,19 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
   margin-bottom: 14px;
   font-size: 13px;
 }
-.note-imprecise { background: #f7f7f5; border: 1px solid var(--line); color: var(--ink-soft); }
+.note-imprecise { background: var(--notice-bg); border: 1px solid var(--line); color: var(--ink-soft); }
 
 /* Bad-category upload warning */
-.cat-warn { background: #fdf6ec; border: 1px solid #e6d3ab; color: #5c4a24; border-radius: 6px; padding: 14px 16px; margin-bottom: 16px; }
-.cat-warn > strong { display: block; font-size: 14px; color: #7a5a15; }
+.cat-warn { background: var(--warn-bg); border: 1px solid var(--warn-line); color: var(--warn-ink); border-radius: 6px; padding: 14px 16px; margin-bottom: 16px; }
+.cat-warn > strong { display: block; font-size: 14px; color: var(--warn-strong); }
 .cat-warn > p { margin: 6px 0 10px; font-size: 13px; }
 .cat-warn-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .cat-warn-list li { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; font-size: 13px; padding: 6px 0; border-top: 1px solid #efe1c4; }
 .cat-warn-list li:first-child { border-top: none; }
-.cat-warn-name { font-weight: 700; color: #7a3f12; background: #f6e8cf; border-radius: 4px; padding: 1px 7px; }
-.cat-warn-count { color: #6b5a30; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.cat-warn-reason { color: #5c4a24; }
-.cat-warn-eg { color: #8a7748; font-style: italic; flex-basis: 100%; }
+.cat-warn-name { font-weight: 700; color: var(--warn-strong); background: var(--warn-line); border-radius: 4px; padding: 1px 7px; }
+.cat-warn-count { color: var(--warn-ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cat-warn-reason { color: var(--warn-ink); }
+.cat-warn-eg { color: var(--warn-ink); font-style: italic; flex-basis: 100%; }
 .cat-warn-actions { display: flex; align-items: center; gap: 16px; margin-top: 14px; }
 /* Round-alignment variant: the message is a sentence per row, not a chip grid. */
 .round-warn .cat-warn-list li { display: list-item; list-style: disc; margin-left: 18px; }
@@ -508,11 +537,11 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
 .srcfiles-ed + .srcfiles-ed { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
 .srcfiles-ed-name { font-size: 14px; margin: 0 0 8px; }
 .srcfiles-note { font-size: 13px; margin: 8px 0; }
-.srcfiles-warn { margin: 0 0 10px; padding: 0 0 0 18px; font-size: 13px; color: #7a3f12; }
+.srcfiles-warn { margin: 0 0 10px; padding: 0 0 0 18px; font-size: 13px; color: var(--warn-strong); }
 .srcfiles-warn li { margin: 3px 0; }
 .srcfiles-warn-block {
   list-style: none; padding: 12px 14px; margin-bottom: 16px;
-  background: #fdf6ec; border: 1px solid #e6d3ab; border-radius: 6px; color: #5c4a24;
+  background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 6px; color: var(--warn-ink);
 }
 /* Folded game list: a season's worth of rows shouldn't be something you scroll
    past to reach the rest of the settings. Once open, the rows scroll in place. */
@@ -531,8 +560,8 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
 .srcfiles-table td, .srcfiles-table th { vertical-align: middle; }
 .srcfiles-check { width: 28px; }
 .srcfiles-sample { color: var(--muted); font-size: 12px; }
-.srcfiles-dirty > td { background: #eef5ff; }
-.srcfiles-dupe > td { background: #fdf1ef; }
+.srcfiles-dirty > td { background: var(--info-bg); }
+.srcfiles-dupe > td { background: var(--danger-bg); }
 .srcfiles-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
 /* Doubled up on purpose: .btn-primary is defined further down, so a single class
    here would lose the tie and destructive buttons would come out blue. */
@@ -541,7 +570,7 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
 /* Irreversible territory — boxed off so it doesn't read as another setting. */
 .danger-zone {
   margin-top: 10px; padding: 14px 16px; max-width: 620px;
-  border: 1px solid var(--neg); border-radius: 6px; background: #fdf6f5;
+  border: 1px solid var(--neg); border-radius: 6px; background: var(--danger-bg);
 }
 /* Results (YellowFruit) games + box scores */
 .results-round { margin-bottom: 22px; }
@@ -562,7 +591,7 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
 
 .loading { padding: 30px; color: var(--muted); }
 .error-box {
-  background: #fbf0f1;
+  background: var(--danger-bg);
   border: 1px solid #e6c4c8;
   color: #8a2733;
   padding: 12px 14px;
@@ -591,7 +620,7 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
 .breakdown .b-get { color: var(--get); font-weight: 600; }
 .breakdown .b-neg { color: var(--neg); font-weight: 600; }
 .clue-snippet { max-width: 560px; line-height: 1.5; }
-mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
+mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
 
 /* category groups */
 .cat-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
@@ -607,7 +636,7 @@ mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
 }
 .mini-btn:hover { background: var(--hover); }
 .cat-table .cat-main-row td { background: var(--surface-2); }
-.cat-table .cat-main-row:hover td { background: #f2f2f2; }
+.cat-table .cat-main-row:hover td { background: var(--hover); }
 .cat-main-row .cat-tag { font-weight: 700; }
 .caret {
   border: none;
@@ -636,14 +665,14 @@ mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
   background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px;
   padding: 1px 9px; color: var(--link); text-decoration: none; white-space: nowrap;
 }
-.q-tag:hover { background: #e3eaf5; text-decoration: none; }
+.q-tag:hover { background: var(--info-bg); text-decoration: none; }
 .q-tag-edit { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 /* active category filter chip on the tossups/bonuses lists */
 .cat-filter-chip {
   display: inline-flex; align-items: center; gap: 10px;
   margin-bottom: 12px; padding: 6px 12px;
-  background: #eef2f7; border: 1px solid #dbe2ea; border-radius: 999px;
+  background: var(--info-bg); border: 1px solid #dbe2ea; border-radius: 999px;
   font-size: 13px;
 }
 
@@ -657,7 +686,7 @@ mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: #6b21a8;
-  background: #f3e8ff;
+  background: var(--accent2-bg);
   border: 1px solid #e2cffa;
   border-radius: 3px;
   vertical-align: middle;
@@ -782,7 +811,7 @@ mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
 
 /* The word a buzz link pointed at: ringed, and it pulses once on arrival so the
    eye lands on it without the ring having to stay loud. */
-.q-tok-focus { border-radius: 4px; box-shadow: 0 0 0 2px #e08a1e; background: #fff6e8; }
+.q-tok-focus { border-radius: 4px; box-shadow: 0 0 0 2px #e08a1e; background: var(--warn-bg); }
 @keyframes q-focus-pulse { from { box-shadow: 0 0 0 6px rgba(224, 138, 30, 0); } to { box-shadow: 0 0 0 2px #e08a1e; } }
 .q-tok-focus { animation: q-focus-pulse 0.6s ease-out 1; }
 
@@ -875,7 +904,7 @@ mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
 .buzz-edit select, .buzz-edit input { font: inherit; padding: 5px 8px; border: 1px solid var(--field-border); border-radius: 4px; }
 .buzz-edit-actions { display: flex; align-items: center; gap: 12px; }
 .error-inline { color: #c0392b; font-size: 13px; }
-.ok-msg { color: #2e7d32; font-weight: 600; }
+.ok-msg { color: var(--ok-ink); font-weight: 600; }
 
 /* requests page */
 .req-list { display: flex; flex-direction: column; gap: 12px; }
@@ -883,7 +912,7 @@ mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
   display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;
   border: 1px solid var(--panel-line); border-radius: 8px; padding: 14px 16px; background: var(--surface);
 }
-.req-handled { opacity: 0.8; background: #fafbfc; }
+.req-handled { opacity: 0.8; background: var(--notice-bg); }
 .req-title { font-weight: 600; }
 .req-desc { margin-top: 4px; }
 .req-note { margin-top: 4px; color: var(--ink-soft); font-style: italic; }
@@ -892,18 +921,18 @@ mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
 
 /* visibility badges + invite list */
 .vis-badge { margin-left: 8px; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 10px; vertical-align: middle; }
-.vis-private { background: #fde2e1; color: #b3261e; }
+.vis-private { background: var(--danger-bg); color: var(--danger-ink); }
 .vis-listed { background: var(--accent-soft); color: var(--accent-ink); }
 .invite-list { list-style: none; padding: 0; margin: 0; max-width: 520px; }
 .invite-list li { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border: 1px solid var(--panel-line); border-radius: 6px; margin-bottom: 6px; background: var(--surface); }
 
 /* editions + diff */
 .edition-count { font-size: 12px; font-weight: 600; color: var(--accent-ink); background: var(--accent-soft); padding: 2px 8px; border-radius: 10px; vertical-align: middle; margin-left: 6px; }
-.level-badge { display: inline-block; font-size: 11px; font-weight: 700; color: #475569; background: #eef1f5; padding: 1px 8px; border-radius: 10px; margin-right: 8px; vertical-align: middle; }
+.level-badge { display: inline-block; font-size: 11px; font-weight: 700; color: var(--neutral-chip-ink); background: var(--neutral-chip); padding: 1px 8px; border-radius: 10px; margin-right: 8px; vertical-align: middle; }
 /* which edition(s) a team/player played (combined view of a multi-edition set) */
 .edition-badge { display: inline-block; font-size: 11px; font-weight: 600; color: var(--accent-ink); background: var(--accent-soft); padding: 1px 8px; border-radius: 10px; vertical-align: middle; white-space: nowrap; }
 .edition-badge + .edition-badge { margin-left: 4px; }
-.editions-bar { background: #eef2f7; border-bottom: 1px solid #dbe2ea; padding: 7px 24px; display: flex; align-items: center; gap: 10px; font-size: 13.5px; }
+.editions-bar { background: var(--info-bg); border-bottom: 1px solid #dbe2ea; padding: 7px 24px; display: flex; align-items: center; gap: 10px; font-size: 13.5px; }
 .editions-bar select { font: inherit; padding: 3px 8px; border: 1px solid var(--field-border); border-radius: 4px; }
 
 /* round phases / tags editor */
@@ -931,13 +960,13 @@ mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
 .diff-summary { margin: 10px 0 6px; font-size: 14px; }
 .diff-item { border: 1px solid var(--panel-line); border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; background: var(--surface); }
 .diff-head { margin-bottom: 6px; }
-.diff-tag { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: #b45309; background: #fef3c7; padding: 1px 6px; border-radius: 4px; margin-right: 4px; }
-.diff-tag-only { color: #6b21a8; background: #f3e8ff; }
+.diff-tag { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--warn-strong); background: var(--warn-bg); padding: 1px 6px; border-radius: 4px; margin-right: 4px; }
+.diff-tag-only { color: #6b21a8; background: var(--accent2-bg); }
 .diff-line { margin: 4px 0; line-height: 1.6; }
 .diff-field { font-weight: 700; color: #888; margin-right: 6px; font-size: 12px; }
 .wd-eq { color: var(--ink-soft); }
-.wd-del { background: #ffdce0; color: #9a1b2e; text-decoration: line-through; }
-.wd-add { background: #d8f5dc; color: #176b2c; }
+.wd-del { background: var(--danger-bg); color: #9a1b2e; text-decoration: line-through; }
+.wd-add { background: var(--ok-bg); color: #176b2c; }
 
 /* admin */
 .admin-reveal { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -1027,7 +1056,7 @@ mark.hot-clue { background: #f3efe1; color: var(--ink); padding: 0 2px; }
   transition: border-color 0.12s, background 0.12s;
 }
 .file-drop:hover { border-color: #999; }
-.file-drop-over { border-color: var(--link); background: #eef3f8; color: var(--link); }
+.file-drop-over { border-color: var(--link); background: var(--info-bg); color: var(--link); }
 .linkish {
   background: none; border: none; padding: 0; font: inherit; color: var(--link);
   cursor: pointer; text-decoration: underline;

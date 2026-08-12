@@ -16,6 +16,11 @@ import { TOURNAMENT_LEVELS, Visibility } from "../types";
 const norm = (s: string) => s.toLowerCase().replace(/\(\d+\)\s*$/, "").replace(/[^a-z0-9]/g, "");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// macOS zips carry a parallel __MACOSX tree of "._name" AppleDouble stubs whose
+// names normalize to the real files'. Ignore them (and .DS_Store) entirely.
+const isJunk = (parts: string[]) =>
+  parts.some((p) => p === "__MACOSX" || p === ".DS_Store" || p.startsWith("._"));
+
 // Scoring format from the distinct buzz values (mirrors src/detectScoring).
 function scoringFromValues(vals: Set<number>): string | null {
   if (!vals.size) return null;
@@ -46,7 +51,7 @@ async function postRetry(b: any, onWait?: (s: number) => void, tries = 4) {
   throw last;
 }
 
-interface Mirror { name: string; games: File[]; roundPacket: Map<number, string> }
+interface Mirror { name: string; label: string; edKey: string; games: File[]; roundPacket: Map<number, string> }
 interface SetGroup { key: string; name: string; hasBonuses: boolean; scoring: string | null; mirrors: Mirror[] }
 
 // Segment list after `anchor` in a "/"-split path, or null.
@@ -57,7 +62,8 @@ function afterAnchor(parts: string[], anchor: string): string[] | null {
 
 export function LocalImport() {
   const dirInput = useRef<HTMLInputElement>(null);
-  const packetFileRef = useRef<Map<string, File>>(new Map()); // `${setKey}|${normPacket}` -> packet File
+  const packetFileRef = useRef<Map<string, File>>(new Map());   // `${setKey}|${edKey}|${normPacket}` -> packet File
+  const anyEdPacketRef = useRef<Map<string, File>>(new Map());  // `${setKey}|${normPacket}` -> packet File (any edition)
   const [level, setLevel] = useState("college");
   const [visibility, setVisibility] = useState<Visibility>("public");
   const [refreshExisting, setRefreshExisting] = useState(true);
@@ -71,52 +77,88 @@ export function LocalImport() {
   const stop = useRef(false);
   const addLog = (m: string) => setLog((l) => [...l.slice(-500), m]);
 
-  // Read the chosen folder: index packet files, then read every mirror's games
-  // to build its round -> packet map, vote its set, and detect scoring.
+  // Read the chosen folder: index packet files, then read every mirror's games to
+  // build its round -> packet map and detect scoring. A mirror is matched to its
+  // set + edition by its own index.json when it has one, else by voting the
+  // edition whose packet files cover the most of its packets.
   async function onPick(fileList: FileList | null) {
     setErr(""); setSets(null);
     if (!fileList?.length) return;
     const files = Array.from(fileList);
     try {
       setReading("Scanning files…");
-      const packetFile = new Map<string, File>();      // `${setKey}|${normPkt}` -> File
-      const pkt2set = new Map<string, Set<string>>();  // normPkt -> setKeys
+      // Packets live at question_sets/<set>/[editions/<edition>/]packet_files/*.json —
+      // the edition level is optional and a set's editions can carry different
+      // revisions of the same packet, so key packets by set *and* edition.
+      const packetFile = new Map<string, File>();      // `${setKey}|${edKey}|${normPkt}` -> File
+      const anyEdPacket = new Map<string, File>();     // `${setKey}|${normPkt}` -> File (edition-agnostic fallback)
+      const pkt2ed = new Map<string, Set<string>>();   // normPkt -> `${setKey}|${edKey}`
       const setName = new Map<string, string>();
       const setBonuses = new Map<string, boolean>();
+      const setByName = new Map<string, string>();     // norm(set display name) -> setKey
+      const edByName = new Map<string, string>();      // `${setKey}|${norm(edition name)}` -> edKey
       const mirrorFiles = new Map<string, File[]>();
+      const mirrorIndex = new Map<string, File>();     // mirror -> its index.json
       const setIndexFiles: { setKey: string; f: File }[] = [];
+      const edIndexFiles: { setKey: string; edKey: string; f: File }[] = [];
 
       for (const f of files) {
         const parts = (f.webkitRelativePath || f.name).split("/");
+        if (isJunk(parts)) continue;
+        const leaf = parts[parts.length - 1];
         const qs = afterAnchor(parts, "question_sets");
         if (qs) {
           const setKey = qs[0];
-          if (qs.length === 2 && qs[1] === "index.json") setIndexFiles.push({ setKey, f });
-          else if (qs[2] === "packet_files" && qs[qs.length - 1].endsWith(".json")) {
-            const n = norm(qs[qs.length - 1].replace(/\.json$/i, ""));
-            packetFile.set(`${setKey}|${n}`, f);
-            if (!pkt2set.has(n)) pkt2set.set(n, new Set());
-            pkt2set.get(n)!.add(setKey);
+          const pi = qs.indexOf("packet_files");
+          if (qs.length === 2 && leaf === "index.json") setIndexFiles.push({ setKey, f });
+          else if (pi > 0 && pi === qs.length - 2 && leaf.toLowerCase().endsWith(".json")) {
+            const edKey = qs.slice(1, pi).join("/"); // "" (flat) or "editions/<edition>"
+            const n = norm(leaf.replace(/\.json$/i, ""));
+            packetFile.set(`${setKey}|${edKey}|${n}`, f);
+            if (!anyEdPacket.has(`${setKey}|${n}`)) anyEdPacket.set(`${setKey}|${n}`, f);
+            const pair = `${setKey}|${edKey}`;
+            if (!pkt2ed.has(n)) pkt2ed.set(n, new Set());
+            pkt2ed.get(n)!.add(pair);
+          } else if (qs.length > 2 && leaf === "index.json") {
+            edIndexFiles.push({ setKey, edKey: qs.slice(1, -1).join("/"), f });
           }
           continue;
         }
         const tj = afterAnchor(parts, "tournaments");
-        if (tj && tj[1] === "game_files" && tj[tj.length - 1].toLowerCase().endsWith(".qbj")) {
+        if (!tj) continue;
+        if (tj.length === 2 && leaf === "index.json") mirrorIndex.set(tj[0], f);
+        else if (tj[1] === "game_files" && leaf.toLowerCase().endsWith(".qbj")) {
           const mirror = tj[0];
           if (!mirrorFiles.has(mirror)) mirrorFiles.set(mirror, []);
           mirrorFiles.get(mirror)!.push(f);
         }
       }
       packetFileRef.current = packetFile;
+      anyEdPacketRef.current = anyEdPacket;
       for (const { setKey, f } of setIndexFiles) {
-        try { const j = JSON.parse(await f.text()); setName.set(setKey, j.name || setKey); setBonuses.set(setKey, j.bonuses !== false); }
-        catch { setName.set(setKey, setKey); }
+        let name = setKey;
+        try { const j = JSON.parse(await f.text()); name = j.name || setKey; setBonuses.set(setKey, j.bonuses !== false); } catch { /* keep folder name */ }
+        setName.set(setKey, name);
+        setByName.set(norm(name), setKey);
+      }
+      // sets with no index.json are still matchable by their folder name
+      for (const key of packetFile.keys()) {
+        const sk = key.slice(0, key.indexOf("|"));
+        if (!setByName.has(norm(sk))) setByName.set(norm(sk), sk);
+      }
+      for (const { setKey, edKey, f } of edIndexFiles) {
+        const last = edKey.split("/").pop() || edKey;
+        edByName.set(`${setKey}|${norm(last)}`, edKey);
+        try {
+          const j = JSON.parse(await f.text());
+          for (const v of [j.name, j.slug]) if (v) edByName.set(`${setKey}|${norm(String(v))}`, edKey);
+        } catch { /* folder name only */ }
       }
       if (!mirrorFiles.size) throw new Error("No tournaments/<mirror>/game_files/*.qbj found. Pick the exported data folder (with question_sets/ and tournaments/).");
 
       const groups = new Map<string, SetGroup>();
       const setValues = new Map<string, Set<number>>();
-      let mi = 0, unmapped = 0;
+      let mi = 0, noGames = 0, unmatched = 0;
       for (const [mirror, games] of mirrorFiles) {
         setReading(`Reading games… ${++mi}/${mirrorFiles.size} mirrors`);
         const roundPacket = new Map<number, string>();
@@ -128,19 +170,47 @@ export function LocalImport() {
           if (Number.isInteger(r) && g.packets && !roundPacket.has(r)) roundPacket.set(r, String(g.packets));
           for (const mq of g.match_questions || []) for (const bz of mq.buzzes || []) { const v = bz?.result?.value; if (typeof v === "number") vals.add(v); }
         }
-        if (!roundPacket.size) { unmapped++; continue; } // no games / no round info
-        // vote the set whose packet files match the most of this mirror's packets
-        const votes = new Map<string, number>();
-        for (const pk of roundPacket.values()) for (const sk of pkt2set.get(norm(pk)) || []) votes.set(sk, (votes.get(sk) || 0) + 1);
-        let setKey: string | undefined, best = -1;
-        for (const [sk, c] of votes) if (c > best) { best = c; setKey = sk; }
-        if (!setKey) { unmapped++; continue; }
+        if (!roundPacket.size) { noGames++; continue; } // no games / no round info
+
+        // Prefer the mirror's own index.json, which names its set and edition.
+        let label = mirror, setKey: string | undefined, edKey: string | undefined;
+        const mf = mirrorIndex.get(mirror);
+        if (mf) {
+          try {
+            const j = JSON.parse(await mf.text());
+            if (j.name) label = String(j.name);
+            if (j.set) setKey = setByName.get(norm(String(j.set)));
+            if (setKey && j.edition) edKey = edByName.get(`${setKey}|${norm(String(j.edition))}`);
+          } catch { /* fall through to packet voting */ }
+        }
+        // Otherwise (or for the edition), pick the set/edition whose packet files
+        // match the most of this mirror's packets.
+        if (!setKey || edKey === undefined) {
+          const votes = new Map<string, number>();
+          for (const pk of roundPacket.values()) {
+            for (const pair of pkt2ed.get(norm(pk)) || []) {
+              if (setKey && !pair.startsWith(`${setKey}|`)) continue;
+              votes.set(pair, (votes.get(pair) || 0) + 1);
+            }
+          }
+          let bestPair: string | undefined, best = 0;
+          for (const [pair, c] of votes) if (c > best) { best = c; bestPair = pair; }
+          if (bestPair) {
+            const cut = bestPair.indexOf("|");
+            setKey = setKey || bestPair.slice(0, cut);
+            if (edKey === undefined) edKey = bestPair.slice(cut + 1);
+          }
+        }
+        if (!setKey) { unmatched++; continue; }
         if (!groups.has(setKey)) groups.set(setKey, { key: setKey, name: setName.get(setKey) || setKey, hasBonuses: setBonuses.get(setKey) !== false, scoring: null, mirrors: [] });
-        groups.get(setKey)!.mirrors.push({ name: mirror, games, roundPacket });
+        groups.get(setKey)!.mirrors.push({ name: mirror, label, edKey: edKey ?? "", games, roundPacket });
         if (!setValues.has(setKey)) setValues.set(setKey, new Set());
         for (const v of vals) setValues.get(setKey)!.add(v);
       }
-      for (const g of groups.values()) g.scoring = scoringFromValues(setValues.get(g.key) || new Set());
+      for (const g of groups.values()) {
+        g.scoring = scoringFromValues(setValues.get(g.key) || new Set());
+        g.mirrors.sort((a, b) => a.name.localeCompare(b.name));
+      }
       const list = [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
 
       const idx = await fetch("/api/index").then((r) => r.json()).catch(() => ({ sets: [] }));
@@ -148,7 +218,9 @@ export function LocalImport() {
       setSets(list);
       setChosen(new Set(list.map((g) => g.key)));
       setReading("");
-      addLog(`Found ${list.length} sets, ${mirrorFiles.size} mirrors${unmapped ? ` (${unmapped} had no usable games)` : ""}.`);
+      const skipped = [noGames && `${noGames} had no usable games`, unmatched && `${unmatched} matched no question set`].filter(Boolean).join(", ");
+      addLog(`Found ${list.length} sets, ${mirrorFiles.size} mirrors${skipped ? ` (${skipped})` : ""}, ${packetFile.size} packet files.`);
+      if (!list.length && !packetFile.size) addLog("No packet files were found — check that question_sets/<set>/…/packet_files/*.json is inside the folder you picked.");
     } catch (e) { setErr(String((e as Error).message || e)); setReading(""); }
   }
 
@@ -171,16 +243,20 @@ export function LocalImport() {
         for (const m of g.mirrors) {
           if (stop.current) break;
           if (!m.games.length) continue;
-          addLog(`    edition — ${m.name} (${m.games.length} games)`);
+          addLog(`    edition — ${m.label} (${m.games.length} games)`);
           // packet files named by the round this mirror played them, so the server assigns rounds
           const packetFiles: File[] = [];
+          let noPacket = 0;
           for (const [rnd, pktName] of m.roundPacket) {
-            const pf = packetFile.get(`${g.key}|${norm(pktName)}`);
+            const pn = norm(pktName);
+            const pf = packetFile.get(`${g.key}|${m.edKey}|${pn}`) || anyEdPacketRef.current.get(`${g.key}|${pn}`);
             if (pf) packetFiles.push(new File([await pf.text()], `Round_${rnd}.json`, { type: "application/json" }));
+            else noPacket++;
           }
+          if (noPacket) addLog(`      ⚠ ${noPacket} of ${m.roundPacket.size} rounds had no packet file`);
           const packetRefs = await uploadFiles(packetFiles);
           const gameRefs = await uploadFiles(m.games);
-          await postRetry({ op: "local-edition", jobId: start.jobId, index: edCount, label: m.name, packets: packetRefs, games: gameRefs }, waitLog);
+          await postRetry({ op: "local-edition", jobId: start.jobId, index: edCount, label: m.label, packets: packetRefs, games: gameRefs }, waitLog);
           edCount++;
         }
         if (stop.current) { addLog("Stopped."); break; }

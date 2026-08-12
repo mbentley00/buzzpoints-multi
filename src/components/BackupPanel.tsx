@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { zipFiles, unzipFiles, ZipEntry } from "../zip";
 
 // Download the parts of the site that can't be recomputed, and put them back.
 //
@@ -8,6 +9,7 @@ import { useRef, useState } from "react";
 // are left out because a restore rebuilds them from exactly that.
 
 interface SetRow { slug: string; name: string }
+interface BackupFile { kind?: string; scope?: string; slug?: string; at?: string }
 
 export function BackupPanel({ sets }: { sets: SetRow[] }) {
   const [busy, setBusy] = useState(false);
@@ -18,12 +20,15 @@ export function BackupPanel({ sets }: { sets: SetRow[] }) {
   const file = useRef<HTMLInputElement | null>(null);
   const say = (l: string) => setLog((prev) => [...prev, l]);
 
-  // Save one backup file to disk via a blob URL rather than navigating, so a run
-  // across every tournament doesn't lose the page.
-  async function download(url: string, name: string) {
+  // Fetch one backup as bytes; the whole run is collected and written out as a
+  // single archive rather than a download per tournament.
+  async function fetchBackup(url: string): Promise<Uint8Array> {
     const r = await fetch(url);
     if (!r.ok) throw new Error(((await r.json().catch(() => ({}))) as { error?: string }).error || `Failed (${r.status})`);
-    const blob = await r.blob();
+    return new Uint8Array(await r.arrayBuffer());
+  }
+
+  function save(blob: Blob, name: string) {
     const href = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = href; a.download = name;
@@ -36,38 +41,62 @@ export function BackupPanel({ sets }: { sets: SetRow[] }) {
   async function backupAll() {
     setBusy(true); setErr(null); setLog([]);
     try {
+      const entries: ZipEntry[] = [];
       setStatus("Accounts and tournament list…");
-      await download("/api/admin?op=backup", `buzzpoints-core-${stamp()}.json`);
-      say("core (accounts, tournament list): saved");
+      entries.push({ name: "core.json", data: await fetchBackup("/api/admin?op=backup") });
       for (let i = 0; i < sets.length; i++) {
-        setStatus(`Saving ${i + 1} of ${sets.length}: ${sets[i].name}…`);
+        setStatus(`Reading ${i + 1} of ${sets.length}: ${sets[i].name}…`);
         try {
-          await download(`/api/admin?op=backup&slug=${encodeURIComponent(sets[i].slug)}`, `buzzpoints-${sets[i].slug}-${stamp()}.json`);
-          say(`${sets[i].name}: saved`);
-        } catch (e) { say(`${sets[i].name}: ${(e as Error).message}`); }
+          entries.push({ name: `sets/${sets[i].slug}.json`, data: await fetchBackup(`/api/admin?op=backup&slug=${encodeURIComponent(sets[i].slug)}`) });
+        } catch (e) { say(`${sets[i].name}: skipped — ${(e as Error).message}`); }
       }
-      setStatus(`Done — ${sets.length + 1} files. Your browser may have asked to allow multiple downloads.`);
+      setStatus("Compressing…");
+      const zip = await zipFiles(entries);
+      save(zip, `buzzpoints-backup-${stamp()}.zip`);
+      setStatus(`Saved one archive: ${entries.length} file${entries.length === 1 ? "" : "s"}, ${(zip.size / 1e6).toFixed(1)} MB.`);
     } catch (e) { setErr(String((e as Error).message || e)); } finally { setBusy(false); }
+  }
+
+  // One backup object at the server: each is written and re-aggregated on its own,
+  // so restoring a whole archive is this in a loop.
+  async function restoreOne(backup: unknown) {
+    const r = await fetch("/api/admin", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ op: "restore", backup, includeIndex }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((d as { error?: string }).error || `Failed (${r.status})`);
+    return d as { restored: number; slug?: string };
   }
 
   async function restore(f: File) {
     setBusy(true); setErr(null); setLog([]); setStatus(`Reading ${f.name}…`);
     try {
-      const backup = JSON.parse(await f.text());
-      if (backup?.kind !== "buzzpoints-backup") throw new Error("That isn't a Buzzpoints backup file.");
-      const what = backup.scope === "core" ? "accounts and settings" : `“${backup.slug}”`;
+      // The whole archive, or a single entry someone pulled out of one.
+      const dec = new TextDecoder();
+      const backups: BackupFile[] = f.name.toLowerCase().endsWith(".zip")
+        ? (await unzipFiles(await f.arrayBuffer())).map((e) => JSON.parse(dec.decode(e.data)))
+        : [JSON.parse(await f.text())];
+      if (!backups.length || backups.some((b) => b?.kind !== "buzzpoints-backup"))
+        throw new Error("That isn't a Buzzpoints backup.");
+
+      const setCount = backups.filter((b) => b.scope === "set").length;
+      const hasCore = backups.some((b) => b.scope === "core");
+      const what = backups.length === 1
+        ? (backups[0].scope === "core" ? "accounts and settings" : `“${backups[0].slug}”`)
+        : `${setCount} tournament${setCount === 1 ? "" : "s"}${hasCore ? " and the accounts file" : ""}`;
       if (!window.confirm(
-        `Restore ${what} from a backup taken ${String(backup.at).slice(0, 10)}?\n\n` +
-        `This overwrites what's on the site now with the backup's copy.${backup.scope === "set" ? " Stats are rebuilt from it." : ""}`
+        `Restore ${what} from a backup taken ${String(backups[0].at).slice(0, 10)}?\n\n` +
+        `This overwrites what's on the site now with the backup's copy. Stats are rebuilt from it.`
       )) { setStatus(null); setBusy(false); return; }
-      setStatus("Restoring…");
-      const r = await fetch("/api/admin", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ op: "restore", backup, includeIndex }),
-      });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error((d as { error?: string }).error || `Failed (${r.status})`);
-      setStatus(`Restored ${d.restored} file${d.restored === 1 ? "" : "s"}${d.slug ? ` into ${d.slug}` : ""}.`);
+
+      let n = 0;
+      for (const b of backups) {
+        setStatus(`Restoring ${++n} of ${backups.length}${b.slug ? `: ${b.slug}` : ""}…`);
+        try { const d = await restoreOne(b); say(`${b.slug || "core"}: ${d.restored} file${d.restored === 1 ? "" : "s"}`); }
+        catch (e) { say(`${b.slug || "core"}: ${(e as Error).message}`); }
+      }
+      setStatus(`Finished — ${backups.length} restored.`);
     } catch (e) { setErr(String((e as Error).message || e)); setStatus(null); } finally { setBusy(false); }
   }
 
@@ -75,19 +104,25 @@ export function BackupPanel({ sets }: { sets: SetRow[] }) {
     <div className="bulk-import">
       <p className="muted">
         Saves what can't be recomputed — the uploaded packets and games, plus every correction, rename, category
-        mapping and invite — as one file per tournament, and one for accounts and the tournament list. Stat pages
-        aren't in the file; a restore rebuilds them.
+        mapping and invite — as a single zip: one entry per tournament plus one for accounts and the tournament
+        list. Stat pages aren't in it; a restore rebuilds them. Restoring takes the whole zip back, or one entry
+        pulled out of it.
       </p>
       <div className="cat-toolbar">
         <button className="btn-primary btn-sm" disabled={busy || !sets.length} onClick={backupAll}>
-          {busy ? "Working…" : `Download backup (${sets.length + 1} files)`}
+          {busy ? "Working…" : `Download backup (.zip, ${sets.length + 1} files)`}
         </button>
-        <button className="btn-secondary btn-sm" disabled={busy} onClick={() => download("/api/admin?op=backup", `buzzpoints-core-${stamp()}.json`).catch((e) => setErr(String(e.message || e)))}>
+        <button
+          className="btn-secondary btn-sm" disabled={busy}
+          onClick={() => fetchBackup("/api/admin?op=backup")
+            .then((d) => save(new Blob([d as BlobPart], { type: "application/json" }), `buzzpoints-core-${stamp()}.json`))
+            .catch((e) => setErr(String(e.message || e)))}
+        >
           Accounts &amp; list only
         </button>
         <button className="btn-secondary btn-sm" disabled={busy} onClick={() => file.current?.click()}>Restore from a file…</button>
         <input
-          ref={file} type="file" accept=".json,application/json" style={{ display: "none" }}
+          ref={file} type="file" accept=".zip,.json,application/zip,application/json" style={{ display: "none" }}
           onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) restore(f); }}
         />
       </div>
