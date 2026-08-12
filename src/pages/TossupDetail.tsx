@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { clearSetCache, useSetJson } from "../data";
 import { useSetCtx } from "../components/Layout";
-import { TossupDetail, Buzz, Rosters } from "../types";
+import { TossupDetail, Buzz, Rosters, EditionSummary } from "../types";
 import { Html, pct, num, roundLabel } from "../util";
-import { Loading, ErrorBox } from "../components/Common";
+import { Loading, ErrorBox, EditionBadges } from "../components/Common";
 import { QuestionNav, useQuestionNav } from "../components/QuestionNav";
 import { Segs, plainTokens, tokenizeQuestion } from "../questionText";
 import { QuestionTags } from "../components/QuestionTags";
@@ -185,8 +185,8 @@ async function postJson(url: string, body: unknown) {
 }
 
 // Inline editor: reassign a buzz to a teammate and/or move the buzz word.
-function BuzzEditor({ d, b, slug, isOwner, teammates, onClose, onApplied }: {
-  d: TossupDetail; b: Buzz; slug: string; isOwner: boolean; teammates: string[]; onClose: () => void; onApplied: () => void;
+function BuzzEditor({ d, b, slug, isOwner, teammates, cols, onClose, onApplied }: {
+  d: TossupDetail; b: Buzz; slug: string; isOwner: boolean; teammates: string[]; cols: number; onClose: () => void; onApplied: () => void;
 }) {
   const curPlayer = b.player;
   const curWord = b.wordIndex;
@@ -220,7 +220,7 @@ function BuzzEditor({ d, b, slug, isOwner, teammates, onClose, onApplied }: {
 
   if (done)
     return (
-      <td colSpan={4} className="buzz-edit-cell">
+      <td colSpan={cols} className="buzz-edit-cell">
         <div className="buzz-edit"><span className="ok-msg">{done}</span><button className="btn-link" onClick={onClose}>Close</button></div>
       </td>
     );
@@ -255,9 +255,10 @@ function BuzzEditor({ d, b, slug, isOwner, teammates, onClose, onApplied }: {
   );
 }
 
-function BuzzRow({ d, b, slug, i, isOwner, canEdit, editing, highlight, teammates, onEdit, onClose, onApplied }: {
+function BuzzRow({ d, b, slug, i, isOwner, canEdit, editing, highlight, teammates, editions, showEdition, onEdit, onClose, onApplied }: {
   d: TossupDetail; b: Buzz; slug: string; i: number; isOwner: boolean; canEdit: boolean; editing: boolean;
-  highlight: boolean; teammates: string[]; onEdit: () => void; onClose: () => void; onApplied: () => void;
+  highlight: boolean; teammates: string[]; editions: EditionSummary[]; showEdition: boolean;
+  onEdit: () => void; onClose: () => void; onApplied: () => void;
 }) {
   const t = tier(b.value);
   return (
@@ -271,12 +272,13 @@ function BuzzRow({ d, b, slug, i, isOwner, canEdit, editing, highlight, teammate
           <span className="buzz-team">{b.teamId ? <Link className="link" to={`/set/${slug}/team/${b.teamId}`}>{b.team}</Link> : b.team}</span>
         </td>
         <td className="buzz-opp">{b.opponent && b.opponentId ? <Link className="link" to={`/set/${slug}/team/${b.opponentId}`}>{b.opponent}</Link> : b.opponent || "—"}</td>
+        {showEdition && <td className="buzz-ed">{b.editionId ? <EditionBadges ids={[b.editionId]} editions={editions} /> : <span className="muted">—</span>}</td>}
         <td className="right mono">{b.wordIndex === null ? "—" : b.imprecise ? `≈${b.wordIndex + 1}` : b.wordIndex + 1}</td>
         <td className="right mono">{b.value}</td>
       </tr>
       {editing && (
         <tr className="buzz-edit-row">
-          <BuzzEditor d={d} b={b} slug={slug} isOwner={isOwner} teammates={teammates} onClose={onClose} onApplied={onApplied} />
+          <BuzzEditor d={d} b={b} slug={slug} isOwner={isOwner} teammates={teammates} cols={showEdition ? 5 : 4} onClose={onClose} onApplied={onApplied} />
         </tr>
       )}
     </>
@@ -284,7 +286,7 @@ function BuzzRow({ d, b, slug, i, isOwner, canEdit, editing, highlight, teammate
 }
 
 export function TossupDetailPage() {
-  const { meta, isOwner, user, slug, scope } = useSetCtx();
+  const { meta, isOwner, user, slug, scope, editions } = useSetCtx();
   const { id = "" } = useParams();
   const [nonce, setNonce] = useState(0);
   // Question detail switches between edition wordings, not phases; a tag scope
@@ -311,6 +313,9 @@ export function TossupDetailPage() {
   const versions = comb?.[id]?.versions ?? [];
   const negs = d.buzzes.filter((b) => b.value < 0).length;
   const sorted = [...d.buzzes].sort((a, b) => (a.wordIndex ?? 1e9) - (b.wordIndex ?? 1e9));
+  // Which mirror each buzz came from. Only meaningful in the combined view, and
+  // only present once a multi-edition set has been re-aggregated.
+  const showEdition = version === "all" && editions.length > 1 && sorted.some((b) => b.editionId);
   // Long buzz lists get their own scroll box so the question stays on screen.
   const scrollBuzzes = sorted.length > 14;
 
@@ -353,14 +358,18 @@ export function TossupDetailPage() {
           <div className={scrollBuzzes ? "buzz-scroll" : "table-wrap"}>
             <table className="data-table">
               <thead>
-                <tr><th>Player / Team</th><th>Opponent</th><th className="right" title="Buzz position (word #)">Buzz</th><th className="right">Val</th></tr>
+                <tr>
+                  <th>Player / Team</th><th>Opponent</th>
+                  {showEdition && <th title="Edition (mirror) this buzz was played in">Edition</th>}
+                  <th className="right" title="Buzz position (word #)">Buzz</th><th className="right">Val</th>
+                </tr>
               </thead>
               <tbody>
                 {sorted.map((b, i) => (
                   <BuzzRow
                     key={i} d={d} b={b} slug={slug} i={i} isOwner={isOwner} canEdit={!!user}
                     editing={editing === i} highlight={(hoverWord !== null && effIdx(d, b) === hoverWord) || (focusWord !== null && b.wordIndex === focusWord)}
-                    teammates={rosters?.[b.team] ?? []}
+                    teammates={rosters?.[b.team] ?? []} editions={editions} showEdition={showEdition}
                     onEdit={() => setEditing(i)} onClose={() => setEditing(null)}
                     onApplied={() => { setEditing(null); setNonce((n) => n + 1); }}
                   />

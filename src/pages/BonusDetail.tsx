@@ -5,7 +5,7 @@ import { useSetCtx } from "../components/Layout";
 import { QuestionTags } from "../components/QuestionTags";
 import { BonusDetail, BonusResult, PartConv } from "../types";
 import { CategoryTag, Html, pct, num, roundLabel } from "../util";
-import { Loading, ErrorBox } from "../components/Common";
+import { Loading, ErrorBox, EditionBadges } from "../components/Common";
 import { DataTable, Column } from "../components/DataTable";
 import { QuestionNav, useQuestionNav } from "../components/QuestionNav";
 
@@ -69,7 +69,7 @@ function rowClass(r: BonusResult, parts: PartConv[]): string {
 }
 
 export function BonusDetailPage() {
-  const { slug, scope, isOwner } = useSetCtx();
+  const { slug, scope, isOwner, editions } = useSetCtx();
   const { id = "" } = useParams();
   // A tag (phase) scope has no per-edition file; fall back to combined for it.
   const [version, setVersion] = useState(scope.startsWith("tag:") ? "all" : scope);
@@ -85,8 +85,20 @@ export function BonusDetailPage() {
   const versions = comb?.[id]?.versions ?? [];
   const parts = d.partConv;
 
+  // Which mirror heard each bonus. Only meaningful in the combined view, and only
+  // present once a multi-edition set has been re-aggregated.
+  const showEdition = version === "all" && editions.length > 1 && d.results.some((r) => r.editionId);
+  const edLabel = (id?: string) => editions.find((e) => e.id === id)?.label ?? id ?? "";
+
   const columns: Column<BonusResult>[] = [
     { key: "team", label: "Team", sortVal: (r) => r.team.toLowerCase(), render: (r) => r.team },
+    ...(showEdition
+      ? [{
+          key: "edition", label: "Edition", title: "Edition (mirror) this team heard the bonus in",
+          sortVal: (r: BonusResult) => edLabel(r.editionId).toLowerCase(),
+          render: (r: BonusResult) => (r.editionId ? <EditionBadges ids={[r.editionId]} editions={editions} /> : <span className="muted">—</span>),
+        } as Column<BonusResult>]
+      : []),
     ...parts.map((p, i): Column<BonusResult> => ({
       key: `p${p.idx}`,
       label: `Part ${i + 1}`,

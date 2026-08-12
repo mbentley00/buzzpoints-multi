@@ -1007,6 +1007,8 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
 .buzz-who .buzz-player { display: block; font-weight: 600; }
 .buzz-who .buzz-team { display: block; font-size: 12.5px; opacity: 0.82; }
 .buzz-opp { font-size: 12.5px; opacity: 0.9; max-width: 220px; }
+/* Which mirror a buzz came from — one badge, never wrapped. */
+.buzz-ed { white-space: nowrap; }
 .buzz-row .btn-edit { font-weight: 400; font-size: 12px; margin-left: 6px; }
 .data-table tbody tr.buzz-row-power td { background: var(--power-row); }
 .data-table tbody tr.buzz-row-power:hover td { background: var(--power-row-h); }

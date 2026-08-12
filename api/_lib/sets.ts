@@ -555,7 +555,12 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   }
 
   // combined (single-edition: identical to the one edition)
-  const combinedGames = editions.flatMap((e) => e.games || []);
+  // Multi-edition: stamp each game with the mirror it came from, so combined
+  // buzzes and bonus hearings can say which edition they were played in. Left
+  // off single-edition sets — the tag would be noise on every buzz.
+  const combinedGames = multi
+    ? editions.flatMap((e) => (e.games || []).map((g) => ({ ...g, editionId: e.id })))
+    : editions.flatMap((e) => e.games || []);
   const combined = combinedPackets(editions);
   const out = aggregate(combined, combinedGames, cfg, corrections, virtualCats, renames);
   overrideBonuses(out, editions);

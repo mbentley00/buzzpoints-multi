@@ -25,6 +25,9 @@ export interface PacketFile {
 
 export interface GameFile {
   round: number;
+  // Which edition (mirror) played this game. Set only when the combined
+  // aggregation flattens 2+ editions, so single-edition output stays lean.
+  editionId?: string;
   match_teams?: {
     bonus_points?: number;
     team?: { name?: string; players?: { name?: string }[] };
@@ -472,7 +475,7 @@ const bnNew = (): CatBnAcc => ({ main: "", heard: 0, pts: 0, parts: new Map() })
 /* ----------------------------- accumulators ----------------------------- */
 interface TUStat { round: number; num: number; questionHtml: string; answer: string; category: string; subcategory: string; categoryMid: string; tags: string[]; words: string[]; wordCount: number; powerIndex: number | null; }
 interface BNStat { round: number; num: number; leadin: string; parts: string[]; answers: string[]; difficultyModifiers: string[]; category: string; subcategory: string; tags: string[]; }
-type Buzz = { player: string | null; team: string | null; value: number; wordIndex: number | null; opponent?: string | null; origPlayer?: string | null; origWordIndex?: number | null; firstInRoom?: boolean; };
+type Buzz = { player: string | null; team: string | null; value: number; wordIndex: number | null; opponent?: string | null; origPlayer?: string | null; origWordIndex?: number | null; firstInRoom?: boolean; editionId?: string | null; };
 type CatAcc = { powers: number; gets: number; incorrect: number; points: number; posSum: number; posN: number; earliest: number | null };
 const newCatAcc = (): CatAcc => ({ powers: 0, gets: 0, incorrect: 0, points: 0, posSum: 0, posN: 0, earliest: null });
 type CatTuAcc = { main: string; heard: number; powers: number; gets: number; buzzSum: number; buzzN: number; firstConv: number; secondConv: number; incorrectBefore: number };
@@ -558,7 +561,7 @@ export function aggregate(
 
   const tuBuzzes = new Map<string, Buzz[]>();
   const tuHeard = new Map<string, number>();
-  const bnResults = new Map<string, { team: string | null; partPts: number[]; bbPts: number[]; total: number }[]>();
+  const bnResults = new Map<string, { team: string | null; partPts: number[]; bbPts: number[]; total: number; editionId?: string }[]>();
 
   type PL = { name: string; team: string; games: Set<string>; tuh: number; powers: number; gets: number; incorrect: number; pts: number };
   const pl = new Map<string, PL>();
@@ -591,6 +594,9 @@ export function aggregate(
 
   for (const g of games) {
     const r = g.round;
+    // Present only in the combined aggregation of a multi-edition set; carried
+    // onto each buzz and bonus hearing so the detail views can name the mirror.
+    const edId = g.editionId;
     const teamNames = (g.match_teams || []).map((t) => t.team?.name).filter(Boolean) as string[];
     const gameId = `${r}:` + [...teamNames].sort().join("|");
     // Tossups read in this game (used to credit every teammate with a full game's
@@ -663,7 +669,7 @@ export function aggregate(
           // it's the first buzz of this room's reading. Later buzzes only happen
           // after an earlier team negged and the reader resumed, so they aren't a
           // genuine same-clue race — the buzzer-race view excludes them.
-          arr.push({ player: pname, team: bteam, value, wordIndex: widx, opponent: opp, origPlayer, origWordIndex, firstInRoom: ordered.length === 1 });
+          arr.push({ player: pname, team: bteam, value, wordIndex: widx, opponent: opp, origPlayer, origWordIndex, firstInRoom: ordered.length === 1, editionId: edId });
         }
         if (pname) {
           const pv = plOf(pname, bteam || "");
@@ -713,7 +719,7 @@ export function aggregate(
           const bbPts = parts.map((p) => p.bounceback_points || 0);
           const total = partPts.reduce((a, b) => a + b, 0) + bbPts.reduce((a, b) => a + b, 0);
           let arr = bnResults.get(bkey); if (!arr) { arr = []; bnResults.set(bkey, arr); }
-          arr.push({ team: controlling, partPts, bbPts, total });
+          arr.push({ team: controlling, partPts, bbPts, total, ...(edId ? { editionId: edId } : {}) });
           if (controlling) {
             tmOf(controlling).bonusesHeard += 1;
             const tbc = nestCat<BnCat>(tmBonusCat, controlling, bdef.subcategory, () => ({ heard: 0, pts: 0, main: bdef.category, parts: new Map() }));
@@ -816,6 +822,7 @@ export function aggregate(
       teamId: b.team ? teamId.get(b.team) ?? null : null,
       opponentId: b.opponent ? teamId.get(b.opponent) ?? null : null,
       origPlayer: b.origPlayer ?? null, origWordIndex: b.origWordIndex ?? null,
+      ...(b.editionId ? { editionId: b.editionId } : {}),
     })).sort((a, b) => (a.wordIndex === null ? 1 : 0) - (b.wordIndex === null ? 1 : 0) || (a.wordIndex ?? 0) - (b.wordIndex ?? 0));
     const convPct = pct(powers + gets, heard);
     tuSumm.push({

@@ -207,6 +207,9 @@ export interface Buzz {
   opponentId?: string | null;
   origPlayer?: string | null;
   origWordIndex?: number | null;
+  // Which edition (mirror) this buzz was played in. Present only on the combined
+  // view of a multi-edition set, after re-aggregation.
+  editionId?: string;
 }
 
 export interface QuestionVersion {
@@ -257,6 +260,9 @@ export interface BonusResult {
   partPts: number[];
   bbPts: number[];
   total: number;
+  // Which edition (mirror) heard this bonus. Present only on the combined view of
+  // a multi-edition set, after re-aggregation.
+  editionId?: string;
 }
 export interface BonusDetail {
   id: string;
