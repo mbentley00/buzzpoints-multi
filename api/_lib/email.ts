@@ -75,11 +75,11 @@ export const submissionPendingBody = (submitter: string, setName: string, review
 export const submissionApprovedBody = (setName: string, url: string) =>
   wrap(`<p>Your tournament <strong>${esc(setName)}</strong> has been approved and is now live on Buzzpoints.</p><p>Future tournaments you post will publish immediately.</p>${btn(url, "Open tournament")}`);
 
-// Site feedback from the "Send feedback" button. The message is user-written, so
-// it's escaped and only newlines become markup.
+// A feature request / site bug report from the "Feature Requests" button. The
+// message is user-written, so it's escaped and only newlines become markup.
 export const feedbackBody = (from: string, page: string, message: string) =>
   wrap(
-    `<p><strong>${esc(from)}</strong> sent feedback${page ? ` from <a href="${esc(page)}">${esc(page)}</a>` : ""}.</p>` +
+    `<p><strong>${esc(from)}</strong> sent a feature request${page ? ` from <a href="${esc(page)}">${esc(page)}</a>` : ""}.</p>` +
     `<blockquote style="margin:0;padding:10px 14px;border-left:3px solid #cbd5e1;color:#333;white-space:pre-wrap">${esc(message)}</blockquote>`
   );
 

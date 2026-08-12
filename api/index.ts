@@ -73,7 +73,7 @@ async function search(user: string | null, q: string, type: "players" | "questio
   return res.status(200).json({ results: results.slice(0, MAX_RESULTS), total: results.length, type });
 }
 
-// ---- site feedback ("Send feedback" in the topbar) ----
+// ---- site feature requests / bug reports ("Feature Requests" in the topbar) ----
 // A new route would put api/ over the Hobby plan's 12-function ceiling, so this
 // rides along on the index handler as a POST op.
 const FEEDBACK_TO = process.env.FEEDBACK_EMAIL || "bentley.michael.j@gmail.com";
@@ -108,13 +108,13 @@ async function feedback(req: VercelRequest, res: VercelResponse, user: string | 
   const page = String(body.page ?? "").trim().slice(0, 300);
 
   const ip = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || "unknown";
-  if (throttled(ip)) return res.status(429).json({ error: "That's a lot of feedback in one go — try again in a few minutes." });
+  if (throttled(ip)) return res.status(429).json({ error: "That's a lot of requests in one go — try again in a few minutes." });
 
-  if (!emailEnabled()) return res.status(503).json({ error: "Feedback isn't set up to send right now. Please try again later." });
+  if (!emailEnabled()) return res.status(503).json({ error: "This form isn't set up to send right now. Please try again later." });
   const from = replyTo; // always set: an account address, or the one they typed
   const sent = await sendEmail({
     to: FEEDBACK_TO,
-    subject: `Buzzpoints feedback from ${from}`,
+    subject: `Buzzpoints feature request from ${from}`,
     html: feedbackBody(from, page, message),
     text: `From: ${from}\nPage: ${page || "—"}\n\n${message}`,
     replyTo,

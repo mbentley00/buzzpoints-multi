@@ -2,9 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../auth";
 
-// "Send feedback" in the topbar: a small dialog that mails the site owner. Signed-in
-// users are identified by their account; everyone else can leave an address to be
-// replied to (or not — the message goes either way).
+// "Feature Requests" in the topbar: a small dialog that mails the site owner.
+// Signed-in users are identified by their account; everyone else can leave an
+// address to be replied to (or not — the message goes either way).
+//
+// Named for what it's for, because sitting one click from the buzz data it kept
+// collecting stat corrections the site owner can't act on — those belong to the
+// tournament's owner, via Edit on the tossup page.
 export function Feedback() {
   const { user } = useAuth();
   const loc = useLocation();
@@ -58,45 +62,36 @@ export function Feedback() {
 
   return (
     <>
-      <button className="nav-link btn-nav" onClick={() => setOpen(true)}>Feedback</button>
+      <button className="nav-link btn-nav" onClick={() => setOpen(true)}>Feature Requests</button>
       {open && (
         <div className="modal-backdrop" onClick={close}>
-          <div className="modal" role="dialog" aria-modal="true" aria-label="Send feedback" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" role="dialog" aria-modal="true" aria-label="Feature requests" onClick={(e) => e.stopPropagation()}>
             {state === "sent" ? (
               <>
                 <h2>Thanks!</h2>
-                <p className="muted">Your feedback is on its way.</p>
+                <p className="muted">Your request is on its way.</p>
                 <div className="modal-actions"><button className="btn-primary btn-sm" onClick={close}>Close</button></div>
               </>
             ) : (
               <>
-                <h2>Send feedback about the site</h2>
-                <p className="muted">
-                  This goes to whoever runs Buzzpoints — for bugs, confusing pages, and ideas for features. It's the
-                  right place for “this chart is unreadable on mobile” or “I wish I could sort by…”.
-                </p>
+                <h2>Feature Requests</h2>
+                <p className="muted">Use this form to report requests for new features or bugs with the entire set.</p>
                 <div className="caveat feedback-scope">
-                  <strong>Not for fixing a tournament's data.</strong> A misattributed buzz, a wrong buzz position, or a
-                  player's name spelled two ways is the tournament owner's to fix, and I can't change someone else's
-                  tournament from here.{" "}
+                  Do not provide set feedback or stat corrections via this dialog, they will not be addressed. Go to the
+                  “Edit” function on{" "}
                   {setSlug ? (
-                    <>
-                      Use <strong>Edit</strong> next to the buzz on its tossup page, or{" "}
-                      <Link className="link" to={`/set/${setSlug}/tossup`} onClick={() => setOpen(false)}>
-                        open this tournament's tossups
-                      </Link>{" "}
-                      to find it.
-                    </>
+                    <Link className="link" to={`/set/${setSlug}/tossup`} onClick={() => setOpen(false)}>a tossup page</Link>
                   ) : (
-                    <>Open the tossup in question and use the <strong>Edit</strong> link beside the buzz.</>
-                  )}
+                    "a tossup page"
+                  )}{" "}
+                  to submit a correction to the set owner.
                 </div>
                 <textarea
                   ref={box}
                   rows={6}
                   className="feedback-input"
                   value={message}
-                  placeholder="What could work better on the site?"
+                  placeholder="What feature would you like to see, or what's broken?"
                   maxLength={4000}
                   onChange={(e) => setMessage(e.target.value)}
                 />
