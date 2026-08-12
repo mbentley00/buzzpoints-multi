@@ -867,9 +867,11 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
 .bn-got:hover { color: var(--chip-ink); }
 
 /* Roster card on a team name. Fixed so a scrolling buzz list can't clip it; the
-   coordinates come from the name's own position. */
+   coordinates come from the name's own position, and it's portaled to <body> so
+   the faded buzz cells (opacity < 1 = a stacking context) can't trap or dim it.
+   Sits above the sticky table headers (3) but below the modal overlay (100). */
 .team-hov { position: relative; }
-.q-pop-fixed { position: fixed; transform: none; margin-top: 0; }
+.q-pop-fixed { position: fixed; transform: none; margin-top: 0; z-index: 60; }
 
 /* Adjacent-question links in the breadcrumb row */
 .breadcrumb-nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }

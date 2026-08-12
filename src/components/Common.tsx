@@ -1,4 +1,5 @@
 import { ReactNode, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../auth";
 import { EditionSummary } from "../types";
@@ -200,14 +201,21 @@ export function TeamName({
       onMouseLeave={() => setAt(null)}
     >
       {label}
-      {at && (
-        <span className="q-pop q-pop-fixed" role="tooltip" style={{ left: at.left, top: at.top }}>
-          <span className="q-pop-head">{name} roster</span>
-          {roster.map((p) => (
-            <span key={p} className="q-pop-row"><span className="q-pop-who">{p}</span></span>
-          ))}
-        </span>
-      )}
+      {/* Portaled to <body> on purpose. The cells this sits in are faded with
+          `opacity` (.buzz-team, .buzz-opp), and any opacity below 1 creates a
+          stacking context — which would both trap the card's z-index behind the
+          rows underneath it and fade the card itself. Rendering outside those
+          cells keeps it opaque and on top. */}
+      {at &&
+        createPortal(
+          <span className="q-pop q-pop-fixed" role="tooltip" style={{ left: at.left, top: at.top }}>
+            <span className="q-pop-head">{name} roster</span>
+            {roster.map((p) => (
+              <span key={p} className="q-pop-row"><span className="q-pop-who">{p}</span></span>
+            ))}
+          </span>,
+          document.body
+        )}
     </span>
   );
 }
