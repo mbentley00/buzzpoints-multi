@@ -970,6 +970,13 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
 
 /* round phases / tags editor */
 .roundtags { max-width: 640px; }
+/* Which schedule is being edited — the shared one, or one mirror's own. */
+.rt-scope { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+.rt-scope small { max-width: 640px; }
+/* An edition inheriting the shared schedule: shown so it's clear what it follows,
+   but not editable until it's given one of its own. */
+.rt-row-locked { opacity: 0.65; }
+.rt-row-locked .tag-chip { cursor: default; }
 .rt-rounds { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
 .rt-row { display: flex; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .rt-round { min-width: 84px; font-weight: 600; font-size: 13.5px; }

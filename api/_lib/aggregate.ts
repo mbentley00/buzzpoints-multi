@@ -592,11 +592,17 @@ export function aggregate(
     if (prec && widx !== null) { c.posSum += widx; c.posN++; c.earliest = c.earliest === null ? widx : Math.min(c.earliest, widx); }
   };
 
+  // Games always carry their edition (phase membership is decided per edition),
+  // but only annotate buzzes when this aggregation actually spans more than one
+  // mirror — on a single-edition set, or a per-edition run, the tag would be the
+  // same on every buzz and would just bloat the output.
+  const multiEdition = new Set(games.map((g) => g.editionId).filter(Boolean)).size > 1;
+
   for (const g of games) {
     const r = g.round;
-    // Present only in the combined aggregation of a multi-edition set; carried
-    // onto each buzz and bonus hearing so the detail views can name the mirror.
-    const edId = g.editionId;
+    // Carried onto each buzz and bonus hearing so the detail views can name the
+    // mirror it was played in.
+    const edId = multiEdition ? g.editionId : undefined;
     const teamNames = (g.match_teams || []).map((t) => t.team?.name).filter(Boolean) as string[];
     const gameId = `${r}:` + [...teamNames].sort().join("|");
     // Tossups read in this game (used to credit every teammate with a full game's

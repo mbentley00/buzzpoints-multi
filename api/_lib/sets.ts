@@ -248,15 +248,53 @@ export const writeTagEdits = (slug: string, t: TagEdits) => writeJson(`sets/${sl
 
 // Owner-assigned round tags ("phases"): a map of round number -> tag names. Used
 // to write per-tag scoped stat files so viewers can filter every page to a phase.
+// Rounds are the CANONICAL numbering (canonicalizeEditions has already aligned
+// every mirror's packets and games onto it), so one key means the same packet
+// across editions.
 export type RoundTags = Record<string, string[]>;
+
+// Phases are per edition. Mirrors run different schedules — one site plays nine
+// prelim packets and three playoff packets, another plays eight and four — so the
+// same packet can be a prelim at one and a playoff at another. `all` is the shared
+// schedule; an entry in `editions` REPLACES it for that edition rather than
+// merging, so "this mirror ran its own bracket" stays a single legible statement.
+export interface RoundTagsDoc {
+  all?: RoundTags;
+  editions?: Record<string, RoundTags>;
+}
+
+// Files written before phases were per-edition are a bare round -> tags map. Its
+// keys are always numeric (sanitizeRoundTags enforced it), which is what tells
+// the two shapes apart.
+const isLegacyRoundTags = (v: Record<string, unknown>) => Object.keys(v).every((k) => /^\d+$/.test(k));
+export function normalizeRoundTags(v: unknown): RoundTagsDoc {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  const o = v as Record<string, unknown>;
+  if (isLegacyRoundTags(o)) return Object.keys(o).length ? { all: o as RoundTags } : {};
+  return {
+    ...(o.all ? { all: o.all as RoundTags } : {}),
+    ...(o.editions ? { editions: o.editions as Record<string, RoundTags> } : {}),
+  };
+}
+// The schedule one edition actually runs: its own if it has one, else the shared.
+export const roundTagsFor = (doc: RoundTagsDoc, editionId: string): RoundTags =>
+  doc.editions?.[editionId] ?? doc.all ?? {};
+
 export const readRoundTags = (slug: string) =>
-  readBlobJson<RoundTags>(`sets/${slug}/_roundtags.json`, false).then((r) => r || {});
-export const writeRoundTags = (slug: string, r: RoundTags) => writeJson(`sets/${slug}/_roundtags.json`, r);
+  readBlobJson<unknown>(`sets/${slug}/_roundtags.json`, false).then(normalizeRoundTags);
+export const writeRoundTags = (slug: string, r: RoundTagsDoc) => writeJson(`sets/${slug}/_roundtags.json`, r);
 
 // Default phase vocabulary offered in the owner UI (custom tags are also allowed).
 export const DEFAULT_ROUND_TAGS = ["Prelims", "Playoffs", "Finals", "Superplayoffs", "Tiebreakers"];
 
-export interface TagSummary { name: string; slug: string; rounds: number[]; numGames: number; numTeams: number; numPlayers: number; }
+// `rounds` is the union across editions — mirrors that ran the phase on different
+// packets contribute all of them. `editionRounds` breaks that back out so the UI
+// can say which mirror played which packets in the phase.
+export interface TagSummary {
+  name: string; slug: string; rounds: number[];
+  editionRounds?: Record<string, number[]>;
+  numGames: number; numTeams: number; numPlayers: number;
+}
 export const tagSlug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "tag";
 
 export const readRequests = (slug: string) => readBlobJson<CorrectionRequest[]>(`sets/${slug}/_requests.json`, false).then((r) => r || []);
@@ -592,12 +630,11 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   }
 
   // combined (single-edition: identical to the one edition)
-  // Multi-edition: stamp each game with the mirror it came from, so combined
-  // buzzes and bonus hearings can say which edition they were played in. Left
-  // off single-edition sets — the tag would be noise on every buzz.
-  const combinedGames = multi
-    ? editions.flatMap((e) => (e.games || []).map((g) => ({ ...g, editionId: e.id })))
-    : editions.flatMap((e) => e.games || []);
+  // Every game carries the mirror it came from: phase membership is decided per
+  // edition, and the combined buzz/bonus views name the edition. aggregate() only
+  // propagates the tag onto buzzes when the games it's given actually span more
+  // than one mirror, so single-edition output is unchanged.
+  const combinedGames = editions.flatMap((e) => (e.games || []).map((g) => ({ ...g, editionId: e.id })));
   const combined = combinedPackets(editions);
   const out = aggregate(combined, combinedGames, cfg, corrections, virtualCats, renames);
   overrideBonuses(out, editions);
@@ -618,27 +655,49 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   // Per-phase (round-tag) scopes: re-aggregate the subset of rounds carrying each
   // tag and write its stat files under tags/<slug>/, so the UI can filter every
   // page to a phase the same way it scopes to an edition.
-  const roundTags = await readRoundTags(slug);
-  const tagToRounds = new Map<string, Set<number>>();
-  for (const [rnd, names] of Object.entries(roundTags))
-    for (const name of names) {
-      const key = name.trim();
-      if (!key) continue;
-      let s = tagToRounds.get(key);
-      if (!s) { s = new Set(); tagToRounds.set(key, s); }
-      s.add(Number(rnd));
-    }
+  // Membership is a set of (edition, round) pairs rather than bare rounds: two
+  // mirrors can file the same canonical packet under different phases, and only
+  // the games that were actually played in the phase belong to it.
+  const roundTagsDoc = await readRoundTags(slug);
+  const pairKey = (edId: string, round: number) => `${edId}:${round}`;
+  const tagToPairs = new Map<string, Set<string>>();
+  const tagToEdRounds = new Map<string, Map<string, Set<number>>>();
+  for (const ed of editions)
+    for (const [rnd, names] of Object.entries(roundTagsFor(roundTagsDoc, ed.id)))
+      for (const name of names) {
+        const key = name.trim();
+        if (!key) continue;
+        let pairs = tagToPairs.get(key);
+        if (!pairs) { pairs = new Set(); tagToPairs.set(key, pairs); }
+        pairs.add(pairKey(ed.id, Number(rnd)));
+        let byEd = tagToEdRounds.get(key);
+        if (!byEd) { byEd = new Map(); tagToEdRounds.set(key, byEd); }
+        let rs = byEd.get(ed.id);
+        if (!rs) { rs = new Set(); byEd.set(ed.id, rs); }
+        rs.add(Number(rnd));
+      }
+
   const tags: TagSummary[] = [];
-  for (const [name, roundsSet] of tagToRounds) {
-    const gm = combinedGames.filter((g) => roundsSet.has(g.round));
+  for (const [name, pairs] of tagToPairs) {
+    const byEd = tagToEdRounds.get(name)!;
+    const gm = combinedGames.filter((g) => pairs.has(pairKey(g.editionId!, g.round)));
     if (!gm.length) continue;
+    // Packets are keyed by canonical round alone, so the phase's question list is
+    // the union of its rounds across editions. Where two mirrors filed the same
+    // packet under different phases it appears in both question lists, but the
+    // GAMES — which carry every stat — stay correctly split by edition.
+    const roundsSet = new Set<number>([...byEd.values()].flatMap((s) => [...s]));
     const pk = combined.filter((p) => roundsSet.has(p.round));
     const tout = aggregate(pk, gm, cfg, corrections, virtualCats, renames);
     overrideBonuses(tout, editions, roundsSet);
     const slugT = tagSlug(name);
     await writeFiles(`sets/${slug}/tags/${slugT}/`, tout);
     const tm = tout["meta.json"] as any;
-    tags.push({ name, slug: slugT, rounds: [...roundsSet].sort((a, b) => a - b), numGames: tm.numGames, numTeams: tm.numTeams, numPlayers: tm.numPlayers });
+    tags.push({
+      name, slug: slugT, rounds: [...roundsSet].sort((a, b) => a - b),
+      ...(multi ? { editionRounds: Object.fromEntries([...byEd].map(([id, s]) => [id, [...s].sort((a, b) => a - b)])) } : {}),
+      numGames: tm.numGames, numTeams: tm.numTeams, numPlayers: tm.numPlayers,
+    });
   }
   tags.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
 

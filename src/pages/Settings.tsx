@@ -315,7 +315,8 @@ export function Settings() {
           <h2 style={{ marginTop: 28 }}>Round phases / tags</h2>
           <p className="muted">
             Tag rounds with phases (e.g. Prelims, Playoffs, Finals). Viewers can then filter every page to a phase. A
-            round can carry more than one tag.
+            round can carry more than one tag. Mirrors that ran different schedules — different packets in the
+            playoffs, say — can each have their own, so a phase only ever collects the games actually played in it.
           </p>
           <RoundTagsEditor slug={slug} rounds={meta!.rounds} />
         </>

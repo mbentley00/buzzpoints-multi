@@ -24,7 +24,10 @@ export interface EditionSummary {
 export interface TagSummary {
   name: string;
   slug: string;
+  // Union of the rounds carrying this phase across editions; editionRounds breaks
+  // it back out per mirror (multi-edition sets only).
   rounds: number[];
+  editionRounds?: Record<string, number[]>;
   numGames: number;
   numTeams: number;
   numPlayers: number;

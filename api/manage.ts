@@ -11,8 +11,8 @@ import { currentUser, normEmail, canModerate, loadUsers } from "./_lib/auth.js";
 import {
   readIndex, writeIndex, readSource, writeSource, readCorrections, aggregateAndWrite,
   readAccess, writeAccess, readLinks, writeLinks, canViewContent, InviteLink, Visibility, AccessRole,
-  writeVirtualCats, readRoundTags, writeRoundTags, DEFAULT_ROUND_TAGS, RoundTags, TOURNAMENT_LEVELS,
-  editionsOf, Edition, SetSource, AccessRequest, readRenames,
+  writeVirtualCats, readRoundTags, writeRoundTags, DEFAULT_ROUND_TAGS, RoundTags, RoundTagsDoc, TOURNAMENT_LEVELS,
+  editionsOf, canonicalizeEditions, Edition, SetSource, AccessRequest, readRenames,
   readMetaMap, writeMetaMap, readTagEdits, writeTagEdits, isSetOwner, isPrimaryOwner, ownerEmails, requestsAllowed,
 } from "./_lib/sets.js";
 import { VirtualCategory, scanRoundAlignment, metaFields, MetaMap, MetaField } from "./_lib/aggregate.js";
@@ -215,8 +215,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const creatorOnly = async () => isPrimaryOwner(entry, user) || (await canModerate(user));
 
     if (req.method === "GET") {
-      if (req.query.op === "roundtags")
-        return res.status(200).json({ roundTags: await readRoundTags(slug), defaults: DEFAULT_ROUND_TAGS, tags: entry.tags ?? [] });
+      if (req.query.op === "roundtags") {
+        // Each edition's own round list, so the owner tags the packets a mirror
+        // actually played rather than the whole tournament's rounds. Canonical
+        // numbering, the same rounds every other page shows.
+        const source = await readSource(slug);
+        const eds = source ? canonicalizeEditions(editionsOf(source)) : [];
+        return res.status(200).json({
+          roundTags: await readRoundTags(slug),
+          defaults: DEFAULT_ROUND_TAGS,
+          tags: entry.tags ?? [],
+          editions: eds.map((e) => ({
+            id: e.id, label: e.label,
+            rounds: [...new Set((e.packets || []).map((p) => p.round).concat((e.games || []).map((g) => g.round)))].sort((a, b) => a - b),
+          })),
+        });
+      }
       // Packet-round layout (+ alignment warnings) and the per-edition game list,
       // both keyed by source-array index so the editors can address one file.
       // Applied player renames, so the owner can see and undo them (undo itself
@@ -393,11 +407,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!clean) return res.status(400).json({ error: "Invalid round tags." });
       const source = await readSource(slug);
       if (!source) return res.status(500).json({ error: "Source data not found." });
-      await writeRoundTags(slug, clean);
+      // One schedule is saved at a time: the shared one, or a single edition's
+      // override. Merging into the stored doc keeps the other schedules intact.
+      const doc = await readRoundTags(slug);
+      const edId = body.editionId ? String(body.editionId) : "";
+      let next: RoundTagsDoc;
+      if (edId && edId !== "all") {
+        if (!editionsOf(source).some((e) => e.id === edId)) return res.status(404).json({ error: "Edition not found." });
+        const eds = { ...(doc.editions || {}) };
+        // An empty schedule means "this mirror follows the shared one" — drop the
+        // override rather than storing an override that tags nothing.
+        if (Object.keys(clean).length) eds[edId] = clean; else delete eds[edId];
+        next = { ...doc, ...(Object.keys(eds).length ? { editions: eds } : { editions: undefined }) };
+        if (!next.editions) delete next.editions;
+      } else {
+        next = { ...doc, all: clean };
+        if (!Object.keys(clean).length) delete next.all;
+      }
+      await writeRoundTags(slug, next);
       const { tags } = await aggregateAndWrite(slug, source, await readCorrections(slug));
       entry.tags = tags;
       await writeIndex(index);
-      return res.status(200).json({ ok: true, roundTags: clean, tags });
+      return res.status(200).json({ ok: true, roundTags: next, tags });
     } else if (op === "remap-rounds" || op === "remove-files") {
       if (entry.kind === "results") return res.status(400).json({ error: "This applies to buzz tournaments only." });
       const source = await readSource(slug);
