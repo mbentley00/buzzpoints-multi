@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { BonusRow } from "../types";
-import { CategoryTag, Html, pct, num, plain, catMatches, roundLabel } from "../util";
+import { CategoryTag, Html, pct, num, plain, catMatches, roundLabel, primaryAnswer } from "../util";
 import { DataTable, Column } from "../components/DataTable";
 import { PageHeader, Loading, ErrorBox, RoundFilter, SearchInput } from "../components/Common";
 import { useCategoryFilter, CategoryFilterChip } from "../components/CategoryFilter";
@@ -34,7 +34,7 @@ export function Bonuses() {
       "—"
     ) : (
       <div className="part-cell">
-        <Html html={answer} className="part-answer" />
+        <Html html={primaryAnswer(answer)} className="part-answer" />
         <span className="part-pct">{pct(p)}</span>
       </div>
     );

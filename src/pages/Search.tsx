@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AuthNav, Loading, ErrorBox } from "../components/Common";
-import { Html, CategoryTag, num, roundLabel } from "../util";
+import { Html, CategoryTag, num, roundLabel, primaryAnswer } from "../util";
 
 type SearchType = "players" | "questions";
 interface CatHit { category: string; points: number }
@@ -143,7 +143,7 @@ export function Search() {
                 ))
               : (results as QuestionHit[]).map((qr) => (
                   <Link key={`${qr.slug}:${qr.id}`} to={`/set/${qr.slug}/tossup/${qr.id}`} className="search-result">
-                    <div className="search-result-main"><Html html={qr.answer} /></div>
+                    <div className="search-result-main"><Html html={primaryAnswer(qr.answer)} /></div>
                     <div className="search-result-meta">
                       {qr.category && <CategoryTag cat={qr.category} />}
                       <span className="search-set">{qr.setName}</span>

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { TossupRow } from "../types";
-import { CategoryTag, Html, pct, num, plain, catMatches, roundLabel } from "../util";
+import { CategoryTag, Html, pct, num, plain, catMatches, roundLabel, primaryAnswer } from "../util";
 import { DataTable, Column } from "../components/DataTable";
 import { PageHeader, Loading, ErrorBox, RoundFilter, MinHeardFilter, SearchInput } from "../components/Common";
 import { useCategoryFilter, CategoryFilterChip } from "../components/CategoryFilter";
@@ -49,7 +49,7 @@ export function Tossups() {
       sortVal: (t) => plain(t.answer).toLowerCase(),
       render: (t) => (
         <Link className="link answer-cell" to={`/set/${slug}/tossup/${t.id}`}>
-          <Html html={t.answer} />
+          <Html html={primaryAnswer(t.answer)} />
         </Link>
       ),
     },

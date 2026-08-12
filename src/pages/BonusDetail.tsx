@@ -3,9 +3,9 @@ import { useParams, Link } from "react-router-dom";
 import { useSetJson } from "../data";
 import { useSetCtx } from "../components/Layout";
 import { QuestionTags } from "../components/QuestionTags";
-import { BonusDetail, BonusResult, PartConv } from "../types";
+import { BonusDetail, BonusResult, PartConv, Rosters } from "../types";
 import { CategoryTag, Html, pct, num, roundLabel } from "../util";
-import { Loading, ErrorBox, EditionBadges } from "../components/Common";
+import { Loading, ErrorBox, EditionBadges, TeamName } from "../components/Common";
 import { DataTable, Column } from "../components/DataTable";
 import { QuestionNav, useQuestionNav } from "../components/QuestionNav";
 
@@ -77,6 +77,8 @@ export function BonusDetailPage() {
   const dispFile = version !== "all" ? `editions/${version}/bonuses_detail.json` : combinedFile;
   const { data: comb } = useSetJson<Record<string, BonusDetail>>(slug, combinedFile);
   const { data, error, loading } = useSetJson<Record<string, BonusDetail>>(slug, dispFile);
+  // Who was on each team, for the roster card on a team name.
+  const { data: rosters } = useSetJson<Rosters>(slug, version !== "all" ? `editions/${version}/rosters.json` : "rosters.json");
   const nav = useQuestionNav(data, id);
   if (loading) return <Loading />;
   if (error) return <ErrorBox error={error} />;
@@ -91,7 +93,10 @@ export function BonusDetailPage() {
   const edLabel = (id?: string) => editions.find((e) => e.id === id)?.label ?? id ?? "";
 
   const columns: Column<BonusResult>[] = [
-    { key: "team", label: "Team", sortVal: (r) => r.team.toLowerCase(), render: (r) => r.team },
+    {
+      key: "team", label: "Team", sortVal: (r) => r.team.toLowerCase(),
+      render: (r) => <TeamName name={r.team} slug={slug} roster={rosters?.[r.team]} />,
+    },
     ...(showEdition
       ? [{
           key: "edition", label: "Edition", title: "Edition (mirror) this team heard the bonus in",

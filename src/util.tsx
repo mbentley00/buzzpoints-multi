@@ -43,6 +43,28 @@ export function Html({ html, className }: { html: string; className?: string }) 
   return <span className={className} dangerouslySetInnerHTML={{ __html: markPronGuides(html) }} />;
 }
 
+const hasText = (html: string) => html.replace(/<[^>]*>/g, "").trim().length > 0;
+
+// Just the answer itself, for list views: everything the answer line carries in
+// brackets or parentheses — acceptable and promptable answers, notes to the
+// reader, pronunciation guides — is dropped, so a row reads "Elizabeth" instead
+// of "Elizabeth [accept Elizabeth Gaskell or …]". Question pages still show the
+// whole line. Innermost groups go first, so nesting unwinds; markup inside a
+// group goes with it. An answer that is somehow all brackets is left alone.
+export function primaryAnswer(html: string): string {
+  let s = html || "";
+  for (let prev = ""; s !== prev; ) {
+    prev = s;
+    s = s.replace(/\[[^[\]]*\]/g, "").replace(/\([^()]*\)/g, "");
+  }
+  s = s
+    .replace(/\s{2,}/g, " ")
+    // A separator left dangling by the cut, before any trailing closing tags.
+    .replace(/[\s;,:]+((?:<\/[a-z]+>\s*)*)$/i, "$1")
+    .trim();
+  return hasText(s) ? s : html;
+}
+
 // Does a full subcategory path belong to a category filter value? Matches the
 // value itself or any descendant ("Science" matches "Science - Biology - …").
 export function catMatches(fullSub: string, value: string): boolean {

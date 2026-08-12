@@ -4,7 +4,7 @@ import { clearSetCache, useSetJson } from "../data";
 import { useSetCtx } from "../components/Layout";
 import { TossupDetail, Buzz, Rosters, EditionSummary } from "../types";
 import { Html, pct, num, roundLabel } from "../util";
-import { Loading, ErrorBox, EditionBadges } from "../components/Common";
+import { Loading, ErrorBox, EditionBadges, TeamName } from "../components/Common";
 import { QuestionNav, useQuestionNav } from "../components/QuestionNav";
 import { Segs, plainTokens, tokenizeQuestion } from "../questionText";
 import { QuestionTags } from "../components/QuestionTags";
@@ -255,9 +255,9 @@ function BuzzEditor({ d, b, slug, isOwner, teammates, cols, onClose, onApplied }
   );
 }
 
-function BuzzRow({ d, b, slug, i, isOwner, canEdit, editing, highlight, teammates, editions, showEdition, onEdit, onClose, onApplied }: {
+function BuzzRow({ d, b, slug, i, isOwner, canEdit, editing, highlight, teammates, opponents, editions, showEdition, onEdit, onClose, onApplied }: {
   d: TossupDetail; b: Buzz; slug: string; i: number; isOwner: boolean; canEdit: boolean; editing: boolean;
-  highlight: boolean; teammates: string[]; editions: EditionSummary[]; showEdition: boolean;
+  highlight: boolean; teammates: string[]; opponents: string[]; editions: EditionSummary[]; showEdition: boolean;
   onEdit: () => void; onClose: () => void; onApplied: () => void;
 }) {
   const t = tier(b.value);
@@ -269,9 +269,11 @@ function BuzzRow({ d, b, slug, i, isOwner, canEdit, editing, highlight, teammate
             {b.playerId ? <Link className="link" to={`/set/${slug}/player/${b.playerId}`}>{b.player}</Link> : b.player}
             {canEdit && !editing && <button className="btn-link btn-edit" onClick={onEdit} title="Correct this buzz">Edit</button>}
           </span>
-          <span className="buzz-team">{b.teamId ? <Link className="link" to={`/set/${slug}/team/${b.teamId}`}>{b.team}</Link> : b.team}</span>
+          <span className="buzz-team"><TeamName name={b.team} id={b.teamId} slug={slug} roster={teammates} /></span>
         </td>
-        <td className="buzz-opp">{b.opponent && b.opponentId ? <Link className="link" to={`/set/${slug}/team/${b.opponentId}`}>{b.opponent}</Link> : b.opponent || "—"}</td>
+        <td className="buzz-opp">
+          {b.opponent ? <TeamName name={b.opponent} id={b.opponentId} slug={slug} roster={opponents} /> : "—"}
+        </td>
         {showEdition && <td className="buzz-ed">{b.editionId ? <EditionBadges ids={[b.editionId]} editions={editions} /> : <span className="muted">—</span>}</td>}
         <td className="right mono">{b.wordIndex === null ? "—" : b.imprecise ? `≈${b.wordIndex + 1}` : b.wordIndex + 1}</td>
         <td className="right mono">{b.value}</td>
@@ -369,7 +371,8 @@ export function TossupDetailPage() {
                   <BuzzRow
                     key={i} d={d} b={b} slug={slug} i={i} isOwner={isOwner} canEdit={!!user}
                     editing={editing === i} highlight={(hoverWord !== null && effIdx(d, b) === hoverWord) || (focusWord !== null && b.wordIndex === focusWord)}
-                    teammates={rosters?.[b.team] ?? []} editions={editions} showEdition={showEdition}
+                    teammates={rosters?.[b.team] ?? []} opponents={rosters?.[b.opponent ?? ""] ?? []}
+                    editions={editions} showEdition={showEdition}
                     onEdit={() => setEditing(i)} onClose={() => setEditing(null)}
                     onApplied={() => { setEditing(null); setNonce((n) => n + 1); }}
                   />

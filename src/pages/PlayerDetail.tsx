@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { PlayerDetail, PlayerBuzz } from "../types";
-import { Html, num } from "../util";
+import { Html, num, primaryAnswer } from "../util";
 import { Loading, ErrorBox, EditionBadges } from "../components/Common";
 import { CategoryStatsTable } from "../components/CategoryStatsTable";
 import { DataTable, Column } from "../components/DataTable";
@@ -39,7 +39,7 @@ export function PlayerDetailPage() {
     { key: "round", label: "Round", align: "right", sortVal: (b) => b.round, render: (b) => b.round },
     { key: "num", label: "#", align: "right", sortVal: (b) => b.num, render: (b) => b.num },
     { key: "cat", label: "Category", sortVal: (b) => b.category, render: (b) => <Link className="link" to={`/set/${slug}/tossup?subcategory=${encodeURIComponent(b.category)}`}>{b.category}</Link> },
-    { key: "ans", label: "Answer", sortVal: (b) => b.id, render: (b) => <Link className="link answer-cell" to={`/set/${slug}/tossup/${b.id}`}><Html html={b.answer} /></Link> },
+    { key: "ans", label: "Answer", sortVal: (b) => b.id, render: (b) => <Link className="link answer-cell" to={`/set/${slug}/tossup/${b.id}`}><Html html={primaryAnswer(b.answer)} /></Link> },
     // Links into the question with the buzz word highlighted, so "where did they
     // buzz?" is one click rather than counting words.
     { key: "bp", label: "Buzzpoint", align: "right", sortVal: (b) => b.buzzpoint ?? 1e9,

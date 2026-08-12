@@ -866,6 +866,11 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
 }
 .bn-got:hover { color: var(--chip-ink); }
 
+/* Roster card on a team name. Fixed so a scrolling buzz list can't clip it; the
+   coordinates come from the name's own position. */
+.team-hov { position: relative; }
+.q-pop-fixed { position: fixed; transform: none; margin-top: 0; }
+
 /* Adjacent-question links in the breadcrumb row */
 .breadcrumb-nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .qnav { display: flex; align-items: center; gap: 14px; font-size: 13px; }

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { TossupRow, BonusRow } from "../types";
-import { CategoryTag, Html, pct, num, roundLabel } from "../util";
+import { CategoryTag, Html, pct, num, roundLabel, primaryAnswer } from "../util";
 import { DataTable, Column } from "../components/DataTable";
 import { PageHeader, Loading } from "../components/Common";
 
@@ -24,7 +24,7 @@ export function Packets() {
 
   const tuCols: Column<TossupRow>[] = [
     { key: "num", label: "#", align: "right", sortVal: (t) => t.num, render: (t) => <Link className="mono link" to={`/set/${slug}/tossup/${t.id}`}>{t.num}</Link> },
-    { key: "answer", label: "Answer", sortVal: (t) => t.num, render: (t) => <Link className="link answer-cell" to={`/set/${slug}/tossup/${t.id}`}><Html html={t.answer} /></Link> },
+    { key: "answer", label: "Answer", sortVal: (t) => t.num, render: (t) => <Link className="link answer-cell" to={`/set/${slug}/tossup/${t.id}`}><Html html={primaryAnswer(t.answer)} /></Link> },
     { key: "cat", label: "Category", sortVal: (t) => t.category, render: (t) => <CategoryTag cat={t.category} /> },
     { key: "heard", label: "Heard", align: "right", sortVal: (t) => t.heard, render: (t) => t.heard },
     { key: "conv", label: "Conv%", align: "right", sortVal: (t) => t.convPct, render: (t) => pct(t.convPct) },
@@ -36,7 +36,7 @@ export function Packets() {
   const partCell = (answer: string | null, p: number | null) =>
     answer === null ? "—" : (
       <div className="part-cell">
-        <Html html={answer} className="part-answer" />
+        <Html html={primaryAnswer(answer)} className="part-answer" />
         <span className="part-pct">{pct(p)}</span>
       </div>
     );

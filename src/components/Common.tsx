@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../auth";
 import { EditionSummary } from "../types";
@@ -140,6 +140,75 @@ export function ActiveFilterChip({
     <Link to={clearTo} className="active-chip" title="Clear filter">
       {label} <span className="chip-x">✕</span>
     </Link>
+  );
+}
+
+/** A team name that lists its roster on hover — "Belmont A" doesn't say who was
+ *  actually playing. Renders as a plain name (still linked, when there's a team
+ *  page to link to) whenever no roster is loaded for it.
+ *
+ *  The card is positioned fixed, measured off the name: the buzz list is its own
+ *  scroll box, and an absolutely positioned card would be clipped by it. That
+ *  also means the coordinates go stale on scroll, so it closes instead. */
+export function TeamName({
+  name,
+  id,
+  slug,
+  roster,
+}: {
+  name: string;
+  id?: string | null;
+  slug: string;
+  roster?: string[];
+}) {
+  const ref = useRef<HTMLSpanElement | null>(null);
+  const [at, setAt] = useState<{ left: number; top: number } | null>(null);
+  const label = id ? (
+    <Link className="link" to={`/set/${slug}/team/${id}`}>{name}</Link>
+  ) : (
+    name
+  );
+
+  useEffect(() => {
+    if (!at) return;
+    const close = () => setAt(null);
+    window.addEventListener("scroll", close, true);
+    return () => window.removeEventListener("scroll", close, true);
+  }, [at]);
+
+  if (!roster?.length) return <>{label}</>;
+
+  const show = () => {
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    const W = 220;
+    // Head + a row per player, but no taller than the card's own max-height —
+    // a long roster scrolls inside it rather than growing.
+    const H = Math.min(300, 34 + roster.length * 19);
+    setAt({
+      left: Math.max(8, Math.min(r.left, window.innerWidth - W - 8)),
+      // Flip above the name when there isn't room under it.
+      top: r.bottom + H + 8 > window.innerHeight ? Math.max(8, r.top - H - 4) : r.bottom + 4,
+    });
+  };
+
+  return (
+    <span
+      ref={ref}
+      className="team-hov"
+      onMouseEnter={show}
+      onMouseLeave={() => setAt(null)}
+    >
+      {label}
+      {at && (
+        <span className="q-pop q-pop-fixed" role="tooltip" style={{ left: at.left, top: at.top }}>
+          <span className="q-pop-head">{name} roster</span>
+          {roster.map((p) => (
+            <span key={p} className="q-pop-row"><span className="q-pop-who">{p}</span></span>
+          ))}
+        </span>
+      )}
+    </span>
   );
 }
 
