@@ -1,9 +1,33 @@
-// Transactional email via Resend. When RESEND_API_KEY is unset, sending is a
-// no-op (the caller falls back to surfacing links/notices in-app).
-const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
-const EMAIL_FROM = process.env.EMAIL_FROM || "Buzzpoints <noreply@quizbowlbuzzpoints.com>";
+// Transactional email over SMTP, with Resend kept as a fallback. When neither is
+// configured, sending is a no-op (the caller falls back to surfacing links and
+// notices in-app).
+import nodemailer, { type Transporter } from "nodemailer";
 
-export const emailEnabled = () => !!RESEND_API_KEY;
+const SMTP_HOST = process.env.SMTP_HOST || "";
+const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
+const SMTP_USER = process.env.SMTP_USER || "";
+const SMTP_PASS = process.env.SMTP_PASS || "";
+const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
+// Must be the authenticated mailbox: the mail server rejects (or spam-flags) a
+// From it doesn't own.
+const EMAIL_FROM = process.env.EMAIL_FROM || "Buzzpoints <buzzpoints@doc-ent.com>";
+
+const smtpConfigured = () => !!(SMTP_HOST && SMTP_USER && SMTP_PASS);
+export const emailEnabled = () => smtpConfigured() || !!RESEND_API_KEY;
+
+// One pooled transport per warm instance. The publish-reminder cron sends a batch
+// back to back, and a fresh TLS handshake per message would dominate its runtime.
+let tx: Transporter | null = null;
+const transport = (): Transporter =>
+  (tx ??= nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    // 465 is implicit TLS; 587 negotiates STARTTLS after connecting.
+    secure: SMTP_PORT === 465,
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
+    pool: true,
+    maxConnections: 1,
+  }));
 
 // Base URL for links in emails and for the invite/approval links built server-side.
 // Prefer APP_URL; fall back to the prod host (www is primary — the apex 308s to it,
@@ -12,6 +36,23 @@ export const appUrl = () =>
   (process.env.APP_URL || "https://www.quizbowlbuzzpoints.com").replace(/\/+$/, "");
 
 export async function sendEmail(opts: { to: string; subject: string; html: string; text?: string; replyTo?: string }): Promise<boolean> {
+  if (smtpConfigured()) {
+    try {
+      await transport().sendMail({
+        from: EMAIL_FROM, to: opts.to, subject: opts.subject, html: opts.html, text: opts.text,
+        ...(opts.replyTo ? { replyTo: opts.replyTo } : {}),
+      });
+      return true;
+    } catch (e) {
+      console.warn("[email] smtp send failed", (e as Error).message);
+      // A pooled connection that went bad stays bad; drop it so the next send
+      // reconnects instead of failing the same way.
+      tx = null;
+      // Fall through to Resend when it's still configured, so a mail-server blip
+      // doesn't silently swallow an invite or a password reset.
+      if (!RESEND_API_KEY) return false;
+    }
+  }
   if (!RESEND_API_KEY) return false;
   try {
     const r = await fetch("https://api.resend.com/emails", {
