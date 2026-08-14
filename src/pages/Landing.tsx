@@ -7,10 +7,13 @@ import { Loading, ErrorBox, AuthNav, SearchInput } from "../components/Common";
 import { formatDate, relativeTime } from "../util";
 
 // Access groups for the listing, ordered top → bottom.
+// "Restricted", not "Invite-only": this group is about the VIEWER's access, and
+// calling it invite-only put the word next to a per-set "Listed" badge that means
+// something narrower, which read as two names for one thing.
 const GROUP_LABELS = [
   "Your tournaments & shared with you",
   "Public tournaments",
-  "Invite-only — request access",
+  "Restricted — request access",
 ];
 // 0 = owned or granted access, 1 = public, 2 = invite-only without access yet.
 function groupOf(s: SetEntry, user: string | null): 0 | 1 | 2 {
@@ -21,9 +24,27 @@ function groupOf(s: SetEntry, user: string | null): 0 | 1 | 2 {
   return 2;
 }
 
+// The badge says which visibility the OWNER chose, in the same words the Settings
+// dropdown uses — "Private" is hidden from this list entirely, "Listed" is shown
+// to everyone but needs an invite to open.
 const VisBadge = ({ s }: { s: SetEntry }) =>
   s.visibility && s.visibility !== "public" ? (
-    <span className={`vis-badge vis-${s.visibility}`}>{s.visibility === "private" ? "Private" : "Invite"}</span>
+    <span
+      className={`vis-badge vis-${s.visibility}`}
+      title={s.visibility === "private"
+        ? "Private — hidden from this list; only the owner, invitees and admins see it"
+        : "Listed — anyone can see it here, but viewing it needs an invite"}
+    >
+      {s.visibility === "private" ? "Private" : "Listed"}
+    </span>
+  ) : null;
+
+// A private set is invisible to everyone but its owner, its invitees and admins.
+// When an admin is the only reason it's on screen, say so — otherwise this section
+// looks far busier to them than it does to the public.
+const AdminOnlyBadge = ({ s, isAdmin }: { s: SetEntry; isAdmin: boolean }) =>
+  isAdmin && s.visibility === "private" && !s.hasAccess ? (
+    <span className="vis-badge vis-adminonly" title="Only visible to you because you're an admin">admin view</span>
   ) : null;
 
 // Short labels for the scoring filter; mirrors api/_lib/scoring.ts ids.
@@ -37,7 +58,7 @@ const PAGE = 24; // cards shown per "page"; incremented by Show more
 
 export function Landing() {
   const { data, error, loading } = useIndex();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const sets = data?.sets ?? [];
 
   const [q, setQ] = useState("");
@@ -158,7 +179,7 @@ export function Landing() {
                 <select value={vis} onChange={(e) => setVis(e.target.value)}>
                   <option value="all">All</option>
                   <option value="public">Public</option>
-                  <option value="listed">Invite</option>
+                  <option value="listed">Listed</option>
                   <option value="private">Private</option>
                 </select>
               </label>
@@ -195,7 +216,7 @@ export function Landing() {
           const renderCard = (s: SetEntry) => (
             <Link key={s.slug} to={s.kind === "results" ? `/set/${s.slug}` : `/set/${s.slug}/tossup`} className="nav-card">
               <div className="nav-card-title">
-                {s.name} <VisBadge s={s} />
+                {s.name} <VisBadge s={s} /> <AdminOnlyBadge s={s} isAdmin={isAdmin} />
                 {s.editions && s.editions.length > 1 && <span className="edition-count">{s.editions.length} editions</span>}
               </div>
               <div className="nav-card-desc">
