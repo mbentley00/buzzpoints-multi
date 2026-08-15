@@ -34,7 +34,7 @@ export function Settings() {
   const [loading, setLoading] = useState(true);
   const [visibility, setVisibility] = useState<Visibility>("listed");
   const [autoPublish, setAutoPublish] = useState(false);
-  // Whether viewers may propose buzz corrections / player renames.
+  // Whether viewers may propose buzz corrections / renames.
   const [allowRequests, setAllowRequests] = useState(true);
   const [date, setDate] = useState("");
   const [invites, setInvites] = useState<string[]>([]);
@@ -303,7 +303,7 @@ export function Settings() {
           </label>
           <small className="muted">
             {allowRequests
-              ? "Anyone who can view this tournament can propose a buzz fix or a player rename, and you approve or reject it on the Corrections page."
+              ? "Anyone who can view this tournament can propose a buzz fix or a rename, and you approve or reject it on the Corrections page."
               : "Off — the Edit and rename controls are hidden from viewers, and no new requests can be submitted. You and any co-owners still edit directly."}
           </small>
         </div>
@@ -349,11 +349,11 @@ export function Settings() {
           </p>
           <GameFilesEditor slug={slug} />
 
-          <h2 id="renames" style={{ marginTop: 28 }}>Renamed players</h2>
+          <h2 id="renames" style={{ marginTop: 28 }}>Renamed players and teams</h2>
           <p className="muted">
-            A rename folds every buzz, box score and roster entry for a player onto one spelling — useful when the
-            source spells the same person two ways and splits their stats. Start one from a player’s page; viewers can
-            suggest one there too, and it lands on the <Link to={`/set/${slug}/requests`} className="link">Corrections</Link> page for approval.
+            A rename folds every buzz, box score and roster entry for a player or a team onto one spelling — useful when
+            the source spells the same person or school two ways and splits their stats. Start one from a player’s or a
+            team’s page; viewers can suggest one there too, and it lands on the <Link to={`/set/${slug}/requests`} className="link">Corrections</Link> page for approval.
           </p>
           <RenamesEditor slug={slug} />
         </>

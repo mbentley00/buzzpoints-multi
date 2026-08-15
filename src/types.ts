@@ -49,7 +49,7 @@ export interface SetEntry {
   hasAccess?: boolean; // viewer can already open this set (owned, invited, or public)
   invites?: string[]; // only present for the owner
   autoPublicAt?: string | null;
-  // Whether viewers may propose buzz corrections / player renames. The server
+  // Whether viewers may propose buzz corrections / renames. The server
   // normalizes the absent default to true.
   allowRequests?: boolean;
   tags?: TagSummary[]; // round-tag phases, if the owner has tagged rounds
@@ -90,22 +90,26 @@ export interface Correction {
   toWordIndex?: number | null;
 }
 
-// A set-wide player rename (see PlayerRename in api/_lib/aggregate.ts).
-// `team` scopes it to one roster; null renames the player on every team.
-export interface PlayerRename {
+// A set-wide rename of one player or one team (see Rename in
+// api/_lib/aggregate.ts). Absent `kind` means "player", the only kind the
+// earliest stored renames had. `team` scopes a player rename to one roster; null
+// renames them on every team, and a team rename is always set-wide.
+export interface Rename {
+  kind?: "player" | "team";
   from: string;
   to: string;
   team: string | null;
   by?: string;
   at?: string;
 }
+export const renameKind = (r: { kind?: string }): "player" | "team" => (r.kind === "team" ? "team" : "player");
 
-// Exactly one of `correction` (one buzz) or `rename` (a player across the whole
-// tournament) is present.
+// Exactly one of `correction` (one buzz) or `rename` (a player or team across the
+// whole tournament) is present.
 export interface CorrectionRequest {
   id: string;
   correction?: Correction & { by?: string; at?: string };
-  rename?: PlayerRename;
+  rename?: Rename;
   by: string;
   at: string;
   status: "pending" | "approved" | "rejected";
@@ -218,6 +222,9 @@ export interface Buzz {
   opponentId?: string | null;
   origPlayer?: string | null;
   origWordIndex?: number | null;
+  // The team the source named, present only where a team rename moved it. A buzz
+  // correction is addressed by the source's names, not the displayed ones.
+  origTeam?: string | null;
   // Which edition (mirror) this buzz was played in. Present only on the combined
   // view of a multi-edition set, after re-aggregation.
   editionId?: string;

@@ -1,13 +1,14 @@
 // Owner applies an edit directly (re-aggregates the set).
 // POST /api/correct { slug, correction }  -> reassign / move one buzz
-// POST /api/correct { slug, rename }      -> rename a player across the set
+// POST /api/correct { slug, rename }      -> rename a player or team across the set
 // POST /api/correct { slug, undoRename }  -> drop a stored rename
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { currentUser } from "./_lib/auth.js";
 import {
   getSetEntry, readSource, readCorrections, writeCorrections, aggregateAndWrite, mergeCorrection, validCorrection,
-  readRenames, writeRenames, mergeRename, validRename, isSetOwner,
+  readRenames, writeRenames, mergeRename, dropRename, validRename, teamMergeConflict, isSetOwner,
 } from "./_lib/sets.js";
+import { renameKind } from "./_lib/aggregate.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
@@ -22,7 +23,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!isRename && !isUndo && !validCorrection(correction))
     return res.status(400).json({ error: "Invalid correction." });
   if (isRename && !validRename(rename))
-    return res.status(400).json({ error: "Enter a different, non-empty name (200 characters max)." });
+    return res.status(400).json({ error: "Enter a different, non-empty name (120 characters max)." });
 
   try {
     const entry = await getSetEntry(slug);
@@ -35,9 +36,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (isRename || isUndo) {
       const renames = await readRenames(slug);
+      if (isRename && renameKind(rename) === "team") {
+        const conflict = teamMergeConflict(source, renames, rename);
+        if (conflict) return res.status(400).json({ error: conflict });
+      }
       const next = isRename
         ? mergeRename(renames, { ...rename, by: user, at: new Date().toISOString() })
-        : renames.filter((r) => !(r.from === undoRename?.from && (r.team ?? null) === (undoRename?.team ?? null)));
+        : dropRename(renames, undoRename || {});
       await writeRenames(slug, next);
       await aggregateAndWrite(slug, source, await readCorrections(slug));
       return res.status(200).json({ ok: true, renames: next });

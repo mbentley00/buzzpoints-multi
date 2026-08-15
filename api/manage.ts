@@ -233,7 +233,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       // Packet-round layout (+ alignment warnings) and the per-edition game list,
       // both keyed by source-array index so the editors can address one file.
-      // Applied player renames, so the owner can see and undo them (undo itself
+      // Applied player and team renames, so the owner can see and undo them (undo itself
       // goes through /api/correct, which owns the renames file).
       if (req.query.op === "renames") return res.status(200).json({ renames: await readRenames(slug) });
       // What the question metadata actually looks like across the set: every
@@ -303,7 +303,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         else return res.status(400).json({ error: "Invalid date." });
       }
       if (entry.visibility === "public") entry.autoPublicAt = null;
-      // Whether viewers may propose buzz corrections and player renames.
+      // Whether viewers may propose buzz corrections and renames.
       if (body.allowRequests !== undefined) entry.allowRequests = !!body.allowRequests;
     } else if (op === "reaggregate") {
       const source = await readSource(slug);

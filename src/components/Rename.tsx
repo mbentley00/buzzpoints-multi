@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { clearSetCache } from "../data";
 
-// Rename a player across the whole tournament. Sources often spell the same
-// person two ways between games, which splits their stats in half; this folds
-// every appearance onto one spelling.
+// Rename a player or a team across the whole tournament. Sources often spell the
+// same person — or the same school — two ways between games, which splits their
+// stats in half; this folds every appearance onto one spelling.
 //
 // Same two-track flow as a buzz correction: the owner applies it immediately,
 // anyone else with access proposes it and the owner approves on the Corrections
-// page. Scope defaults to the player's own team, since two different people on
-// different teams can share a name.
+// page. A player rename defaults to the player's own team, since two different
+// people on different teams can share a name; a team rename is always set-wide.
 
 async function postJson(url: string, body: unknown) {
   const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -17,8 +17,8 @@ async function postJson(url: string, body: unknown) {
   return d;
 }
 
-export function RenamePlayer({ slug, name, team, isOwner }: {
-  slug: string; name: string; team: string; isOwner: boolean;
+export function Rename({ slug, kind, name, team, isOwner }: {
+  slug: string; kind: "player" | "team"; name: string; team?: string; isOwner: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [to, setTo] = useState(name);
@@ -28,19 +28,20 @@ export function RenamePlayer({ slug, name, team, isOwner }: {
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
 
+  const isTeam = kind === "team";
   const changed = to.trim() !== "" && to.trim() !== name;
 
   async function submit() {
     setErr(null);
     setBusy(true);
-    const rename = { from: name, to: to.trim(), team: allTeams ? null : team };
+    const rename = { kind, from: name, to: to.trim(), team: isTeam || allTeams ? null : team };
     try {
       if (isOwner) {
         await postJson("/api/correct", { slug, rename });
         clearSetCache(slug);
-        // Player ids are positional, so a rename reshuffles them and this page's
-        // URL no longer resolves. A full load of the list picks up the rebuild.
-        window.location.href = `/set/${slug}/player`;
+        // Player and team ids are positional, so a rename reshuffles them and this
+        // page's URL no longer resolves. A full load of the list picks up the rebuild.
+        window.location.href = `/set/${slug}/${kind}`;
       } else {
         await postJson("/api/requests", { slug, action: "submit", rename, desc: desc.trim() || undefined });
         setDone("Rename suggested — the owner will review it.");
@@ -57,7 +58,7 @@ export function RenamePlayer({ slug, name, team, isOwner }: {
   if (!open)
     return (
       <button type="button" className="btn-link" onClick={() => setOpen(true)}>
-        {isOwner ? "Rename player" : "Suggest a name fix"}
+        {isOwner ? `Rename ${kind}` : "Suggest a name fix"}
       </button>
     );
 
@@ -67,10 +68,12 @@ export function RenamePlayer({ slug, name, team, isOwner }: {
         <span>Rename to</span>
         <input value={to} onChange={(e) => setTo(e.target.value)} style={{ minWidth: 220 }} />
       </label>
-      <label className="field-inline">
-        <input type="checkbox" checked={allTeams} onChange={(e) => setAllTeams(e.target.checked)} />
-        <span>Apply on every team, not just {team}</span>
-      </label>
+      {!isTeam && (
+        <label className="field-inline">
+          <input type="checkbox" checked={allTeams} onChange={(e) => setAllTeams(e.target.checked)} />
+          <span>Apply on every team, not just {team}</span>
+        </label>
+      )}
       {!isOwner && (
         <label className="field-inline" style={{ flex: "1 1 220px" }}>
           <span>Reason</span>
@@ -78,9 +81,19 @@ export function RenamePlayer({ slug, name, team, isOwner }: {
         </label>
       )}
       <small className="muted" style={{ flexBasis: "100%" }}>
-        Every buzz, box score and roster entry for <strong>{name}</strong>
-        {allTeams ? "" : <> on <strong>{team}</strong></>} will use the new name. If someone already appears under the
-        new spelling, the two merge into one player.
+        {isTeam ? (
+          <>
+            Every buzz, box score and roster entry recorded for <strong>{name}</strong> will use the new name. If another
+            team already goes by the new name, the two merge into one — so only do this for two spellings of the same
+            team, never for two teams that played each other.
+          </>
+        ) : (
+          <>
+            Every buzz, box score and roster entry for <strong>{name}</strong>
+            {allTeams ? "" : <> on <strong>{team}</strong></>} will use the new name. If someone already appears under the
+            new spelling, the two merge into one player.
+          </>
+        )}
       </small>
       <div className="buzz-edit-actions">
         <button className="btn-primary btn-sm" disabled={!changed || busy} onClick={submit}>

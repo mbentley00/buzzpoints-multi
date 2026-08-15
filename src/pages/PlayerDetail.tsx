@@ -6,7 +6,7 @@ import { Html, num, primaryAnswer } from "../util";
 import { Loading, ErrorBox, EditionBadges } from "../components/Common";
 import { CategoryStatsTable } from "../components/CategoryStatsTable";
 import { DataTable, Column } from "../components/DataTable";
-import { RenamePlayer } from "../components/RenamePlayer";
+import { Rename } from "../components/Rename";
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -64,7 +64,7 @@ export function PlayerDetailPage() {
           <p className="subtitle">
             <Link to={`/set/${slug}/team/${d.teamId}`} className="link">{d.team}</Link>
             {scope === "all" && !!d.editionIds?.length && <> · <EditionBadges ids={d.editionIds} editions={editions} /></>}
-            {user && (isOwner || allowRequests) && <> · <RenamePlayer slug={slug} name={d.name} team={d.team} isOwner={isOwner} /></>}
+            {user && (isOwner || allowRequests) && <> · <Rename slug={slug} kind="player" name={d.name} team={d.team} isOwner={isOwner} /></>}
           </p>
         </div>
         <button className="btn-primary" onClick={() => setView(view === "cat" ? "buzz" : "cat")}>

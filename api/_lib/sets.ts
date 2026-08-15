@@ -2,7 +2,7 @@
 // re-aggregation helper used by ingest and the edit endpoints.
 import { put, del } from "@vercel/blob";
 import { readBlobJson } from "./blob.js";
-import { aggregate, bonusFilesFromImported, ImportedBonus, PacketFile, GameFile, Correction, VirtualCategory, PlayerRename, MetaMap, TagEdits, AggregateConfig } from "./aggregate.js";
+import { aggregate, bonusFilesFromImported, ImportedBonus, PacketFile, GameFile, Correction, VirtualCategory, Rename, renameKind, MetaMap, TagEdits, AggregateConfig } from "./aggregate.js";
 import { getScoring } from "./scoring.js";
 
 export interface Edition {
@@ -56,7 +56,7 @@ export interface SetEntry {
   // When the "consider making this public" nudge was emailed, so it only ever
   // goes out once per set. Absent until the reminder fires.
   publicReminderAt?: string;
-  // Whether viewers may propose buzz corrections and player renames. Absent =>
+  // Whether viewers may propose buzz corrections and renames. Absent =>
   // allowed, which is the behaviour every set had before this was addable.
   // Owners still edit directly either way; this only closes the request queue.
   allowRequests?: boolean;
@@ -171,12 +171,12 @@ export function sanitizeEntry(e: SetEntry, user: string | null) {
   };
 }
 // A proposed edit awaiting the owner. Exactly one of `correction` (one buzz) or
-// `rename` (a player across the whole tournament) is set; `correction` stays
-// non-optional in shape for the many older records that predate renames.
+// `rename` (a player or team across the whole tournament) is set; `correction`
+// stays non-optional in shape for the many older records that predate renames.
 export interface CorrectionRequest {
   id: string;
   correction?: Correction;
-  rename?: PlayerRename;
+  rename?: Rename;
   by: string;
   at: string;
   status: "pending" | "approved" | "rejected";
@@ -199,35 +199,81 @@ export const writeSource = (slug: string, s: SetSource) => writeJson(`sets/${slu
 export const readCorrections = (slug: string) => readBlobJson<Correction[]>(`sets/${slug}/_corrections.json`, false).then((c) => c || []);
 export const writeCorrections = (slug: string, c: Correction[]) => writeJson(`sets/${slug}/_corrections.json`, c);
 
-// Set-wide player renames applied on (re-)aggregation. Same lifecycle as
-// corrections: the owner writes them directly, viewers propose them.
+// Set-wide player and team renames applied on (re-)aggregation. Same lifecycle
+// as corrections: the owner writes them directly, viewers propose them.
 export const readRenames = (slug: string) =>
-  readBlobJson<PlayerRename[]>(`sets/${slug}/_renames.json`, false).then((r) => r || []);
-export const writeRenames = (slug: string, r: PlayerRename[]) => writeJson(`sets/${slug}/_renames.json`, r);
+  readBlobJson<Rename[]>(`sets/${slug}/_renames.json`, false).then((r) => r || []);
+export const writeRenames = (slug: string, r: Rename[]) => writeJson(`sets/${slug}/_renames.json`, r);
 
-const renameKey = (r: PlayerRename) => `${r.team ?? ""}|${r.from}`;
+// One rename per (kind, scope, source name). A player and a team may share a
+// name without one rename standing for both.
+const renameKey = (r: Rename) => `${renameKind(r)}|${r.team ?? ""}|${r.from}`;
 
-export function validRename(r: any): r is PlayerRename {
+export function validRename(r: any): r is Rename {
   if (!r || typeof r.from !== "string" || typeof r.to !== "string") return false;
+  if (r.kind !== undefined && r.kind !== "player" && r.kind !== "team") return false;
   const from = r.from.trim(), to = r.to.trim();
   if (!from || !to || from === to) return false;
   if (from.length > 120 || to.length > 120) return false;
+  // A team rename is set-wide; only a player rename may be scoped to a roster.
+  if (renameKind(r) === "team") return r.team === null || r.team === undefined;
   return r.team === null || r.team === undefined || (typeof r.team === "string" && r.team.length <= 200);
 }
+
+// Player renames name their scope in the team's CURRENT name, so renaming a team
+// carries its players' renames over with it. Without this a team rename would
+// silently switch off every rename scoped to that team.
+const retargetScope = (list: Rename[], from: string, to: string): Rename[] =>
+  list.map((r) => (renameKind(r) === "player" && r.team === from ? { ...r, team: to } : r));
 
 // Add a rename, keeping the list a single-pass map: an existing rename whose
 // TARGET is being renamed again is retargeted rather than left to dangle, so
 // "A -> B" followed by "B -> C" ends up as "A -> C" plus "B -> C" instead of a
 // chain the aggregator would refuse to follow.
-export function mergeRename(list: PlayerRename[], incoming: PlayerRename): PlayerRename[] {
-  const inc: PlayerRename = { ...incoming, from: incoming.from.trim(), to: incoming.to.trim(), team: incoming.team ?? null };
-  const sameScope = (r: PlayerRename) => (r.team ?? null) === inc.team || r.team === null;
-  const out = list
+export function mergeRename(list: Rename[], incoming: Rename): Rename[] {
+  const kind = renameKind(incoming);
+  const inc: Rename = {
+    ...incoming, kind, from: incoming.from.trim(), to: incoming.to.trim(),
+    team: kind === "team" ? null : incoming.team ?? null,
+  };
+  // Chains and scopes only meet within one kind: renaming a team never retargets
+  // a player rename's own from/to, and vice versa.
+  const sameScope = (r: Rename) => renameKind(r) === kind && ((r.team ?? null) === inc.team || r.team === null);
+  const out = (kind === "team" ? retargetScope(list, inc.from, inc.to) : list)
     .filter((r) => renameKey(r) !== renameKey(inc))
     .map((r) => (r.to === inc.from && sameScope(r) ? { ...r, to: inc.to } : r));
   // A rename onto a name that is itself renamed away would strand the player.
   const onward = out.find((r) => r.from === inc.to && sameScope(r));
   return [...out, onward ? { ...inc, to: onward.to } : inc];
+}
+
+// Drop a stored rename, undoing what merging it did to the rest of the list.
+export function dropRename(list: Rename[], target: { from?: unknown; team?: unknown; kind?: string }): Rename[] {
+  const gone = list.find(
+    (r) => r.from === target.from && (r.team ?? null) === (target.team ?? null) && renameKind(r) === renameKind(target)
+  );
+  const rest = list.filter((r) => r !== gone);
+  return gone && renameKind(gone) === "team" ? retargetScope(rest, gone.to, gone.from) : rest;
+}
+
+// Folding two spellings of one school into a single team is the point of a team
+// rename. Teams that actually PLAYED each other are not two spellings of one
+// school, though, and merging them leaves a team facing itself: its record, its
+// opponents and its game count all become nonsense. Refuse those, naming the
+// round where they met so the owner can see what they hit.
+export function teamMergeConflict(source: SetSource, renames: Rename[], incoming: Rename): string | null {
+  const from = incoming.from.trim(), to = incoming.to.trim();
+  const at = new Map<string, string>();
+  for (const r of renames) if (renameKind(r) === "team" && r.from !== from) at.set(r.from, r.to);
+  at.set(from, to);
+  const named = (n: string) => at.get(n) ?? n;
+  for (const ed of editionsOf(source))
+    for (const g of ed.games || []) {
+      const raw = (g.match_teams || []).map((t) => t.team?.name).filter(Boolean) as string[];
+      if (raw.length === 2 && raw[0] !== raw[1] && named(raw[0]) === named(raw[1]))
+        return `“${raw[0]}” and “${raw[1]}” played each other in round ${g.round}, so they can't be the same team.`;
+    }
+  return null;
 }
 
 // Owner-defined merged ("virtual") categories applied to the tossup + bonus

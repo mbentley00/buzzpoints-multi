@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { clearSetCache, refreshIndex } from "../data";
-import { RoundWarning, PlayerRename } from "../types";
+import { RoundWarning, Rename, renameKind } from "../types";
 import { roundLabel, parseRoundInput } from "../util";
 
 // Owner-only repair tools for a tournament's uploaded files.
@@ -163,27 +163,27 @@ export function RoundAlignEditor({ slug }: { slug: string }) {
   );
 }
 
-// Player renames applied to this set, with an undo. Renames are applied from a
-// player's page (by the owner, or proposed by a viewer and approved on the
-// Corrections page); this is where they can be taken back.
+// Player and team renames applied to this set, with an undo. Renames are applied
+// from a player's or team's page (by the owner, or proposed by a viewer and
+// approved on the Corrections page); this is where they can be taken back.
 export function RenamesEditor({ slug }: { slug: string }) {
-  const [renames, setRenames] = useState<PlayerRename[] | null>(null);
+  const [renames, setRenames] = useState<Rename[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
   useEffect(() => {
-    load<{ renames: PlayerRename[] }>(slug, "renames")
+    load<{ renames: Rename[] }>(slug, "renames")
       .then((d) => setRenames(d.renames || []))
       .catch((e) => setErr(String(e.message || e)));
   }, [slug]);
 
-  async function undo(r: PlayerRename) {
-    if (!window.confirm(`Undo the rename of "${r.from}" to "${r.to}"? Their stats go back to the original spelling.`)) return;
+  async function undo(r: Rename) {
+    if (!window.confirm(`Undo the rename of "${r.from}" to "${r.to}"? The stats go back to the original spelling.`)) return;
     setBusy(true); setErr("");
     try {
       const d = await fetch("/api/correct", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ slug, undoRename: { from: r.from, team: r.team ?? null } }),
+        body: JSON.stringify({ slug, undoRename: { kind: renameKind(r), from: r.from, team: r.team ?? null } }),
       });
       const j = await d.json().catch(() => ({}));
       if (!d.ok) throw new Error((j as any).error || `Failed (${d.status})`);
@@ -193,17 +193,20 @@ export function RenamesEditor({ slug }: { slug: string }) {
 
   if (err && !renames) return <div className="error-box">{err}</div>;
   if (!renames) return <p className="muted">Loading renames…</p>;
-  if (!renames.length) return <p className="muted">No players have been renamed. Use “Rename player” on a player’s page.</p>;
+  if (!renames.length)
+    return <p className="muted">Nothing has been renamed. Use “Rename player” on a player’s page, or “Rename team” on a team’s.</p>;
 
   return (
     <div className="srcfiles">
       {err && <div className="error-box">{err}</div>}
       <ul className="invite-list">
         {renames.map((r) => (
-          <li key={`${r.team ?? ""}|${r.from}`}>
+          <li key={`${renameKind(r)}|${r.team ?? ""}|${r.from}`}>
             <span>
               <strong>{r.from}</strong> → <strong>{r.to}</strong>{" "}
-              <span className="muted">· {r.team ?? "every team"}{r.by ? ` · by ${r.by}` : ""}</span>
+              <span className="muted">
+                · {renameKind(r) === "team" ? "team" : r.team ?? "every team"}{r.by ? ` · by ${r.by}` : ""}
+              </span>
             </span>
             <button className="btn-link danger" disabled={busy} onClick={() => undo(r)}>Undo</button>
           </li>

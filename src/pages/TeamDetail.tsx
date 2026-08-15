@@ -6,6 +6,7 @@ import { num, pct } from "../util";
 import { Loading, ErrorBox, EditionBadges } from "../components/Common";
 import { CategoryGroups, CatColumn } from "../components/CategoryGroups";
 import { DataTable, Column } from "../components/DataTable";
+import { Rename } from "../components/Rename";
 
 const buzz = (v: number | null) => (v === null ? "—" : num(v));
 const rankCell = (rank?: number | null, rankOf?: number | null) =>
@@ -21,7 +22,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 export function TeamDetailPage() {
-  const { meta, scope, editions } = useSetCtx();
+  const { meta, scope, editions, isOwner, user, allowRequests } = useSetCtx();
   const { slug = "", id = "" } = useParams();
   const { data: all, error, loading } = useScopedJson<Record<string, TeamDetail>>("teams_detail.json");
   const [view, setView] = useState<"main" | "bonus">("main");
@@ -74,6 +75,7 @@ export function TeamDetailPage() {
           <p className="subtitle">
             {d.wins}-{d.losses}{d.ties ? `-${d.ties}` : ""} · {d.games} games
             {scope === "all" && !!d.editionIds?.length && <> · <EditionBadges ids={d.editionIds} editions={editions} /></>}
+            {user && (isOwner || allowRequests) && <> · <Rename slug={slug} kind="team" name={d.name} isOwner={isOwner} /></>}
           </p>
         </div>
         {teamBonus && (

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useSetCtx } from "../components/Layout";
 import { clearSetCache } from "../data";
-import { CorrectionRequest } from "../types";
+import { CorrectionRequest, renameKind } from "../types";
 import { Loading } from "../components/Common";
 import { roundLabel } from "../util";
 
@@ -15,7 +15,9 @@ async function postJson(url: string, body: unknown) {
 
 function describe(r: CorrectionRequest) {
   if (r.rename)
-    return `rename ${r.rename.from} to ${r.rename.to}${r.rename.team ? ` on ${r.rename.team}` : " on every team"}`;
+    return renameKind(r.rename) === "team"
+      ? `rename ${r.rename.from} to ${r.rename.to}`
+      : `rename ${r.rename.from} to ${r.rename.to}${r.rename.team ? ` on ${r.rename.team}` : " on every team"}`;
   const c = r.correction;
   if (!c) return "no change";
   const parts: string[] = [];
@@ -30,7 +32,9 @@ function describe(r: CorrectionRequest) {
 // A rename has no single question to link to, so it gets a plain label.
 function Title({ slug, r }: { slug: string; r: CorrectionRequest }) {
   if (r.rename)
-    return (
+    return renameKind(r.rename) === "team" ? (
+      <span className="pill">Team rename</span>
+    ) : (
       <>
         <span className="pill">Player rename</span>{" "}
         <span className="muted">{r.rename.team ?? "all teams"}</span>

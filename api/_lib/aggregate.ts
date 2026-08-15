@@ -84,23 +84,30 @@ export interface Correction {
 const corrKeyOf = (r: number, num: number, team: string | null, player: string | null, widx: number | null) =>
   `${r}|${num}|${team}|${player}|${widx}`;
 
-// A set-wide player rename. Sources spell the same person differently between
-// games ("Mike Bentley" / "Michael Bentley"), or simply get a name wrong; a
-// rename folds every appearance onto one spelling so their stats stop being
-// split in two. `team` scopes it to one roster — necessary because two different
-// people on different teams can legitimately share a name; null renames the
-// player wherever they appear.
+// A set-wide rename of one player or one team. Sources spell the same person or
+// the same school differently between games ("Mike Bentley" / "Michael Bentley",
+// "Chicago A" / "UChicago A"), or simply get a name wrong; a rename folds every
+// appearance onto one spelling so the stats stop being split in two.
+//
+// `kind` says which is being renamed; absent means "player", the only kind that
+// existed when the first renames were stored. `team` scopes a PLAYER rename to
+// one roster — necessary because two different people on different teams can
+// legitimately share a name; null renames the player wherever they appear. A
+// team rename is always set-wide, so it leaves `team` null.
 //
 // Unlike a Correction (which targets one buzz) this applies across the whole
 // tournament, but it travels the same route: the owner applies it directly, a
 // viewer submits it for approval.
-export interface PlayerRename {
+export interface Rename {
+  kind?: "player" | "team";
   from: string;
   to: string;
   team: string | null;
   by?: string;
   at?: string;
 }
+export const renameKind = (r: { kind?: string } | null | undefined): "player" | "team" =>
+  r?.kind === "team" ? "team" : "player";
 
 // An owner-defined "virtual" (merged) category: a named group that aggregates the
 // stats of one or more existing (sub)categories. `members` are subcategory path
@@ -475,7 +482,7 @@ const bnNew = (): CatBnAcc => ({ main: "", heard: 0, pts: 0, parts: new Map() })
 /* ----------------------------- accumulators ----------------------------- */
 interface TUStat { round: number; num: number; questionHtml: string; answer: string; category: string; subcategory: string; categoryMid: string; tags: string[]; words: string[]; wordCount: number; powerIndex: number | null; }
 interface BNStat { round: number; num: number; leadin: string; parts: string[]; answers: string[]; difficultyModifiers: string[]; category: string; subcategory: string; tags: string[]; }
-type Buzz = { player: string | null; team: string | null; value: number; wordIndex: number | null; opponent?: string | null; origPlayer?: string | null; origWordIndex?: number | null; firstInRoom?: boolean; editionId?: string | null; };
+type Buzz = { player: string | null; team: string | null; value: number; wordIndex: number | null; opponent?: string | null; origPlayer?: string | null; origWordIndex?: number | null; origTeam?: string | null; firstInRoom?: boolean; editionId?: string | null; };
 type CatAcc = { powers: number; gets: number; incorrect: number; points: number; posSum: number; posN: number; earliest: number | null };
 const newCatAcc = (): CatAcc => ({ powers: 0, gets: 0, incorrect: 0, points: 0, posSum: 0, posN: 0, earliest: null });
 type CatTuAcc = { main: string; heard: number; powers: number; gets: number; buzzSum: number; buzzN: number; firstConv: number; secondConv: number; incorrectBefore: number };
@@ -490,7 +497,7 @@ export function aggregate(
   cfg: AggregateConfig,
   corrections: Correction[] = [],
   virtualCats: VirtualCategory[] = [],
-  renames: PlayerRename[] = []
+  renames: Rename[] = []
 ): Record<string, unknown> {
   const scoring = cfg.scoring;
   const hasPower = scoring.hasPower;
@@ -511,12 +518,23 @@ export function aggregate(
   const corrMap = new Map<string, Correction>();
   for (const c of corrections) corrMap.set(corrKeyOf(c.round, c.num, c.team, c.fromPlayer, c.fromWordIndex), c);
 
-  // Player renames. A team-scoped rename wins over a global one. Applied in a
-  // single pass (never chained), so a rename whose target is another rename's
-  // source can't cascade.
+  // Team renames, applied before anything else reads a team name: rosters,
+  // standings and the scope of a player rename all key off the name a team ends
+  // up with, so they must all see the same one.
+  const teamRenameAt = new Map<string, string>();
+  for (const r of renames) {
+    if (renameKind(r) !== "team" || !r?.from || !r?.to) continue;
+    teamRenameAt.set(r.from, r.to);
+  }
+  const teamNamed = teamRenameAt.size ? (name: string) => teamRenameAt.get(name) ?? name : (name: string) => name;
+
+  // Player renames. A team-scoped rename wins over a global one, and its scope is
+  // stated in the team's CURRENT name (a team rename retargets the scopes along
+  // with it). Applied in a single pass (never chained), so a rename whose target
+  // is another rename's source can't cascade.
   const renameAt = new Map<string, string>();
   for (const r of renames) {
-    if (!r?.from || !r?.to) continue;
+    if (renameKind(r) !== "player" || !r?.from || !r?.to) continue;
     renameAt.set(`${r.team ?? ""}${SEP}${r.from}`, r.to);
   }
   const renamed = renameAt.size
@@ -603,7 +621,11 @@ export function aggregate(
     // Carried onto each buzz and bonus hearing so the detail views can name the
     // mirror it was played in.
     const edId = multiEdition ? g.editionId : undefined;
-    const teamNames = (g.match_teams || []).map((t) => t.team?.name).filter(Boolean) as string[];
+    // Deduped, because a rename can fold two spellings of one team together —
+    // including, in a badly aimed rename, both sides of this very game. One name
+    // then means one team here, and the head-to-head result below is skipped
+    // rather than credited to a team that played itself.
+    const teamNames = [...new Set(((g.match_teams || []).map((t) => t.team?.name).filter(Boolean) as string[]).map(teamNamed))];
     const gameId = `${r}:` + [...teamNames].sort().join("|");
     // Tossups read in this game (used to credit every teammate with a full game's
     // worth of TUH — see the players section — since sources often list only the
@@ -613,7 +635,7 @@ export function aggregate(
     const addGamePts = (t: string, v: number) => gamePts.set(t, (gamePts.get(t) || 0) + v);
 
     for (const mt of g.match_teams || []) {
-      const tname = mt.team?.name;
+      const tname = mt.team?.name ? teamNamed(mt.team.name) : null;
       if (!tname) continue;
       const t = tmOf(tname);
       t.games += 1;
@@ -648,15 +670,20 @@ export function aggregate(
         const origPlayer = bz.player?.name ?? null;
         const origWordIndex = bz.buzz_position?.word_index ?? null;
         let pname = origPlayer;
-        const bteam = bz.team?.name ?? null;
+        const origTeam = bz.team?.name ?? null;
+        const bteam = origTeam === null ? null : teamNamed(origTeam);
         let widx = origWordIndex;
         if (tnum != null) {
-          const c = corrMap.get(corrKeyOf(r, tnum, bteam, origPlayer, origWordIndex));
+          // Corrections address a buzz by the names the SOURCE gave it, so a
+          // later team rename never orphans one (and the YellowFruit export,
+          // which matches corrections back against the uploaded file, still
+          // finds its team).
+          const c = corrMap.get(corrKeyOf(r, tnum, origTeam, origPlayer, origWordIndex));
           if (c) { if (c.toPlayer !== undefined) pname = c.toPlayer; if (c.toWordIndex !== undefined) widx = c.toWordIndex; }
         }
         // After the per-buzz correction, so a reassignment lands on the renamed
-        // player too. `origPlayer` deliberately stays raw — it's the key the buzz
-        // editor uses to address this correction.
+        // player too. `origPlayer` and `origTeam` deliberately stay raw — they're
+        // the keys the buzz editor uses to address this correction.
         if (pname) pname = renamed(pname, bteam);
         // A buzz's word index is relative to the exact wording the player heard. In
         // the combined view of a multi-edition set the canonical wording may be a
@@ -675,7 +702,7 @@ export function aggregate(
           // it's the first buzz of this room's reading. Later buzzes only happen
           // after an earlier team negged and the reader resumed, so they aren't a
           // genuine same-clue race — the buzzer-race view excludes them.
-          arr.push({ player: pname, team: bteam, value, wordIndex: widx, opponent: opp, origPlayer, origWordIndex, firstInRoom: ordered.length === 1, editionId: edId });
+          arr.push({ player: pname, team: bteam, value, wordIndex: widx, opponent: opp, origPlayer, origWordIndex, origTeam, firstInRoom: ordered.length === 1, editionId: edId });
         }
         if (pname) {
           const pv = plOf(pname, bteam || "");
@@ -828,6 +855,9 @@ export function aggregate(
       teamId: b.team ? teamId.get(b.team) ?? null : null,
       opponentId: b.opponent ? teamId.get(b.opponent) ?? null : null,
       origPlayer: b.origPlayer ?? null, origWordIndex: b.origWordIndex ?? null,
+      // Only where a team rename actually moved the name — otherwise every buzz
+      // in every set would carry a copy of the team it already names.
+      ...(b.origTeam && b.origTeam !== b.team ? { origTeam: b.origTeam } : {}),
       ...(b.editionId ? { editionId: b.editionId } : {}),
     })).sort((a, b) => (a.wordIndex === null ? 1 : 0) - (b.wordIndex === null ? 1 : 0) || (a.wordIndex ?? 0) - (b.wordIndex ?? 0));
     const convPct = pct(powers + gets, heard);

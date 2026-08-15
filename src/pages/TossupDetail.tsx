@@ -208,7 +208,9 @@ function BuzzEditor({ d, b, slug, isOwner, teammates, cols, onClose, onApplied }
 
   async function submit() {
     setErr(null);
-    const correction: any = { round: d.round, num: d.num, team: b.team, fromPlayer: b.origPlayer ?? b.player, fromWordIndex: b.origWordIndex ?? b.wordIndex };
+    // Addressed by the names the source gave this buzz, not the displayed ones —
+    // a rename can have moved the player's or the team's name since.
+    const correction: any = { round: d.round, num: d.num, team: b.origTeam ?? b.team, fromPlayer: b.origPlayer ?? b.player, fromWordIndex: b.origWordIndex ?? b.wordIndex };
     if (playerChanged) correction.toPlayer = toPlayer;
     if (wordChanged) correction.toWordIndex = newWordIdx;
     setBusy(true);

@@ -8,13 +8,15 @@ import { currentUser } from "./_lib/auth.js";
 import {
   getSetEntry, readRequests, writeRequests, readSource, readCorrections, writeCorrections,
   aggregateAndWrite, mergeCorrection, validCorrection, canView, CorrectionRequest,
-  readRenames, writeRenames, mergeRename, validRename, isSetOwner, ownerEmails, requestsAllowed,
+  readRenames, writeRenames, mergeRename, validRename, teamMergeConflict, isSetOwner, ownerEmails, requestsAllowed,
 } from "./_lib/sets.js";
+import { renameKind } from "./_lib/aggregate.js";
 import { sendEmail, appUrl, correctionRequestBody } from "./_lib/email.js";
 
 // Human-readable one-line summary of a proposed edit, for the owner email.
 function requestSummary(r: CorrectionRequest): string {
   if (r.rename) {
+    if (renameKind(r.rename) === "team") return `Rename team: ${r.rename.from} → ${r.rename.to}.`;
     const scope = r.rename.team ? ` on ${r.rename.team}` : " (every team)";
     return `Rename player${scope}: ${r.rename.from} → ${r.rename.to}.`;
   }
@@ -101,7 +103,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const source = await readSource(slug);
       if (!source) return res.status(500).json({ error: "Source data not found." });
       if (r.rename) {
-        await writeRenames(slug, mergeRename(await readRenames(slug), r.rename));
+        const renames = await readRenames(slug);
+        if (renameKind(r.rename) === "team") {
+          const conflict = teamMergeConflict(source, renames, r.rename);
+          if (conflict) return res.status(400).json({ error: conflict });
+        }
+        await writeRenames(slug, mergeRename(renames, r.rename));
         await aggregateAndWrite(slug, source, await readCorrections(slug));
       } else if (r.correction) {
         const next = mergeCorrection(await readCorrections(slug), r.correction);
