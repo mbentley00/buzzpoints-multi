@@ -1,6 +1,31 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useIndex, clearSetCache } from "../data";
+
+// The set or tournament slug a Buzzpoints URL points at, or null for a bare
+// site link. Tolerates a deeper page (…/tournament/<slug>/tossup), which is
+// what you get by copying the address bar rather than a listing link.
+function targetSlug(u: string): string | null {
+  try {
+    const path = new URL(u.trim()).pathname.replace(/\/+$/, "");
+    return path.match(/\/(?:set|tournament)\/([^/]+)/)?.[1] ?? null;
+  } catch { return null; }
+}
+// Which tournament HERE that slug means. Source slugs and local names spell the
+// same tournament differently ("2025-pace-nsc" / "2025 PACE NSC"), and mirrors
+// reorder the words ("PACE NSC 2025"), so fall back to comparing the words
+// themselves as a set before giving up.
+const tokens = (x: string) => new Set(x.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
+const sameWords = (a: Set<string>, b: Set<string>) => a.size === b.size && [...a].every((t) => b.has(t));
+function matchLocal<T extends { slug: string; name: string }>(sets: T[], slug: string): T | null {
+  const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const n = norm(slug);
+  const exact = sets.find((s) => norm(s.slug) === n || norm(s.name) === n);
+  if (exact) return exact;
+  const words = tokens(slug);
+  const loose = sets.filter((s) => sameWords(tokens(s.name), words) || sameWords(tokens(s.slug), words));
+  return loose.length === 1 ? loose[0] : null;
+}
 
 // Re-runs the one import step that quietly fails: the per-bonus detail pages that
 // carry the leadin and part prompts. A scraped set gets its answers and conversion
@@ -33,19 +58,27 @@ export function BonusTextRepair() {
   const sets = index?.sets ?? [];
   const ready = !!index;
 
-  async function scanAll() {
+  // The URL serves two purposes and used not to serve the first: it says where
+  // the text is refetched FROM, and — when it names one set or tournament rather
+  // than a bare site — which tournament here is being asked about. Scanning all
+  // of them regardless made a link to one set answer with a dozen others.
+  const target = useMemo(() => targetSlug(url), [url]);
+  const scoped = useMemo(() => (target ? matchLocal(sets, target) : null), [target, sets]);
+  const unmatched = !!target && !scoped;
+
+  async function scan(list: { slug: string; name: string }[]) {
     setBusy(true); setErr(null); setLog([]); setScans(null);
     try {
       const out: Scan[] = [];
-      for (let i = 0; i < sets.length; i++) {
-        setStatus(`Checking ${i + 1} of ${sets.length}: ${sets[i].name}…`);
+      for (let i = 0; i < list.length; i++) {
+        setStatus(list.length === 1 ? `Checking ${list[0].name}…` : `Checking ${i + 1} of ${list.length}: ${list[i].name}…`);
         try {
-          const d = await post({ op: "bonus-text-scan", slug: sets[i].slug });
+          const d = await post({ op: "bonus-text-scan", slug: list[i].slug });
           if (d.missing > 0) out.push(d as unknown as Scan);
         } catch { /* a set we can't read isn't a repair candidate */ }
       }
       setScans(out);
-      setStatus(out.length ? null : "Every set has its bonus text.");
+      setStatus(out.length ? null : list.length === 1 ? `${list[0].name} already has its bonus text.` : "Every tournament has its bonus text.");
     } catch (e) { setErr(String((e as Error).message || e)); } finally { setBusy(false); }
   }
 
@@ -90,17 +123,36 @@ export function BonusTextRepair() {
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           placeholder="https://the-source-buzzpoints-site.example"
+          aria-label="Source Buzzpoints site, set, or tournament URL"
           style={{ padding: "6px 8px", border: "1px solid #cdd5e0", borderRadius: 4, minWidth: 340 }}
         />
-        <button className="btn-secondary btn-sm" disabled={busy || !ready} onClick={scanAll}>
-          {!ready ? "Loading tournaments…" : busy && !scans ? "Checking…" : "Find sets missing bonus text"}
+        <button className="btn-secondary btn-sm" disabled={busy || !ready || unmatched} onClick={() => scan(scoped ? [scoped] : sets)}>
+          {!ready ? "Loading tournaments…" : busy && !scans ? "Checking…" : scoped ? `Check ${scoped.name}` : "Check every tournament"}
         </button>
+        {scoped && (
+          <button className="btn-link" disabled={busy} onClick={() => scan(sets)}>check every tournament instead</button>
+        )}
         {scans && scans.length > 0 && (
           <button className="btn-primary btn-sm" disabled={busy || !url.trim()} onClick={() => repairAll(scans)}>
-            Fetch text for all {scans.length}
+            Fetch text for {scans.length === 1 ? scans[0].name : `all ${scans.length}`}
           </button>
         )}
       </div>
+      <p className="muted" style={{ marginTop: 6 }}>
+        {unmatched ? (
+          <span className="warn-text">
+            That link names “{target}”, but no tournament here matches it — check the name, or use
+            “check every tournament”.
+          </span>
+        ) : scoped ? (
+          <>Scoped to <strong>{scoped.name}</strong>, and its text will be refetched from that link.</>
+        ) : (
+          <>A link to the whole site checks every tournament here. Link one set or tournament to check just that one.</>
+        )}
+      </p>
+      {unmatched && (
+        <p><button className="btn-link" disabled={busy || !ready} onClick={() => scan(sets)}>Check every tournament anyway</button></p>
+      )}
       {status && <p className="muted">{status}</p>}
       {err && <div className="error-box">{err}</div>}
 
