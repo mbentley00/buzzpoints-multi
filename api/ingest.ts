@@ -32,11 +32,29 @@ const edPath = (id: string, i: number) => `imports/${id}-e${i}.json`;
 const writeJson = (path: string, obj: unknown) => put(path, JSON.stringify(obj), { access: "private", contentType: "application/json", addRandomSuffix: false, allowOverwrite: true });
 
 async function handleImport(body: any, owner: string, res: VercelResponse) {
-  // discover every set at a Buzzpoints base URL (for the admin bulk import)
+  // Discover what a Buzzpoints URL points at (for the admin bulk import).
+  // A link to the site lists every set there; a link to ONE set or ONE
+  // tournament resolves to just that, because someone who pasted a specific
+  // page meant that page — reading only its origin and importing the whole
+  // site instead is how a deliberate choice gets lost. Each row carries the
+  // kind it was found as, so the importer can rebuild the right link.
   if (body.op === "import-sets") {
-    let base: string, sets: { slug: string; name: string }[];
-    try { base = parseTarget(String(body.importUrl || "")).base; sets = await listSets(base); }
-    catch (e) { return res.status(400).json({ error: (e as Error).message }); }
+    let base: string, sets: { slug: string; name: string; kind: "set" | "tournament" }[];
+    try {
+      const t = parseTarget(String(body.importUrl || ""));
+      base = t.base;
+      // The display name lives on the listing page. It's a nicety, not the
+      // point, so fall back to the slug rather than failing the discovery.
+      if (t.kind === "set") {
+        const found = (await listSets(base).catch(() => [])).find((s) => s.slug === t.slug);
+        sets = [{ slug: t.slug!, name: found?.name || slugToName(t.slug!), kind: "set" }];
+      } else if (t.kind === "tournament") {
+        const found = (await listEditions(base, "/tournament").catch(() => [])).find((e) => e.slug === t.slug);
+        sets = [{ slug: t.slug!, name: found?.name || slugToName(t.slug!), kind: "tournament" }];
+      } else {
+        sets = (await listSets(base)).map((s) => ({ ...s, kind: "set" as const }));
+      }
+    } catch (e) { return res.status(400).json({ error: (e as Error).message }); }
     return res.status(200).json({ base, sets });
   }
 

@@ -342,6 +342,19 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
 
 /* admin bulk import */
 .bulk-import { margin-bottom: 8px; }
+/* The import queue: every row states the name and visibility it will land
+   under, so nothing about the outcome is left to be inferred from a URL. */
+.import-queue-head { display: flex; align-items: baseline; gap: 12px; margin: 18px 0 6px; }
+.import-queue-head h3 { margin: 0; font-size: 15px; }
+.import-queue { font-size: 13px; }
+.import-queue td { vertical-align: top; }
+.import-queue select { max-width: 150px; }
+.import-name { width: 100%; min-width: 200px; }
+.import-note { font-size: 11.5px; margin-top: 3px; }
+.import-src { font-size: 11.5px; line-height: 1.45; word-break: break-all; }
+/* Unticked rows stay legible — they're still editable, just not going yet. */
+.row-off { opacity: 0.55; }
+.warn-text { color: var(--neg); }
 .bulk-log {
   margin-top: 12px; max-height: 320px; overflow: auto;
   background: #1c2530; color: #e2e8f0; border-radius: 6px;
