@@ -1102,6 +1102,23 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
 }
 .file-drop:hover { border-color: #999; }
 .file-drop-over { border-color: var(--link); background: var(--info-bg); color: var(--link); }
+/* The drop invitation, then the two ways to browse. Stacked and separated so
+   "files" and "a folder" read as two distinct choices rather than one run-on
+   sentence — they open different dialogs and land you in different places. */
+.file-drop-main { display: block; }
+.file-drop-or {
+  display: block; margin: 6px 0 8px; font-size: 11.5px; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--muted);
+}
+.file-drop-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+/* Quiet next to the page's real primary action, but plainly a button. */
+.file-drop-btn {
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong);
+  border-radius: 4px; padding: 5px 12px; font: inherit; font-size: 13px; font-weight: 600;
+  cursor: pointer; white-space: nowrap;
+}
+.file-drop-btn:hover { border-color: var(--link); color: var(--link); }
+.file-drop-summary { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 .linkish {
   background: none; border: none; padding: 0; font: inherit; color: var(--link);
   cursor: pointer; text-decoration: underline;
