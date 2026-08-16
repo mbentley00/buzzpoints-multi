@@ -66,9 +66,14 @@ export function SetLayout() {
     } catch (e) { setReqState("error"); setReqMsg(String((e as Error).message || e)); }
   }
 
-  // An admin viewing a non-public set they don't own sees redacted question
-  // content until they explicitly reveal it (recorded server-side).
-  const redactedForAdmin = isAdmin && !isOwner && !!entry && entry.visibility !== "public" && !isRevealed(slug);
+  // An admin with no legitimate claim on a set sees redacted question content
+  // until they explicitly reveal it (recorded server-side). `hasAccess` is the
+  // server's own answer to that question — the same one /api/data masks on — so
+  // an admin who owns the set, or was invited to it like anyone else, is never
+  // told their content is hidden when it isn't. Absent on an index from before
+  // the flag existed: assume hidden, since that's the state the Reveal button
+  // can get out of.
+  const redactedForAdmin = isAdmin && !!entry && !entry.hasAccess && !isRevealed(slug);
   const reveal = () => {
     if (window.confirm("Reveal the hidden question content for this private tournament? This access is recorded.")) {
       setRevealed(slug);
