@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useIndex } from "../data";
 import { useAuth } from "../auth";
@@ -54,7 +54,6 @@ const SCORING_LABELS: Record<string, string> = {
 const scoringLabel = (id: string) => SCORING_LABELS[id] ?? id;
 
 type Sort = "new" | "old" | "name" | "games";
-const PAGE = 24; // cards shown per "page"; incremented by Show more
 
 export function Landing() {
   const { data, error, loading } = useIndex();
@@ -66,7 +65,6 @@ export function Landing() {
   const [vis, setVis] = useState<string>("all");
   const [lvl, setLvl] = useState<string>("all");
   const [sort, setSort] = useState<Sort>("new");
-  const [limit, setLimit] = useState(PAGE);
 
   // Scoring formats actually present, so the filter only offers real options.
   const scoringOpts = useMemo(
@@ -100,10 +98,6 @@ export function Landing() {
     return r;
   }, [sets, q, scoring, vis, lvl, sort, user]);
 
-  // Reset paging whenever the result set changes.
-  useEffect(() => setLimit(PAGE), [q, scoring, vis, lvl, sort]);
-
-  const visible = filtered.slice(0, limit);
   const showControls = data && !data.needsSetup && sets.length > 0;
 
   return (
@@ -212,44 +206,42 @@ export function Landing() {
         {showControls && filtered.length === 0 && (
           <p className="muted">No tournaments match your search.</p>
         )}
-        {visible.length > 0 && (() => {
-          const renderCard = (s: SetEntry) => (
-            <Link key={s.slug} to={s.kind === "results" ? `/set/${s.slug}` : `/set/${s.slug}/tossup`} className="nav-card">
-              <div className="nav-card-title">
-                {s.name} <VisBadge s={s} /> <AdminOnlyBadge s={s} isAdmin={isAdmin} />
+        {/* Every match is rendered — no paging. The list is the main way people
+            find a tournament, and a browser's own Ctrl+F only searches what's in
+            the page, so anything behind a "show more" button is invisible to it.
+            One flat row per set keeps a few hundred of them scannable. */}
+        {filtered.length > 0 && (() => {
+          const renderRow = (s: SetEntry) => (
+            <Link key={s.slug} to={s.kind === "results" ? `/set/${s.slug}` : `/set/${s.slug}/tossup`} className="set-row">
+              <span className="set-row-name">
+                {s.name}
+                <VisBadge s={s} />
+                <AdminOnlyBadge s={s} isAdmin={isAdmin} />
                 {s.editions && s.editions.length > 1 && <span className="edition-count">{s.editions.length} editions</span>}
-              </div>
-              <div className="nav-card-desc">
-                {s.level
-                  ? levelLabel(s.level)
-                  : `${s.numGames} games · ${s.numTeams} teams · ${s.numPlayers} players · ${s.rounds} rounds`}
-              </div>
+              </span>
+              <span className="set-row-meta">
+                {s.level && <span className="set-row-level">{levelLabel(s.level)}</span>}
+                {s.numGames} games · {s.numTeams} teams · {s.rounds} rounds
+              </span>
               {s.createdAt && (
-                <div className="nav-card-date" title={new Date(s.createdAt).toLocaleString()}>
-                  Added {formatDate(s.createdAt)} · {relativeTime(s.createdAt)}
-                </div>
+                <span className="set-row-date" title={`Added ${formatDate(s.createdAt)} — ${new Date(s.createdAt).toLocaleString()}`}>
+                  {relativeTime(s.createdAt)}
+                </span>
               )}
             </Link>
           );
           const sections = ([0, 1, 2] as const)
-            .map((g) => ({ g, items: visible.filter((s) => groupOf(s, user) === g) }))
+            .map((g) => ({ g, items: filtered.filter((s) => groupOf(s, user) === g) }))
             .filter((sec) => sec.items.length);
           // Only label sections once more than one access group is on screen.
-          if (sections.length <= 1) return <div className="card-grid">{visible.map(renderCard)}</div>;
+          if (sections.length <= 1) return <div className="set-list">{filtered.map(renderRow)}</div>;
           return sections.map((sec) => (
             <section className="set-section" key={sec.g}>
               <h3 className="set-section-title">{GROUP_LABELS[sec.g]}</h3>
-              <div className="card-grid">{sec.items.map(renderCard)}</div>
+              <div className="set-list">{sec.items.map(renderRow)}</div>
             </section>
           ));
         })()}
-        {visible.length < filtered.length && (
-          <div className="show-more">
-            <button className="btn-secondary" onClick={() => setLimit((n) => n + PAGE)}>
-              Show more ({filtered.length - visible.length} more)
-            </button>
-          </div>
-        )}
       </main>
     </div>
   );

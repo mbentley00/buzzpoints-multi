@@ -340,6 +340,36 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
 .set-card-meta, .nav-card-desc { color: var(--muted); margin-top: 4px; }
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
 
+/* The tournament list: one row per set, every match on the page at once so the
+   browser's own Ctrl+F can reach all of them. Rows share a single hairline
+   rather than each carrying a box, which is what lets a few hundred of them fit
+   somewhere scannable. */
+.set-list { border-top: 1px solid var(--line); }
+.set-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: 6px 16px;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
+  color: inherit;
+}
+.set-row:hover { text-decoration: none; background: var(--hover); }
+.set-row-name { font-weight: 600; font-size: 14px; min-width: 0; }
+.set-row-meta, .set-row-date { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+.set-row-date { min-width: 84px; text-align: right; }
+.set-row-level {
+  display: inline-block; margin-right: 8px; font-size: 11px; font-weight: 700;
+  color: var(--neutral-chip-ink); background: var(--neutral-chip);
+  padding: 1px 8px; border-radius: 10px;
+}
+/* Narrow screens: the meta drops under the name rather than squeezing it. */
+@media (max-width: 700px) {
+  .set-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .set-row-name { grid-column: 1 / -1; }
+  .set-row-meta { white-space: normal; }
+}
+
 /* admin bulk import */
 .bulk-import { margin-bottom: 8px; }
 /* The import queue: every row states the name and visibility it will land
