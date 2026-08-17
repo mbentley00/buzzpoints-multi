@@ -207,7 +207,7 @@ export const writeRenames = (slug: string, r: Rename[]) => writeJson(`sets/${slu
 
 // One rename per (kind, scope, source name). A player and a team may share a
 // name without one rename standing for both.
-const renameKey = (r: Rename) => `${renameKind(r)}|${r.team ?? ""}|${r.from}`;
+export const renameKey = (r: Rename) => `${renameKind(r)}|${r.team ?? ""}|${r.from}`;
 
 export function validRename(r: any): r is Rename {
   if (!r || typeof r.from !== "string" || typeof r.to !== "string") return false;

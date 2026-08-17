@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { refreshIndex } from "../data";
+import { refreshIndex, useIndex } from "../data";
+import { useAuth } from "../auth";
+import { SetEntry } from "../types";
 import { useSetCtx } from "../components/Layout";
 import { PageHeader, Loading, ErrorBox } from "../components/Common";
 import { uploadFiles } from "../upload";
@@ -283,8 +285,118 @@ export function Editions() {
             {addStatus && <div className="caveat">{addStatus}</div>}
             <button className="btn-primary" type="submit" disabled={adding}>{adding ? "Working…" : "Add edition"}</button>
           </form>
+
+          <h2 style={{ marginTop: 28 }}>Merge another tournament in</h2>
+          <MergeEditions slug={slug} name={meta.setName} scoring={meta.scoring} />
         </>
       )}
+    </div>
+  );
+}
+
+// Fold tournaments that are already on the site into this one as editions.
+// Different hosts run their own mirror of a set and each uploads it separately,
+// leaving three tournaments that are really one; the alternative to this is
+// collecting every host's files and uploading them all again.
+//
+// You may absorb a tournament you own or co-own. Absorbing one consumes it, so
+// anything else needs an admin — which is also the only way two different
+// hosts' uploads ever get combined, since neither owns the other's.
+function MergeEditions({ slug, name, scoring }: { slug: string; name: string; scoring?: string }) {
+  const { data: index } = useIndex();
+  const { user, isAdmin } = useAuth();
+  const [picked, setPicked] = useState<Record<string, boolean>>({});
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const candidates = useMemo(() => {
+    const mine = (s: SetEntry) => !!user && (s.owner === user || (s.coOwners ?? []).includes(user));
+    return (index?.sets ?? [])
+      .filter((s) => s.slug !== slug && s.kind !== "results" && (isAdmin || mine(s)))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [index, slug, user, isAdmin]);
+
+  const chosen = candidates.filter((s) => picked[s.slug]);
+  // Scoring is applied across every edition of a tournament, so a mirror scored
+  // differently would be silently re-scored by the merge. The server refuses
+  // these; say so before the click rather than after.
+  const mismatched = chosen.filter((s) => scoring && s.scoring && s.scoring !== scoring);
+
+  async function merge() {
+    const names = chosen.map((s) => `“${s.name}”`).join(", ");
+    if (!window.confirm(
+      `Merge ${names} into “${name}” as ${chosen.length === 1 ? "an edition" : "editions"}?\n\n` +
+      `${chosen.length === 1 ? "That tournament" : "Those tournaments"} will stop existing separately — ` +
+      `their pages, addresses and stats are replaced by editions of this one. Their buzz corrections, renames and ` +
+      `invited viewers come across. This can't be undone.`
+    )) return;
+    setBusy(true); setErr("");
+    try {
+      const r = await fetch("/api/manage", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slug, op: "merge", sources: chosen.map((s) => s.slug) }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((d as any).error || `Failed (${r.status})`);
+      refreshIndex();
+      window.location.reload();
+    } catch (e) { setErr(String((e as Error).message || e)); setBusy(false); }
+  }
+
+  if (!index) return <p className="muted">Loading tournaments…</p>;
+  if (!candidates.length)
+    return (
+      <p className="muted">
+        No other tournaments you can merge in. You can merge one you own or co-own; combining two different hosts'
+        uploads needs an admin, since neither host owns the other's.
+      </p>
+    );
+
+  return (
+    <div className="srcfiles" style={{ maxWidth: 640 }}>
+      <p className="muted">
+        Pick the other upload(s) of this same tournament. Each becomes an edition here, keeping its own games and
+        question wording, and its packets are lined up with this one's automatically.
+        {isAdmin && " As an admin you can merge tournaments you don't own."}
+      </p>
+      {err && <div className="error-box">{err}</div>}
+      <div className="srcfiles-scroll">
+        <table className="data-table srcfiles-table">
+          <thead>
+            <tr><th className="srcfiles-check"></th><th>Tournament</th><th className="right">Games</th><th className="right">Rounds</th><th>Scoring</th><th>Owner</th></tr>
+          </thead>
+          <tbody>
+            {candidates.map((s) => {
+              const bad = !!scoring && !!s.scoring && s.scoring !== scoring;
+              return (
+                <tr key={s.slug}>
+                  <td className="srcfiles-check">
+                    <input type="checkbox" checked={!!picked[s.slug]} aria-label={`Merge ${s.name}`}
+                      onChange={() => setPicked((p) => ({ ...p, [s.slug]: !p[s.slug] }))} />
+                  </td>
+                  <td>{s.name}{s.editions && s.editions.length > 1 && <span className="edition-count">{s.editions.length} editions</span>}</td>
+                  <td className="right mono">{s.numGames}</td>
+                  <td className="right mono">{s.rounds}</td>
+                  <td className={bad ? "warn-text" : "muted"}>{s.scoring}</td>
+                  <td className="muted">{s.owner === user ? "you" : s.owner ?? "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {mismatched.length > 0 && (
+        <div className="srcfiles-warn srcfiles-warn-block">
+          <strong>Different scoring.</strong> {mismatched.map((s) => `“${s.name}” is ${s.scoring}`).join("; ")}, but this
+          tournament is {scoring}. Every edition of a tournament is scored the same way, so merging would re-score those
+          buzzes — powers counted as gets, or negs that were never possible.
+        </div>
+      )}
+      <div className="srcfiles-actions">
+        <button className="btn-primary btn-sm danger-btn" disabled={busy || !chosen.length || mismatched.length > 0} onClick={merge}>
+          {busy ? "Merging…" : chosen.length ? `Merge ${chosen.length} tournament${chosen.length === 1 ? "" : "s"} in` : "Merge selected"}
+        </button>
+      </div>
     </div>
   );
 }

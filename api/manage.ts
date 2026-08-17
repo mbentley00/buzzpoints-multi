@@ -7,12 +7,12 @@
 import crypto from "node:crypto";
 import { list, del } from "@vercel/blob";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { currentUser, normEmail, canModerate, loadUsers } from "./_lib/auth.js";
+import { currentUser, normEmail, canModerate, getRole, loadUsers } from "./_lib/auth.js";
 import {
-  readIndex, writeIndex, readSource, writeSource, readCorrections, aggregateAndWrite,
+  readIndex, writeIndex, readSource, writeSource, readCorrections, writeCorrections, corrKey, aggregateAndWrite,
   readAccess, writeAccess, readLinks, writeLinks, canViewContent, effectiveVisibility, InviteLink, Visibility, AccessRole,
   writeVirtualCats, readRoundTags, writeRoundTags, DEFAULT_ROUND_TAGS, RoundTags, RoundTagsDoc, TOURNAMENT_LEVELS,
-  editionsOf, canonicalizeEditions, Edition, SetSource, AccessRequest, readRenames,
+  editionsOf, canonicalizeEditions, Edition, SetSource, AccessRequest, readRenames, writeRenames, renameKey,
   readMetaMap, writeMetaMap, readTagEdits, writeTagEdits, isSetOwner, isPrimaryOwner, ownerEmails, requestsAllowed,
 } from "./_lib/sets.js";
 import { VirtualCategory, scanRoundAlignment, metaFields, MetaMap, MetaField } from "./_lib/aggregate.js";
@@ -543,6 +543,94 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         games: finalEds.map((e) => ({ id: e.id, label: e.label, games: gameRows(e) })),
         roundWarnings: meta.roundWarnings || [], removed,
       });
+    } else if (op === "merge") {
+      // Fold other tournaments into this one as extra editions. Different hosts
+      // run their own mirror of the same set and each uploads it separately, so
+      // the site ends up with three tournaments that are one tournament; until
+      // now the only way to combine them was to get hold of every host's files
+      // and upload them all again into one.
+      //
+      // Who may do it: you must own (or co-own) the destination AND every
+      // tournament being absorbed, because absorbing one consumes it. An admin
+      // may do it regardless — which is the only way two different hosts'
+      // uploads ever get combined, since neither owns the other's.
+      if (entry.kind === "results") return res.status(400).json({ error: "This applies to buzz tournaments only." });
+      const admin = (await getRole(user)) === "admin";
+      const wanted = Array.isArray(body.sources) ? [...new Set(body.sources.map((s: unknown) => String(s)))] : null;
+      if (!wanted || !wanted.length) return res.status(400).json({ error: "Choose at least one tournament to merge in." });
+      if (wanted.includes(slug)) return res.status(400).json({ error: "A tournament can't be merged into itself." });
+
+      const sources = [];
+      for (const s of wanted) {
+        const e = index.sets.find((x) => x.slug === s);
+        if (!e) return res.status(404).json({ error: `Tournament "${s}" not found.` });
+        if (!admin && !isSetOwner(e, user)) return res.status(403).json({ error: `You don't own "${e.name}", so you can't merge it in. An admin can.` });
+        if (e.kind === "results") return res.status(400).json({ error: `"${e.name}" has no buzz data, so it can't become an edition.` });
+        // Scoring is applied uniformly across a tournament's editions, so a
+        // mirror scored differently would silently be re-scored by the merge —
+        // powers counted as gets, or negs that never existed.
+        if ((e.scoring || "") !== (entry.scoring || ""))
+          return res.status(400).json({ error: `"${e.name}" is scored ${e.scoring} but this tournament is ${entry.scoring}. Merging would re-score its buzzes.` });
+        sources.push(e);
+      }
+
+      const destSource = await readSource(slug);
+      if (!destSource) return res.status(500).json({ error: "Source data not found." });
+      let eds = editionsOf(destSource);
+      const labels = new Set(eds.map((e) => e.label));
+      let corrections = await readCorrections(slug);
+      let renames = await readRenames(slug);
+      const corrSeen = new Set(corrections.map(corrKey));
+      const renameSeen = new Set(renames.map(renameKey));
+      let hasBonuses = !!destSource.hasBonuses;
+      const absorbed: { slug: string; name: string; editions: number }[] = [];
+
+      for (const s of sources) {
+        const src = await readSource(s.slug);
+        if (!src) return res.status(500).json({ error: `Source data for "${s.name}" not found.` });
+        hasBonuses = hasBonuses || !!src.hasBonuses;
+        const incoming = editionsOf(src).filter((e) => (e.packets || []).length || (e.games || []).length);
+        if (!incoming.length) return res.status(400).json({ error: `"${s.name}" has nothing uploaded to merge.` });
+        for (const e of incoming) {
+          // Ids are positional and labels are what people read, so both are
+          // reassigned: an incoming "Original" would otherwise collide with the
+          // destination's, leaving two editions nobody can tell apart.
+          const base = labels.has(e.label) || e.label === "Original" ? s.name : e.label;
+          let label = base, n = 2;
+          while (labels.has(label)) label = `${base} (${n++})`;
+          labels.add(label);
+          eds = [...eds, { ...e, id: `e${eds.length}`, label }];
+        }
+        // The absorbed tournament's edits are its owner's work, so they come
+        // along. Anything already keyed the same in the destination wins —
+        // re-applying a correction the destination already states differently
+        // would silently overwrite the more recent decision.
+        for (const c of await readCorrections(s.slug)) if (!corrSeen.has(corrKey(c))) { corrSeen.add(corrKey(c)); corrections = [...corrections, c]; }
+        for (const r of await readRenames(s.slug)) if (!renameSeen.has(renameKey(r))) { renameSeen.add(renameKey(r)); renames = [...renames, r]; }
+        absorbed.push({ slug: s.slug, name: s.name, editions: incoming.length });
+      }
+
+      const nextSource: SetSource = { name: destSource.name, scoring: destSource.scoring, hasBonuses, editions: eds };
+      await writeSource(slug, nextSource);
+      await writeCorrections(slug, corrections);
+      await writeRenames(slug, renames);
+      const { meta, editions, tags } = await aggregateAndWrite(slug, nextSource, corrections);
+      Object.assign(entry, {
+        hasBonuses,
+        numGames: meta.numGames, numTeams: meta.numTeams, numPlayers: meta.numPlayers,
+        numTossups: meta.numTossups, rounds: meta.rounds.length, editions, tags,
+      });
+      // The absorbed tournaments are now duplicates of part of this one, so they
+      // go — anyone invited to one is carried onto the survivor, since the thing
+      // they were given access to still exists here.
+      entry.invites = [...new Set([...(entry.invites || []), ...sources.flatMap((s) => s.invites || [])])].sort();
+      const gone = new Set(absorbed.map((a) => a.slug));
+      await writeIndex({ sets: index.sets.filter((s) => !gone.has(s.slug)) });
+      for (const a of absorbed) {
+        const { blobs } = await list({ prefix: `sets/${a.slug}/` });
+        if (blobs.length) await del(blobs.map((b) => b.url));
+      }
+      return res.status(200).json({ ok: true, absorbed, editions });
     } else if (op === "delete") {
       if (!(await creatorOnly())) return res.status(403).json({ error: "Only the tournament's owner can delete it." });
       const { blobs } = await list({ prefix: `sets/${slug}/` });
