@@ -5,7 +5,7 @@ import { clearSetCache, refreshIndex } from "../data";
 import { Visibility, TOURNAMENT_LEVELS } from "../types";
 import { Loading } from "../components/Common";
 import { RoundTagsEditor } from "../components/RoundTagsEditor";
-import { RoundAlignEditor, GameFilesEditor, RenamesEditor } from "../components/SourceFiles";
+import { RoundAlignEditor, GameFilesEditor, UploadCleanup, RenamesEditor } from "../components/SourceFiles";
 import { MetaMapEditor } from "../components/MetaMapEditor";
 
 const VIS_OPTIONS: { id: Visibility; label: string; desc: string }[] = [
@@ -342,10 +342,18 @@ export function Settings() {
           </p>
           <RoundAlignEditor slug={slug} />
 
-          <h2 id="games" style={{ marginTop: 28 }}>Uploaded games</h2>
+          <h2 id="uploads" style={{ marginTop: 28 }}>Remove uploaded rounds</h2>
           <p className="muted">
-            Adding files to an edition <strong>appends</strong> them, so uploading the same games twice stores them
-            twice. Remove any game you didn't mean to add — stats are rebuilt without it.
+            Adding files to an edition <strong>appends</strong> them, so uploading the same files twice stores them
+            twice, and a wrong upload lands alongside the right one. Clear a round, an edition, or everything — the
+            tournament keeps its address, settings, invites and corrections, so you can upload replacements into it
+            instead of starting a new one.
+          </p>
+          <UploadCleanup slug={slug} />
+
+          <h2 id="games" style={{ marginTop: 28 }}>Individual games</h2>
+          <p className="muted">
+            For a single stray game rather than a whole round — a duplicate matchup, or one file that shouldn't be here.
           </p>
           <GameFilesEditor slug={slug} />
 

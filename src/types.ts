@@ -503,9 +503,11 @@ export interface CatBonusSub {
   subLabel: string;
   heard: number;
   ppb: number;
-  easyPct: number;
-  medPct: number;
-  hardPct: number;
+  // null when the packet marked no parts at that difficulty — distinct from 0,
+  // which means parts were heard and nobody got them.
+  easyPct: number | null;
+  medPct: number | null;
+  hardPct: number | null;
   leaves?: CatBonusSub[];
 }
 export interface CatBonusRow extends Omit<CatBonusSub, "subcategory" | "subLabel" | "leaves"> {

@@ -216,6 +216,136 @@ export function RenamesEditor({ slug }: { slug: string }) {
   );
 }
 
+// Clear uploads wholesale — by round, by edition, or the lot. A botched upload
+// is the common repair: files APPEND to an edition, so re-uploading doubles
+// everything, and the wrong packet set lands alongside the right one. Ticking
+// hundreds of individual game rows is not a repair anyone finishes, so removal
+// is offered at the level people actually think in — "round 5 is wrong",
+// "start this mirror over" — while the tournament itself, with its slug,
+// settings, invites and corrections, stays put to upload replacements into.
+export function UploadCleanup({ slug }: { slug: string }) {
+  const [editions, setEditions] = useState<EditionRounds[] | null>(null);
+  const [picked, setPicked] = useState<Record<string, boolean>>({}); // `${editionId}:${round}`
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    load<{ editions: EditionRounds[] }>(slug, "rounds")
+      .then((d) => setEditions(d.editions || []))
+      .catch((e) => setErr(String(e.message || e)));
+  }, [slug]);
+
+  // One row per round an edition has anything filed under, from either side:
+  // a packet with no games and games with no packet are exactly the mistakes
+  // worth seeing here, so neither source alone can build the list.
+  const roundsOf = (ed: EditionRounds) => {
+    const m = new Map<number, { round: number; packets: number; tossups: number; games: number }>();
+    const at = (r: number) => { let v = m.get(r); if (!v) { v = { round: r, packets: 0, tossups: 0, games: 0 }; m.set(r, v); } return v; };
+    for (const p of ed.packets) { const v = at(p.round); v.packets++; v.tossups += p.tossups; }
+    for (const g of ed.gameRounds) at(g.round).games += g.count;
+    return [...m.values()].sort((a, b) => a.round - b.round);
+  };
+  const pickedIn = (ed: EditionRounds) => roundsOf(ed).filter((r) => picked[`${ed.id}:${r.round}`]);
+  const setMany = (edId: string, rounds: number[], on: boolean) =>
+    setPicked((p) => { const n = { ...p }; for (const r of rounds) n[`${edId}:${r}`] = on; return n; });
+
+  async function remove(body: Record<string, unknown>, confirmMsg: string) {
+    if (!window.confirm(`${confirmMsg}\n\nStats are rebuilt without them. This can't be undone — you'd have to upload the files again. The tournament itself, and its settings and corrections, are kept.`)) return;
+    setBusy(true); setErr("");
+    try {
+      await post({ slug, op: "remove-uploads", ...body });
+      applied(slug);
+    } catch (e) { setErr(String((e as Error).message || e)); setBusy(false); }
+  }
+
+  if (err && !editions) return <div className="error-box">{err}</div>;
+  if (!editions) return <p className="muted">Loading rounds…</p>;
+
+  const total = editions.reduce((n, ed) => n + roundsOf(ed).reduce((k, r) => k + r.games, 0), 0);
+  const totalPk = editions.reduce((n, ed) => n + ed.packets.length, 0);
+  if (!total && !totalPk) return <p className="muted">Nothing uploaded — this tournament has no packets or games.</p>;
+
+  return (
+    <div className="srcfiles">
+      {err && <div className="error-box">{err}</div>}
+      {editions.map((ed) => {
+        const rows = roundsOf(ed);
+        const sel = pickedIn(ed);
+        return (
+          <div className="srcfiles-ed" key={ed.id}>
+            {editions.length > 1 && <h3 className="srcfiles-ed-name">{ed.label}</h3>}
+            {rows.length === 0 ? (
+              <p className="muted">Nothing uploaded in this edition.</p>
+            ) : (
+              <>
+                <div className="srcfiles-scroll">
+                  <table className="data-table srcfiles-table">
+                    <thead>
+                      <tr><th className="srcfiles-check"></th><th className="right">Round</th><th className="right">Packets</th><th className="right">Questions</th><th className="right">Games</th></tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r) => (
+                        <tr key={r.round}>
+                          <td className="srcfiles-check">
+                            <input
+                              type="checkbox" checked={!!picked[`${ed.id}:${r.round}`]}
+                              aria-label={`Round ${roundLabel(r.round)}`}
+                              onChange={() => setPicked((p) => ({ ...p, [`${ed.id}:${r.round}`]: !p[`${ed.id}:${r.round}`] }))}
+                            />
+                          </td>
+                          <td className="right mono">{roundLabel(r.round)}</td>
+                          <td className="right mono">{r.packets || <span className="muted">—</span>}</td>
+                          <td className="right mono">{r.tossups || <span className="muted">—</span>}</td>
+                          <td className="right mono">{r.games || <span className="muted">—</span>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="srcfiles-actions">
+                  <button type="button" className="mini-btn" onClick={() => setMany(ed.id, rows.map((r) => r.round), true)}>Select all</button>
+                  <button type="button" className="mini-btn" onClick={() => setMany(ed.id, rows.map((r) => r.round), false)}>Clear</button>
+                  <button
+                    className="btn-primary btn-sm danger-btn" disabled={busy || !sel.length}
+                    onClick={() => remove(
+                      { editionId: ed.id, rounds: sel.map((r) => r.round) },
+                      `Remove ${sel.length} round${sel.length === 1 ? "" : "s"} from “${ed.label}” — ${sel.reduce((n, r) => n + r.packets, 0)} packet(s) and ${sel.reduce((n, r) => n + r.games, 0)} game(s)?`
+                    )}
+                  >
+                    {busy ? "Removing…" : sel.length ? `Remove ${sel.length} round${sel.length === 1 ? "" : "s"} & rebuild` : "Remove selected rounds"}
+                  </button>
+                  <button
+                    className="btn-link danger" disabled={busy}
+                    onClick={() => remove(
+                      { editionId: ed.id },
+                      `Remove EVERYTHING uploaded to “${ed.label}” — all ${ed.packets.length} packet(s) and ${rows.reduce((n, r) => n + r.games, 0)} game(s)?`
+                    )}
+                  >
+                    Remove everything in {editions.length > 1 ? `“${ed.label}”` : "this tournament"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })}
+      {editions.length > 1 && (
+        <p style={{ marginTop: 10 }}>
+          <button
+            className="btn-link danger" disabled={busy}
+            onClick={() => remove(
+              { editionId: "*" },
+              `Remove EVERYTHING uploaded to this tournament — all ${totalPk} packet(s) and ${total} game(s) across all ${editions.length} editions?`
+            )}
+          >
+            Remove everything in every edition
+          </button>
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function GameFilesEditor({ slug }: { slug: string }) {
   const [editions, setEditions] = useState<EditionGames[] | null>(null);
   const [picked, setPicked] = useState<Record<string, boolean>>({}); // `${editionId}:${index}`

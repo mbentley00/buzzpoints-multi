@@ -188,7 +188,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // join via invite link
       const key = String(body.key || "");
       const links = await readLinks(slug);
-      const link = links.find((l) => l.id === key && !l.revoked);
+      // Never let a blank or stub key match: an id that somehow came out empty
+      // would otherwise turn "no key at all" into a valid one.
+      const link = key.length >= 8 ? links.find((l) => l.id === key && !l.revoked) : undefined;
       if (!link) return res.status(404).json({ error: "This invite link is invalid or has been revoked." });
       if (!canViewContent(entry, user)) {
         entry.invites = [...new Set([...(entry.invites ?? []), user])].sort();
@@ -355,7 +357,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ ok: true, accessRequests: access.filter((a) => a.status === "pending"), resolvedRequests: resolvedList(access) });
     } else if (op === "create-link") {
       const links = await readLinks(slug);
-      const link: InviteLink = { id: crypto.randomBytes(9).toString("base64url"), label: String(body.label || "").slice(0, 60), by: user, at: new Date().toISOString(), uses: 0 };
+      // 256 bits. This id IS the credential — anyone holding it can add
+      // themselves to a private tournament, it never expires, and nothing rate
+      // limits attempts against it, so it has to be far out of guessing range
+      // rather than merely inconvenient to type. Links issued before this stay
+      // valid; only newly minted ones are longer.
+      const link: InviteLink = { id: crypto.randomBytes(32).toString("base64url"), label: String(body.label || "").slice(0, 60), by: user, at: new Date().toISOString(), uses: 0 };
       links.unshift(link);
       await writeLinks(slug, links);
       return res.status(200).json({ ok: true, link, url: `${appUrl()}/join/${slug}?key=${link.id}`, links });
@@ -429,11 +436,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       entry.tags = tags;
       await writeIndex(index);
       return res.status(200).json({ ok: true, roundTags: next, tags });
-    } else if (op === "remap-rounds" || op === "remove-files") {
+    } else if (op === "remap-rounds" || op === "remove-files" || op === "remove-uploads") {
       if (entry.kind === "results") return res.status(400).json({ error: "This applies to buzz tournaments only." });
       const source = await readSource(slug);
       if (!source) return res.status(500).json({ error: "Source data not found (set predates source storage; re-create it)." });
       const eds = editionsOf(source);
+      let nextEds: Edition[];
+      const removed = { packets: 0, games: 0 };
+
+      // Clear uploads wholesale: by round, by edition, or the lot. A botched
+      // upload is the common case (files APPEND, so a re-upload doubles
+      // everything), and picking hundreds of game rows out of a table one at a
+      // time is not a repair anyone completes. Scope is explicit rather than
+      // inferred: "*" is every edition, and omitting `rounds` means every round.
+      if (op === "remove-uploads") {
+        const everyEdition = body.editionId === "*";
+        const targets = everyEdition ? eds : eds.filter((e) => e.id === String(body.editionId || ""));
+        if (!targets.length) return res.status(404).json({ error: "Edition not found." });
+        const what = body.what === "games" || body.what === "packets" ? body.what : "all";
+        let roundSet: Set<number> | null = null;
+        if (body.rounds !== undefined && body.rounds !== null) {
+          if (!Array.isArray(body.rounds) || body.rounds.some((r: unknown) => !Number.isInteger(Number(r))))
+            return res.status(400).json({ error: "Invalid round selection." });
+          roundSet = new Set(body.rounds.map(Number));
+          if (!roundSet.size) return res.status(400).json({ error: "No rounds selected." });
+        }
+        const inScope = (r: number) => roundSet === null || roundSet.has(r);
+        const ids = new Set(targets.map((e) => e.id));
+        nextEds = eds.map((e) => {
+          if (!ids.has(e.id)) return e;
+          const packets = what === "games" ? e.packets || [] : (e.packets || []).filter((p) => !inScope(p.round));
+          const games = what === "packets" ? e.games || [] : (e.games || []).filter((g) => !inScope(g.round));
+          removed.packets += (e.packets || []).length - packets.length;
+          removed.games += (e.games || []).length - games.length;
+          return { ...e, packets, games };
+        });
+        if (!removed.packets && !removed.games)
+          return res.status(400).json({ error: "Nothing to remove — no packets or games matched that selection." });
+        // fall through to the shared write below
+      } else {
+
       const edId = String(body.editionId || "");
       const ed = eds.find((e) => e.id === edId);
       if (!ed) return res.status(404).json({ error: "Edition not found." });
@@ -479,13 +521,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           games: (ed.games || []).filter((_, i) => !dropG.includes(i)),
         };
       }
+      nextEds = eds.map((e) => (e.id === edId ? next : e));
+      }
 
-      const nextEds = eds.map((e) => (e.id === edId ? next : e));
       // An edition with nothing left in it is dead weight in every edition
-      // picker, so drop it — unless it's the only one (the set keeps its shell
-      // so the owner can upload replacements into it).
+      // picker, so drop it — unless that would leave none: a tournament whose
+      // uploads were all cleared keeps its shell (settings, invites, slug) so
+      // replacements can be uploaded into it instead of it being re-created.
       const kept = nextEds.filter((e) => (e.packets || []).length || (e.games || []).length);
-      const finalEds = kept.length ? kept : nextEds.slice(0, 1);
+      const finalEds = kept.length ? kept : nextEds.slice(0, 1).map((e) => ({ ...e, packets: [], games: [] }));
       const nextSource = withEditions(source, finalEds);
       await writeSource(slug, nextSource);
       const { meta, editions, tags } = await aggregateAndWrite(slug, nextSource, await readCorrections(slug));
@@ -497,7 +541,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({
         ok: true, editions: finalEds.map(editionView),
         games: finalEds.map((e) => ({ id: e.id, label: e.label, games: gameRows(e) })),
-        roundWarnings: meta.roundWarnings || [],
+        roundWarnings: meta.roundWarnings || [], removed,
       });
     } else if (op === "delete") {
       if (!(await creatorOnly())) return res.status(403).json({ error: "Only the tournament's owner can delete it." });

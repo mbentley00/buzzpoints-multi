@@ -474,7 +474,16 @@ function buildVirtualNode<A>(
 
 /* ----------------------------- bonus category helpers ----------------------------- */
 const DIFF_NAME: Record<string, string> = { e: "Easy", m: "Medium", h: "Hard" };
-const diffPct = (parts: Map<string, [number, number]>, d: string) => { const [g, t] = parts.get(d) || [0, 0]; return pct(g, t); };
+// The difficulty a source marked a bonus part with, or "" when it marked none.
+// Plenty of packets carry no [10e]/[10m]/[10h] at all, and calling those parts
+// medium invents a fact: it puts real conversion behind a Medium label and
+// reports a hard part as an easy one. Unmarked parts stay unmarked, and simply
+// don't contribute to the easy/medium/hard breakdowns.
+const diffAt = (mods: string[], i: number) => mods[i] || "";
+const diffLabel = (d: string) => DIFF_NAME[d] || (d ? d.toUpperCase() : "Unmarked");
+// null, not 0, when nothing of this difficulty was heard — "—" reads as "no
+// data", where "0.0%" reads as "nobody converted them".
+const diffPct = (parts: Map<string, [number, number]>, d: string) => { const [g, t] = parts.get(d) || [0, 0]; return t ? pct(g, t) : null; };
 const bnFin = (a: CatBnAcc) => ({ heard: a.heard, ppb: a.heard ? Math.round((100 * a.pts) / a.heard) / 100 : 0, easyPct: diffPct(a.parts, "e"), medPct: diffPct(a.parts, "m"), hardPct: diffPct(a.parts, "h") });
 const bnAdd = (a: CatBnAcc, s: CatBnAcc) => { a.main = a.main || s.main; a.heard += s.heard; a.pts += s.pts; for (const [d, gt] of s.parts) { const slot = a.parts.get(d) || [0, 0]; slot[0] += gt[0]; slot[1] += gt[1]; a.parts.set(d, slot); } };
 const bnNew = (): CatBnAcc => ({ main: "", heard: 0, pts: 0, parts: new Map() });
@@ -759,7 +768,7 @@ export function aggregate(
             tbc.main = bdef.category; tbc.heard++; tbc.pts += total;
             for (let i = 0; i < parts.length; i++) {
               const got = (partPts[i] || 0) + (bbPts[i] || 0);
-              const diff = bdef.difficultyModifiers[i] || "m";
+              const diff = diffAt(bdef.difficultyModifiers, i);
               const slot = tbc.parts.get(diff) || [0, 0];
               slot[1] += 1; if (got > 0) slot[0] += 1;
               tbc.parts.set(diff, slot);
@@ -911,8 +920,8 @@ export function aggregate(
       if (!cb) { cb = bnNew(); cb.main = b.category; catBnSub.set(b.subcategory, cb); }
       for (let i = 0; i < b.parts.length; i++) {
         const got = results.filter((r) => (r.partPts[i] || 0) > 0 || (r.bbPts[i] || 0) > 0).length;
-        const diff = b.difficultyModifiers[i] || "m";
-        const row = { idx: i, difficulty: diff, difficultyName: DIFF_NAME[diff] || "Medium", answer: b.answers[i] || "", part: b.parts[i] || "", convPct: pct(got, heard), convCount: got };
+        const diff = diffAt(b.difficultyModifiers, i);
+        const row = { idx: i, difficulty: diff, difficultyName: diffLabel(diff), answer: b.answers[i] || "", part: b.parts[i] || "", convPct: pct(got, heard), convCount: got };
         partConv.push(row);
         if (!byDiff[diff]) byDiff[diff] = { answer: row.answer, convPct: row.convPct };
         const slot = cb.parts.get(diff) || [0, 0]; slot[0] += got; slot[1] += heard; cb.parts.set(diff, slot);
@@ -924,7 +933,7 @@ export function aggregate(
         ta.heard += heard; ta.pts += totalPts;
         for (let i = 0; i < b.parts.length; i++) {
           const got = results.filter((r) => (r.partPts[i] || 0) > 0 || (r.bbPts[i] || 0) > 0).length;
-          const diff = b.difficultyModifiers[i] || "m";
+          const diff = diffAt(b.difficultyModifiers, i);
           const slot = ta.parts.get(diff) || [0, 0]; slot[0] += got; slot[1] += heard; ta.parts.set(diff, slot);
         }
       }
@@ -1316,8 +1325,8 @@ export function bonusFilesFromImported(list: ImportedBonus[], virtualCats: Virtu
     if (!cb) { cb = bnNew(); cb.main = main; catBnSub.set(sub, cb); }
     for (let i = 0; i < b.answers.length; i++) {
       const got = b.got[i] || 0;
-      const diff = b.difficultyModifiers[i] || "m";
-      const row = { idx: i, difficulty: diff, difficultyName: DIFF_NAME[diff] || "Medium", answer: b.answers[i] || "", part: b.parts[i] || "", convPct: pct(got, heard), convCount: got };
+      const diff = diffAt(b.difficultyModifiers, i);
+      const row = { idx: i, difficulty: diff, difficultyName: diffLabel(diff), answer: b.answers[i] || "", part: b.parts[i] || "", convPct: pct(got, heard), convCount: got };
       partConv.push(row);
       if (!byDiff[diff]) byDiff[diff] = { answer: row.answer, convPct: row.convPct };
       const slot = cb.parts.get(diff) || [0, 0]; slot[0] += got; slot[1] += heard; cb.parts.set(diff, slot);
