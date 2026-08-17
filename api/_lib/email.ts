@@ -83,8 +83,28 @@ export const verifyEmailBody = (name: string, url: string) =>
 export const resetPasswordBody = (name: string, url: string) =>
   wrap(`<p>Hi ${esc(name)},</p><p>Use this link to choose a new Buzzpoints password.</p>${btn(url, "Reset password")}<p style="font-size:12px;color:#888">The link expires in an hour and works once. If you didn't ask to reset your password, ignore this email — your current one still works.</p>`);
 
-export const accessRequestBody = (requester: string, setName: string, url: string, affiliation?: string) =>
-  wrap(`<p><strong>${esc(requester)}</strong> requested access to <strong>${esc(setName)}</strong>.</p>${affiliation ? `<p><strong>Affiliation:</strong> ${esc(affiliation)}</p>` : ""}<p>Review and approve or deny the request in the tournament's settings.</p>${btn(url, "Review request")}`);
+// Whoever is being asked to approve something about a tournament should be able
+// to see, without opening it, who can currently read it — the same three words
+// the Settings dropdown uses, with what each one actually means. Approving an
+// edit, an access request, or a whole submission all read differently depending
+// on whether the thing is public.
+const VIS_MEANING: Record<string, string> = {
+  public: "anyone can find it in the tournament list and read the questions",
+  listed: "shown in the tournament list, but opening it needs an invite",
+  private: "hidden from the list; only the owner, invitees and admins can open it",
+};
+export const VIS_LABEL: Record<string, string> = { public: "Public", listed: "Listed", private: "Private" };
+// `lead` carries the tense: an existing tournament "is currently", a queued
+// submission "would be created as". Absent/unknown visibility renders nothing
+// rather than guessing at one.
+const visLine = (visibility: string | undefined | null, lead: string) => {
+  const v = String(visibility || "");
+  if (!VIS_MEANING[v]) return "";
+  return `<p style="font-size:13px;color:#555">${lead} <strong>${VIS_LABEL[v]}</strong> — ${VIS_MEANING[v]}.</p>`;
+};
+
+export const accessRequestBody = (requester: string, setName: string, url: string, affiliation?: string, visibility?: string) =>
+  wrap(`<p><strong>${esc(requester)}</strong> requested access to <strong>${esc(setName)}</strong>.</p>${affiliation ? `<p><strong>Affiliation:</strong> ${esc(affiliation)}</p>` : ""}${visLine(visibility, "This tournament is currently")}<p>Review and approve or deny the request in the tournament's settings.</p>${btn(url, "Review request")}`);
 
 export const accessGrantedBody = (setName: string, url: string) =>
   wrap(`<p>You've been granted access to <strong>${esc(setName)}</strong> on Buzzpoints.</p>${btn(url, "Open tournament")}`);
@@ -104,13 +124,16 @@ export const publishReminderBody = (setName: string, uploaded: string, url: stri
   );
 
 // Sent to the owner when a viewer submits a correction (edit) request.
-export const correctionRequestBody = (requester: string, setName: string, summary: string, desc: string, url: string) =>
-  wrap(`<p><strong>${esc(requester)}</strong> suggested an edit to <strong>${esc(setName)}</strong>.</p><p>${esc(summary)}</p>${desc ? `<p><strong>Note:</strong> ${esc(desc)}</p>` : ""}<p>Review and approve or reject it on the tournament's Requests page.</p>${btn(url, "Review edit")}`);
+export const correctionRequestBody = (requester: string, setName: string, summary: string, desc: string, url: string, visibility?: string) =>
+  wrap(`<p><strong>${esc(requester)}</strong> suggested an edit to <strong>${esc(setName)}</strong>.</p><p>${esc(summary)}</p>${desc ? `<p><strong>Note:</strong> ${esc(desc)}</p>` : ""}${visLine(visibility, "This tournament is currently")}<p>Review and approve or reject it on the tournament's Requests page.</p>${btn(url, "Review edit")}`);
 
 // Sent to moderators/admins when a first-time poster submits a tournament.
 // `approveUrl` is a one-click approval link; `reviewUrl` opens the dashboard.
-export const submissionPendingBody = (submitter: string, setName: string, reviewUrl: string, approveUrl: string) =>
-  wrap(`<p><strong>${esc(submitter)}</strong> submitted their first tournament, <strong>${esc(setName)}</strong>, for review.</p><p>It won't be published until you approve it.</p>${btn(approveUrl, "Approve & publish")}<p style="font-size:13px;color:#555">Want to look first? <a href="${reviewUrl}">Review it in the dashboard</a>.</p>`);
+// The submission isn't a set yet, so its visibility is the one the submitter
+// ASKED for — worth stating next to a button labelled "publish", which for a
+// private submission publishes it to nobody.
+export const submissionPendingBody = (submitter: string, setName: string, reviewUrl: string, approveUrl: string, visibility?: string) =>
+  wrap(`<p><strong>${esc(submitter)}</strong> submitted their first tournament, <strong>${esc(setName)}</strong>, for review.</p><p>It won't be published until you approve it.</p>${visLine(visibility, "They asked for it to be")}${btn(approveUrl, "Approve & publish")}<p style="font-size:13px;color:#555">Want to look first? <a href="${reviewUrl}">Review it in the dashboard</a>.</p>`);
 
 // Sent to the submitter once their first tournament is approved.
 export const submissionApprovedBody = (setName: string, url: string) =>

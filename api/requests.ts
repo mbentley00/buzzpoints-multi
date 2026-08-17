@@ -7,7 +7,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { currentUser } from "./_lib/auth.js";
 import {
   getSetEntry, readRequests, writeRequests, readSource, readCorrections, writeCorrections,
-  aggregateAndWrite, mergeCorrection, validCorrection, canView, CorrectionRequest,
+  aggregateAndWrite, mergeCorrection, validCorrection, canView, effectiveVisibility, CorrectionRequest,
   readRenames, writeRenames, mergeRename, validRename, teamMergeConflict, isSetOwner, ownerEmails, requestsAllowed,
 } from "./_lib/sets.js";
 import { renameKind } from "./_lib/aggregate.js";
@@ -77,7 +77,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await sendEmail({
           to,
           subject: `Edit suggested — ${entry.name}`,
-          html: correctionRequestBody(user, entry.name, requestSummary(r), r.desc || "", `${appUrl()}/set/${slug}/requests`),
+          html: correctionRequestBody(user, entry.name, requestSummary(r), r.desc || "", `${appUrl()}/set/${slug}/requests`, effectiveVisibility(entry)),
         });
       return res.status(200).json({ ok: true, id: r.id });
     } catch (e) {

@@ -10,7 +10,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { currentUser, normEmail, canModerate, loadUsers } from "./_lib/auth.js";
 import {
   readIndex, writeIndex, readSource, writeSource, readCorrections, aggregateAndWrite,
-  readAccess, writeAccess, readLinks, writeLinks, canViewContent, InviteLink, Visibility, AccessRole,
+  readAccess, writeAccess, readLinks, writeLinks, canViewContent, effectiveVisibility, InviteLink, Visibility, AccessRole,
   writeVirtualCats, readRoundTags, writeRoundTags, DEFAULT_ROUND_TAGS, RoundTags, RoundTagsDoc, TOURNAMENT_LEVELS,
   editionsOf, canonicalizeEditions, Edition, SetSource, AccessRequest, readRenames,
   readMetaMap, writeMetaMap, readTagEdits, writeTagEdits, isSetOwner, isPrimaryOwner, ownerEmails, requestsAllowed,
@@ -181,7 +181,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await writeAccess(slug, [rec, ...access.filter((a) => a.email !== user)]);
         // Anyone who can approve it hears about it — co-owners included.
         for (const to of ownerEmails(entry))
-          await sendEmail({ to, subject: `Access request — ${entry.name}`, html: accessRequestBody(`${rec.name} (${user})`, entry.name, `${setUrl(slug)}/settings?review=access`, `${role}, ${team}`) });
+          await sendEmail({ to, subject: `Access request — ${entry.name}`, html: accessRequestBody(`${rec.name} (${user})`, entry.name, `${setUrl(slug)}/settings?review=access`, `${role}, ${team}`, effectiveVisibility(entry)) });
         return res.status(200).json({ ok: true });
       }
 

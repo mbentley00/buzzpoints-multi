@@ -510,7 +510,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // 30-day, signed one-click approval link the admin can act on from the email.
       const approveUrl = `${appUrl()}/api/moderate?approve=${encodeURIComponent(signPurpose(id, "approve-sub", 60 * 60 * 24 * 30))}`;
       for (const to of await moderatorEmails())
-        await sendEmail({ to, subject: `Approve tournament — ${name}`, html: submissionPendingBody(`${byName} (${owner})`, name, reviewUrl, approveUrl) });
+        await sendEmail({ to, subject: `Approve tournament — ${name}`, html: submissionPendingBody(`${byName} (${owner})`, name, reviewUrl, approveUrl, rec.visibility) });
 
       // The full JSON is now copied into the pending payload; drop the temp uploads.
       await cleanupTemp(tempPaths);
