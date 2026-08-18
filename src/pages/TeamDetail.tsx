@@ -12,9 +12,9 @@ const buzz = (v: number | null) => (v === null ? "—" : num(v));
 const rankCell = (rank?: number | null, rankOf?: number | null) =>
   rank == null ? "—" : rankOf ? `${rank} / ${rankOf}` : String(rank);
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
-    <div className="stat">
+    <div className="stat" title={title}>
       <div className="stat-value">{value}</div>
       <div className="stat-label">{label}</div>
     </div>
@@ -43,6 +43,7 @@ export function TeamDetailPage() {
     { label: "Rank", align: "right", title: "This team's rank in the category by total points, of the teams that played it", main: (g) => rankCell(g.rank, g.rankOf), sub: (s) => rankCell(s.rank, s.rankOf) },
     { label: "Earliest", align: "right", main: (g) => g.earliest ?? "—", sub: (s) => s.earliest ?? "—" },
     { label: "Avg Buzz", align: "right", main: (g) => buzz(g.avgBuzz), sub: (s) => buzz(s.avgBuzz) },
+    { label: "BPA", align: "right", title: "Buzz point area-under-the-curve: how much of each question went unread thanks to early correct buzzes, per tossup heard. Higher is faster.", main: (g) => num(g.bpa), sub: (s) => num(s.bpa) },
     { label: "% Pts", align: "right", main: (g) => num(g.pctPoints, 1), sub: (s) => num(s.pctPoints, 1) },
   ];
 
@@ -89,6 +90,7 @@ export function TeamDetailPage() {
         <Stat label="PPG" value={num(d.ppg)} />
         {teamBonus && <Stat label="PPB" value={num(d.ppb, 2)} />}
         <Stat label="PP20TUH" value={num(d.pp20tuh)} />
+        <Stat label="BPA" value={num(d.bpa)} title="Buzz point area-under-the-curve: how much of each question went unread thanks to early correct buzzes, per tossup heard. Higher is faster." />
         {meta.hasPower && <Stat label="Powers" value={String(d.powers)} />}
         <Stat label="Correct" value={String(d.gets)} />
         <Stat label={meta.hasNeg ? "Neg" : "Inc"} value={String(d.incorrect)} />

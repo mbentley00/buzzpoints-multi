@@ -320,6 +320,10 @@ export interface PlayerRow {
   rebounds: number;
   ppg: number;
   pPerTuh: number;
+  // BPA (buzz point area-under-the-curve): 100 x the share of each question left
+  // unread by an early correct buzz, per tossup heard. null when nothing was
+  // heard. See api/_lib/aggregate.ts and https://www.qbwiki.com/wiki/BPA.
+  bpa: number | null;
 }
 
 export interface CategoryStat {
@@ -331,6 +335,9 @@ export interface CategoryStat {
   earliest: number | null;
   avgBuzz: number | null;
   pctPoints: number;
+  // Spread over the tossups heard IN THIS CATEGORY, so it is comparable with the
+  // overall figure rather than diluted by everything else that was read.
+  bpa: number | null;
 }
 
 export interface PlayerBuzz {
@@ -374,6 +381,10 @@ export interface TeamRow {
   bonusesHeard: number;
   ppb: number;
   pp20tuh: number;
+  // BPA (buzz point area-under-the-curve): 100 x the share of each question left
+  // unread by an early correct buzz, per tossup heard. null when nothing was
+  // heard. See api/_lib/aggregate.ts and https://www.qbwiki.com/wiki/BPA.
+  bpa: number | null;
 }
 
 export interface RosterPlayer {
@@ -398,6 +409,7 @@ export interface CatTeamTossupSub {
   earliest: number | null;
   avgBuzz: number | null;
   pctPoints: number;
+  bpa: number | null;
   rank?: number | null;   // this team's rank in this category by total points
   rankOf?: number | null; // number of teams that played this category
   leaves?: CatTeamTossupSub[];

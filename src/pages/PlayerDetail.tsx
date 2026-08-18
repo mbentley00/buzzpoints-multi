@@ -8,9 +8,9 @@ import { CategoryStatsTable } from "../components/CategoryStatsTable";
 import { DataTable, Column } from "../components/DataTable";
 import { Rename } from "../components/Rename";
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
-    <div className="stat">
+    <div className="stat" title={title}>
       <div className="stat-value">{value}</div>
       <div className="stat-label">{label}</div>
     </div>
@@ -80,6 +80,7 @@ export function PlayerDetailPage() {
         <Stat label={meta.hasNeg ? "Neg" : "Inc"} value={String(d.incorrect)} />
         <Stat label="Points" value={String(d.pts)} />
         <Stat label="PPG" value={num(d.ppg)} />
+        <Stat label="BPA" value={num(d.bpa)} title="Buzz point area-under-the-curve: how much of each question went unread thanks to early correct buzzes, per tossup heard. Higher is faster." />
         <Stat label="1st buzzes" value={String(d.firstBuzzes)} />
         <Stat label="Top 3" value={String(d.top3Buzzes)} />
       </div>

@@ -52,6 +52,26 @@ export function About() {
             ))}
           </dl>
 
+          <h2>BPA</h2>
+          <p>
+            Player and team pages carry <strong>BPA</strong> (buzz point area-under-the-curve), an advanced stat devised
+            by Ryan Rosenberg. It measures how much of each question went unread because of a player's early correct
+            buzzes, spread across every tossup they heard:
+          </p>
+          <p className="about-formula">BPA = 100 × Σ (1 − buzz position ÷ question length) ÷ tossups heard</p>
+          <p>
+            It separates players whose points-per-game or power counts look alike but who buzz at different points in a
+            question. Only correct buzzes count — a neg leaves a question unread too, but that isn't an achievement — and
+            only those whose recorded position can be trusted, the same test the buzz ranks use. A category's BPA is
+            spread over the tossups heard <em>in that category</em>, so it can be read on the same scale as the overall
+            figure rather than being diluted by everything else that was read.
+          </p>
+          <p className="about-foot">
+            See <a href="https://www.qbwiki.com/wiki/BPA" target="_blank" rel="noreferrer">BPA on QBWiki</a> and the
+            original <a href="https://github.com/dhoth/Quizbowl-BPA" target="_blank" rel="noreferrer">Quizbowl-BPA</a>{" "}
+            notebook.
+          </p>
+
           <h2>Credit</h2>
           <p className="about-foot">
             Buzzpoints.buzz is maintained by <a href="mailto:bentley.michael.j@gmail.com">Mike Bentley</a>.

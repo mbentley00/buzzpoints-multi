@@ -43,6 +43,14 @@ export function CategoryStatsTable({
       title: "Average word position of correct buzzes",
     },
     {
+      key: "bpa",
+      label: "BPA",
+      align: "right",
+      sortVal: (c) => c.bpa ?? -1,
+      render: (c) => num(c.bpa),
+      title: "Buzz point area-under-the-curve, over the tossups heard in this category — so it compares with the overall figure rather than being diluted by everything else read",
+    },
+    {
       key: "pct",
       label: "% of Points",
       align: "right",

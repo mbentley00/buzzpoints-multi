@@ -1166,3 +1166,15 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
   background: none; border: none; padding: 0; font: inherit; color: var(--link);
   cursor: pointer; text-decoration: underline;
 }
+
+/* The BPA formula on the About page — set apart from the prose so the symbols
+   don't have to be read as a sentence. */
+.about-formula {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13.5px;
+  background: var(--surface-2);
+  border-left: 3px solid var(--line-strong);
+  border-radius: 4px;
+  padding: 10px 14px;
+  overflow-x: auto;
+}

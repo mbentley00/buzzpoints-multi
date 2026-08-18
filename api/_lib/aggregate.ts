@@ -492,8 +492,11 @@ const bnNew = (): CatBnAcc => ({ main: "", heard: 0, pts: 0, parts: new Map() })
 interface TUStat { round: number; num: number; questionHtml: string; answer: string; category: string; subcategory: string; categoryMid: string; tags: string[]; words: string[]; wordCount: number; powerIndex: number | null; }
 interface BNStat { round: number; num: number; leadin: string; parts: string[]; answers: string[]; difficultyModifiers: string[]; category: string; subcategory: string; tags: string[]; }
 type Buzz = { player: string | null; team: string | null; value: number; wordIndex: number | null; opponent?: string | null; origPlayer?: string | null; origWordIndex?: number | null; origTeam?: string | null; firstInRoom?: boolean; editionId?: string | null; };
-type CatAcc = { powers: number; gets: number; incorrect: number; points: number; posSum: number; posN: number; earliest: number | null };
-const newCatAcc = (): CatAcc => ({ powers: 0, gets: 0, incorrect: 0, points: 0, posSum: 0, posN: 0, earliest: null });
+// `unread` is the BPA numerator: the fraction of each question left unread,
+// summed over reliably-placed correct buzzes. `tuh` is its denominator, filled
+// in per team from what was actually read (players inherit their team's).
+type CatAcc = { powers: number; gets: number; incorrect: number; points: number; posSum: number; posN: number; earliest: number | null; unread: number; tuh: number };
+const newCatAcc = (): CatAcc => ({ powers: 0, gets: 0, incorrect: 0, points: 0, posSum: 0, posN: 0, earliest: null, unread: 0, tuh: 0 });
 type CatTuAcc = { main: string; heard: number; powers: number; gets: number; buzzSum: number; buzzN: number; firstConv: number; secondConv: number; incorrectBefore: number };
 type CatBnAcc = { main: string; heard: number; pts: number; parts: Map<string, [number, number]> };
 type TuCat = CatAcc & { main: string };
@@ -590,9 +593,9 @@ export function aggregate(
   const tuHeard = new Map<string, number>();
   const bnResults = new Map<string, { team: string | null; partPts: number[]; bbPts: number[]; total: number; editionId?: string }[]>();
 
-  type PL = { name: string; team: string; games: Set<string>; tuh: number; powers: number; gets: number; incorrect: number; pts: number };
+  type PL = { name: string; team: string; games: Set<string>; tuh: number; powers: number; gets: number; incorrect: number; pts: number; unread: number };
   const pl = new Map<string, PL>();
-  type TM = { games: number; wins: number; losses: number; ties: number; tuPts: number; bonusPts: number; bonusesHeard: number; powers: number; gets: number; incorrect: number; tuh: number; fullTuh: number };
+  type TM = { games: number; wins: number; losses: number; ties: number; tuPts: number; bonusPts: number; bonusesHeard: number; powers: number; gets: number; incorrect: number; tuh: number; fullTuh: number; unread: number };
   const tm = new Map<string, TM>();
   const rosters = new Map<string, Set<string>>();
   const plCat = new Map<string, Map<string, CatAcc>>();      // player -> categoryMid -> acc
@@ -600,24 +603,50 @@ export function aggregate(
   const plBuzzes = new Map<string, { round: number; num: number; value: number; widx: number | null; rebound: boolean }[]>();
   const tmBonusCat = new Map<string, Map<string, BnCat>>();
   const tmTuCat = new Map<string, Map<string, TuCat>>();
+  // Tossups a team HEARD, by category — kept separately from the buzz
+  // accumulators above, which only ever see categories the team buzzed in. Mid
+  // and full-path keys are held apart because a subcategory can be spelled the
+  // same as the mid-level category it sits under.
+  const tmCatHeardMid = new Map<string, Map<string, number>>();
+  const tmCatHeardSub = new Map<string, Map<string, number>>();
+  const bumpHeard = (m: Map<string, Map<string, number>>, team: string, cat: string) => {
+    let inner = m.get(team); if (!inner) { inner = new Map(); m.set(team, inner); }
+    inner.set(cat, (inner.get(cat) || 0) + 1);
+  };
 
   const plKey = (n: string, t: string | null) => `${n}${SEP}${t}`;
   const plOf = (name: string, team: string): PL => {
     const k = plKey(name, team);
     let v = pl.get(k);
-    if (!v) { v = { name, team, games: new Set(), tuh: 0, powers: 0, gets: 0, incorrect: 0, pts: 0 }; pl.set(k, v); }
+    if (!v) { v = { name, team, games: new Set(), tuh: 0, powers: 0, gets: 0, incorrect: 0, pts: 0, unread: 0 }; pl.set(k, v); }
     return v;
   };
-  const tmOf = (k: string): TM => { let v = tm.get(k); if (!v) { v = { games: 0, wins: 0, losses: 0, ties: 0, tuPts: 0, bonusPts: 0, bonusesHeard: 0, powers: 0, gets: 0, incorrect: 0, tuh: 0, fullTuh: 0 }; tm.set(k, v); } return v; };
+  const tmOf = (k: string): TM => { let v = tm.get(k); if (!v) { v = { games: 0, wins: 0, losses: 0, ties: 0, tuPts: 0, bonusPts: 0, bonusesHeard: 0, powers: 0, gets: 0, incorrect: 0, tuh: 0, fullTuh: 0, unread: 0 }; tm.set(k, v); } return v; };
   const nestCat = <V>(m: Map<string, Map<string, V>>, k: string, sub: string, make: () => V): V => {
     let inner = m.get(k); if (!inner) { inner = new Map(); m.set(k, inner); }
     let v = inner.get(sub); if (!v) { v = make(); inner.set(sub, v); } return v;
   };
-  const addCat = (c: CatAcc, value: number, widx: number | null, prec: boolean) => {
+  const addCat = (c: CatAcc, value: number, widx: number | null, prec: boolean, unread = 0) => {
     if (isPower(value)) c.powers++; else if (isGet(value)) c.gets++; else if (countsNeg(value)) c.incorrect++;
     c.points += value;
-    if (prec && widx !== null) { c.posSum += widx; c.posN++; c.earliest = c.earliest === null ? widx : Math.min(c.earliest, widx); }
+    if (prec && widx !== null) { c.posSum += widx; c.posN++; c.earliest = c.earliest === null ? widx : Math.min(c.earliest, widx); c.unread += unread; }
   };
+
+  // BPA (buzz point area-under-the-curve, Ryan Rosenberg): the share of each
+  // question a player left unread by buzzing early, summed over the tossups they
+  // converted and spread across every tossup they heard —
+  //
+  //     BPA = 100 × Σ(1 − buzzPosition / questionLength) / tossupsHeard
+  //
+  // It separates players whose PPG or power count match but who buzz at
+  // different points. Only correct buzzes count (a neg leaves the question
+  // unread too, but that isn't an achievement), and only ones whose position can
+  // be trusted — the same reliability test the buzz ranks use — because a buzz
+  // recorded at the wrong word would be scored as if it were fast.
+  // See https://www.qbwiki.com/wiki/BPA.
+  const unreadOf = (widx: number | null, wordCount: number) =>
+    widx === null || wordCount <= 0 ? 0 : Math.max(0, 1 - widx / wordCount);
+  const bpaOf = (unread: number, tuh: number) => (tuh > 0 ? round1((100 * unread) / tuh) : null);
 
   // Games always carry their edition (phase membership is decided per edition),
   // but only annotate buzzes when this aggregation actually spans more than one
@@ -669,7 +698,12 @@ export function aggregate(
       const tnum = mq.tossup_question?.question_number;
       const key = tnum != null ? `${r}-${tnum}` : null;
       const tq = key ? tossups.get(key) : undefined;
-      if (tq) tuHeard.set(key!, (tuHeard.get(key!) || 0) + 1);
+      if (tq) {
+        tuHeard.set(key!, (tuHeard.get(key!) || 0) + 1);
+        // Everyone in the room heard it, whoever buzzed — this is the "tossups
+        // heard" a category BPA is spread over.
+        for (const t of teamNames) { bumpHeard(tmCatHeardMid, t, tq.categoryMid); bumpHeard(tmCatHeardSub, t, tq.subcategory); }
+      }
       let converted = false;
       let controlling: string | null = null;
       const ordered: { value: number; pname: string | null; bteam: string | null; widx: number | null }[] = [];
@@ -719,8 +753,10 @@ export function aggregate(
           pv.pts += value;
           if (tq) {
             const prec = isCorrect(value) && !imprecise(value, widx, tq.powerIndex);
-            addCat(nestCat(plCat, plKey(pname, bteam || ""), tq.categoryMid, newCatAcc), value, widx, prec);
-            addCat(nestCat(plFullCat, plKey(pname, bteam || ""), tq.subcategory, newCatAcc), value, widx, prec);
+            const unread = prec ? unreadOf(widx, tq.wordCount) : 0;
+            pv.unread += unread;
+            addCat(nestCat(plCat, plKey(pname, bteam || ""), tq.categoryMid, newCatAcc), value, widx, prec, unread);
+            addCat(nestCat(plFullCat, plKey(pname, bteam || ""), tq.subcategory, newCatAcc), value, widx, prec, unread);
           }
         }
         if (bteam) {
@@ -729,9 +765,12 @@ export function aggregate(
           t.tuPts += value;
           addGamePts(bteam, value);
           if (tq) {
+            const prec = isCorrect(value) && !imprecise(value, widx, tq.powerIndex);
+            const unread = prec ? unreadOf(widx, tq.wordCount) : 0;
+            t.unread += unread;
             const tc = nestCat<TuCat>(tmTuCat, bteam, tq.subcategory, () => ({ ...newCatAcc(), main: tq.category }));
             tc.main = tq.category;
-            addCat(tc, value, widx, isCorrect(value) && !imprecise(value, widx, tq.powerIndex));
+            addCat(tc, value, widx, prec, unread);
           }
         }
         if (isCorrect(value)) { converted = true; controlling = bteam; }
@@ -973,12 +1012,13 @@ export function aggregate(
   }
 
   /* ----------------------------- players (list + detail) ----------------------------- */
-  const catStatRows = (catMap: Map<string, CatAcc> | undefined, totalPts: number) => {
+  const catStatRows = (catMap: Map<string, CatAcc> | undefined, totalPts: number, heard?: Map<string, number>) => {
     const rows = [...(catMap || new Map<string, CatAcc>()).entries()].map(([cat, c]) => ({
       category: cat, powers: c.powers, gets: c.gets, incorrect: c.incorrect, points: c.points,
       earliest: c.earliest === null ? null : c.earliest + 1,
       avgBuzz: c.posN ? round1(c.posSum / c.posN + 1) : null,
       pctPoints: totalPts ? round1((100 * c.points) / totalPts) : 0,
+      bpa: bpaOf(c.unread, heard?.get(cat) || 0),
     }));
     rows.sort((a, b) => a.category.toLowerCase().localeCompare(b.category.toLowerCase()));
     return rows;
@@ -1020,11 +1060,14 @@ export function aggregate(
       games: g, tuh, powers: s.powers, gets: s.gets, incorrect: s.incorrect, pts: s.pts,
       firstBuzzes: firstPl.get(k) || 0, top3Buzzes: top3Pl.get(k) || 0, rebounds,
       ppg: g ? round1(s.pts / g) : 0, pPerTuh: tuh ? Math.round((100 * s.pts) / tuh) / 100 : 0,
+      // Over the same tossups-heard the rest of this row uses, so BPA and PPG are
+      // talking about the same denominator.
+      bpa: bpaOf(s.unread, tuh),
     };
     players.push(row);
     if (!teamRoster.has(s.team)) teamRoster.set(s.team, []);
     teamRoster.get(s.team)!.push(row);
-    plDetail[pid] = { ...row, categories: catStatRows(plCat.get(k), s.pts || 0), buzzes: buzzRowsFor(s.name, s.team) };
+    plDetail[pid] = { ...row, categories: catStatRows(plCat.get(k), s.pts || 0, tmCatHeardMid.get(s.team)), buzzes: buzzRowsFor(s.name, s.team) };
   }
   players.sort((a, b) => (b.ppg as number) - (a.ppg as number));
   files["players.json"] = players;
@@ -1032,12 +1075,18 @@ export function aggregate(
 
   /* ----------------------------- teams (list + detail) ----------------------------- */
   const tutNew = (): TuCat => ({ ...newCatAcc(), main: "" });
-  const tutAdd = (a: TuCat, s: TuCat) => { a.main = a.main || s.main; a.powers += s.powers; a.gets += s.gets; a.incorrect += s.incorrect; a.points += s.points; a.posSum += s.posSum; a.posN += s.posN; if (s.earliest !== null) a.earliest = a.earliest === null ? s.earliest : Math.min(a.earliest, s.earliest); };
+  const tutAdd = (a: TuCat, s: TuCat) => { a.main = a.main || s.main; a.powers += s.powers; a.gets += s.gets; a.incorrect += s.incorrect; a.points += s.points; a.posSum += s.posSum; a.posN += s.posN; a.unread += s.unread; a.tuh += s.tuh; if (s.earliest !== null) a.earliest = a.earliest === null ? s.earliest : Math.min(a.earliest, s.earliest); };
   const tutFin = (totalPts: number) => (a: TuCat) => ({
     heard: a.powers + a.gets + a.incorrect, powers: a.powers, gets: a.gets, incorrect: a.incorrect, points: a.points,
     earliest: a.earliest === null ? null : a.earliest + 1, avgBuzz: a.posN ? round1(a.posSum / a.posN + 1) : null,
     pctPoints: totalPts ? round1((100 * a.points) / totalPts) : 0,
+    bpa: bpaOf(a.unread, a.tuh),
   });
+
+  // A leaf's denominator is what that team heard in that subcategory; parents get
+  // theirs by summing, which is right because a tossup sits in exactly one.
+  for (const [team, subs] of tmTuCat)
+    for (const [sub, acc] of subs) acc.tuh = tmCatHeardSub.get(team)?.get(sub) || 0;
 
   const teams: Record<string, unknown>[] = [];
   const tmDetail: Record<string, unknown> = {};
@@ -1051,6 +1100,9 @@ export function aggregate(
       firstBuzzes: firstTm.get(name) || 0, top3Buzzes: top3Tm.get(name) || 0,
       bonusesHeard: s.bonusesHeard, ppb: s.bonusesHeard ? Math.round((100 * s.bonusPts) / s.bonusesHeard) / 100 : 0,
       pp20tuh: s.tuh ? round1((20 * s.tuPts) / s.tuh) : 0,
+      // fullTuh, not tuh: a team heard every tossup read in its games, whether or
+      // not the source listed a player against each one.
+      bpa: bpaOf(s.unread, s.fullTuh),
     };
     teams.push(row);
     const roster = (teamRoster.get(name) || []).slice().sort((a, b) => (b.pts as number) - (a.pts as number))
