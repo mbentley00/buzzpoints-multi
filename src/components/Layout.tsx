@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, Link, Outlet, useParams, useLocation, useOutletContext } from "react-router-dom";
-import { useSetJson, useIndex, isRevealed, setRevealed, clearSetCache } from "../data";
+import { useSetJson, useIndex, isRevealed, setRevealed, clearSetCache, isContentRedacted } from "../data";
 import { Meta, SetCtx } from "../types";
 import { useAuth } from "../auth";
 import { Loading, ErrorBox, AuthNav } from "./Common";
@@ -66,14 +66,14 @@ export function SetLayout() {
     } catch (e) { setReqState("error"); setReqMsg(String((e as Error).message || e)); }
   }
 
-  // An admin with no legitimate claim on a set sees redacted question content
-  // until they explicitly reveal it (recorded server-side). `hasAccess` is the
-  // server's own answer to that question — the same one /api/data masks on — so
-  // an admin who owns the set, or was invited to it like anyone else, is never
-  // told their content is hidden when it isn't. Absent on an index from before
-  // the flag existed: assume hidden, since that's the state the Reveal button
-  // can get out of.
-  const redactedForAdmin = isAdmin && !!entry && !entry.hasAccess && !isRevealed(slug);
+  // Say content is hidden only when the server actually hid it. Every earlier
+  // version of this re-derived the answer on the client — from visibility and
+  // ownership, then from the index's hasAccess — and a derived answer can
+  // disagree with the bytes on screen: join a set and the index snapshot behind
+  // the notice still says you're an outsider. /api/data now reports what it did,
+  // so this reads the fact instead of predicting it. Gated on `meta` because
+  // that report only exists once a response has come back.
+  const redactedForAdmin = isAdmin && !!meta && isContentRedacted(slug) && !isRevealed(slug);
   const reveal = () => {
     if (window.confirm("Reveal the hidden question content for this private tournament? This access is recorded.")) {
       setRevealed(slug);

@@ -31,6 +31,13 @@ export function setRevealed(slug: string) {
   try { sessionStorage.setItem(`reveal:${slug}`, "1"); } catch { /* ignore */ }
 }
 
+// Whether the server is withholding question content from us, per slug, as
+// reported by the last /api/data response. The server decides this — the client
+// guessing at it from the set index is how a "content is hidden" notice ended up
+// outliving the access that made it true.
+const redacted = new Map<string, boolean>();
+export const isContentRedacted = (slug: string): boolean => redacted.get(slug) === true;
+
 export function loadSetJson<T>(slug: string, file: string, bust = 0): Promise<T> {
   const reveal = isRevealed(slug);
   const key = `${slug}/${file}#${bust}${reveal ? "#r" : ""}`;
@@ -41,6 +48,10 @@ export function loadSetJson<T>(slug: string, file: string, bust = 0): Promise<T>
       key,
       fetch(url).then((r) => {
         if (!r.ok) throw new Error(`${file}: ${r.status}`);
+        // Recorded before the JSON resolves to the caller, so a component
+        // rendering on the data has the answer by the time it renders.
+        const state = r.headers.get("x-bp-content");
+        if (state) redacted.set(slug, state === "redacted");
         return r.json();
       })
     );
@@ -50,6 +61,8 @@ export function loadSetJson<T>(slug: string, file: string, bust = 0): Promise<T>
 
 export function clearSetCache(slug: string) {
   for (const k of [...cache.keys()]) if (k.startsWith(`${slug}/`)) cache.delete(k);
+  // Access may be exactly what changed, so the old answer can't be carried over.
+  redacted.delete(slug);
 }
 
 function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) {

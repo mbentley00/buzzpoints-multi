@@ -32,14 +32,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const legit = canViewContent(entry, user); // owner / invited / public
     const reveal = String(req.query.reveal || "") === "1";
+    const revealing = !legit && canReveal && reveal;
     if (!legit) {
-      if (canReveal && reveal) {
+      if (revealing) {
         console.warn(`[admin-reveal] ${user} viewed content of ${path}`);
       } else if (CONTENT_FILES.has(base)) {
         try { text = JSON.stringify(redactContent(base, JSON.parse(text))); } catch { /* serve as-is on parse failure */ }
       }
     }
     res.setHeader("content-type", "application/json");
+    // Whether question content is being withheld from this caller. The client
+    // used to work this out for itself from the set index, which meant a banner
+    // announcing hidden content could contradict the content actually sent --
+    // after being invited to a set, say. This is the same `legit` the masking
+    // above is keyed on, so the notice and the bytes can no longer disagree.
+    // Sent on every file, not just maskable ones, so any request answers it.
+    res.setHeader("x-bp-content", legit || revealing ? "full" : "redacted");
     // Only effectively-public content is cacheable by shared caches.
     res.setHeader("cache-control", legit && effectiveVisibility(entry) === "public" ? "public, max-age=30, stale-while-revalidate=300" : "private, no-store");
     return res.status(200).send(text);
