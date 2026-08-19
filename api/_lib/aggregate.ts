@@ -1189,7 +1189,11 @@ export function aggregate(
         if (!matchFn(fs)) continue;
         matched = true;
         agg.powers += c.powers; agg.gets += c.gets; agg.incorrect += c.incorrect; agg.points += c.points;
-        agg.posSum += c.posSum; agg.posN += c.posN;
+        agg.posSum += c.posSum; agg.posN += c.posN; agg.unread += c.unread;
+        // The BPA denominator for this slice: what the player's team heard in
+        // each subcategory the filter matched. Summing is right because a tossup
+        // belongs to exactly one subcategory, so nothing is counted twice.
+        agg.tuh += tmCatHeardSub.get(p.team)?.get(fs) || 0;
         if (c.earliest !== null) agg.earliest = agg.earliest === null ? c.earliest : Math.min(agg.earliest, c.earliest);
         agg.first += firstPlfc.get(`${k}${SEP}${fs}`) || 0;
         agg.top3 += top3Plfc.get(`${k}${SEP}${fs}`) || 0;
@@ -1199,7 +1203,7 @@ export function aggregate(
           playerId: playerId.get(k) ?? null, name: p.name, team: p.team, teamId: teamId.get(p.team) ?? null,
           powers: agg.powers, gets: agg.gets, incorrect: agg.incorrect, points: agg.points,
           earliest: agg.earliest === null ? null : agg.earliest + 1, avgBuzz: agg.posN ? round1(agg.posSum / agg.posN + 1) : null,
-          firstBuzzes: agg.first, top3Buzzes: agg.top3,
+          firstBuzzes: agg.first, top3Buzzes: agg.top3, bpa: bpaOf(agg.unread, agg.tuh),
         });
     }
     rows.sort((a, b) => (b.points as number) - (a.points as number) || (a.name as string).toLowerCase().localeCompare((b.name as string).toLowerCase()));

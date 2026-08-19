@@ -454,6 +454,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const targets = everyEdition ? eds : eds.filter((e) => e.id === String(body.editionId || ""));
         if (!targets.length) return res.status(404).json({ error: "Edition not found." });
         const what = body.what === "games" || body.what === "packets" ? body.what : "all";
+        // Games belonging to named teams. Uploading a mirror's files into the
+        // wrong edition mixes two tournaments into one round range, so neither
+        // "drop these rounds" nor "drop this edition" can separate them — but
+        // the teams tell them apart cleanly. Packets have no team, so this only
+        // ever removes games.
+        let teamSet: Set<string> | null = null;
+        if (body.teams !== undefined && body.teams !== null) {
+          if (!Array.isArray(body.teams) || body.teams.some((t: unknown) => typeof t !== "string"))
+            return res.status(400).json({ error: "Invalid team selection." });
+          teamSet = new Set(body.teams.map((t: string) => t));
+          if (!teamSet.size) return res.status(400).json({ error: "No teams selected." });
+        }
         let roundSet: Set<number> | null = null;
         if (body.rounds !== undefined && body.rounds !== null) {
           if (!Array.isArray(body.rounds) || body.rounds.some((r: unknown) => !Number.isInteger(Number(r))))
@@ -462,11 +474,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (!roundSet.size) return res.status(400).json({ error: "No rounds selected." });
         }
         const inScope = (r: number) => roundSet === null || roundSet.has(r);
+        const playedBySelected = (g: { match_teams?: { team?: { name?: string } }[] }) =>
+          (g.match_teams || []).some((t) => t.team?.name && teamSet!.has(t.team.name));
         const ids = new Set(targets.map((e) => e.id));
         nextEds = eds.map((e) => {
           if (!ids.has(e.id)) return e;
-          const packets = what === "games" ? e.packets || [] : (e.packets || []).filter((p) => !inScope(p.round));
-          const games = what === "packets" ? e.games || [] : (e.games || []).filter((g) => !inScope(g.round));
+          // A team selection never touches packets, and narrows the games to
+          // those the named teams played (still inside any chosen rounds).
+          const packets = what === "games" || teamSet ? e.packets || [] : (e.packets || []).filter((p) => !inScope(p.round));
+          const games =
+            what === "packets" ? e.games || []
+            : teamSet ? (e.games || []).filter((g) => !(inScope(g.round) && playedBySelected(g)))
+            : (e.games || []).filter((g) => !inScope(g.round));
           removed.packets += (e.packets || []).length - packets.length;
           removed.games += (e.games || []).length - games.length;
           return { ...e, packets, games };

@@ -225,7 +225,9 @@ export function RenamesEditor({ slug }: { slug: string }) {
 // settings, invites and corrections, stays put to upload replacements into.
 export function UploadCleanup({ slug }: { slug: string }) {
   const [editions, setEditions] = useState<EditionRounds[] | null>(null);
+  const [gameEds, setGameEds] = useState<EditionGames[] | null>(null);
   const [picked, setPicked] = useState<Record<string, boolean>>({}); // `${editionId}:${round}`
+  const [pickedTeam, setPickedTeam] = useState<Record<string, boolean>>({}); // `${editionId}:${team}`
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -233,7 +235,29 @@ export function UploadCleanup({ slug }: { slug: string }) {
     load<{ editions: EditionRounds[] }>(slug, "rounds")
       .then((d) => setEditions(d.editions || []))
       .catch((e) => setErr(String(e.message || e)));
+    load<{ editions: EditionGames[] }>(slug, "games")
+      .then((d) => setGameEds(d.editions || []))
+      .catch(() => { /* the round view still works without it */ });
   }, [slug]);
+
+  // Every team in an edition, with how many games it played and which rounds
+  // they fell in. Uploading one mirror's files into another's edition mixes two
+  // tournaments across the same rounds, where neither a round nor an edition
+  // can separate them — but the teams do.
+  const teamsOf = (edId: string) => {
+    const ed = (gameEds || []).find((e) => e.id === edId);
+    const m = new Map<string, { name: string; games: number; rounds: Set<number> }>();
+    for (const g of ed?.games || [])
+      for (const t of g.teams) {
+        let v = m.get(t); if (!v) { v = { name: t, games: 0, rounds: new Set() }; m.set(t, v); }
+        v.games++; v.rounds.add(g.round);
+      }
+    return [...m.values()].sort((a, b) => b.games - a.games || a.name.localeCompare(b.name));
+  };
+  const pickedTeamsIn = (edId: string) => teamsOf(edId).filter((t) => pickedTeam[`${edId}:${t.name}`]);
+  // Games the selection would take: any game with at least one chosen team.
+  const gamesForTeams = (edId: string, names: Set<string>) =>
+    ((gameEds || []).find((e) => e.id === edId)?.games || []).filter((g) => g.teams.some((t) => names.has(t))).length;
 
   // One row per round an edition has anything filed under, from either side:
   // a packet with no games and games with no packet are exactly the mistakes
@@ -271,6 +295,9 @@ export function UploadCleanup({ slug }: { slug: string }) {
       {editions.map((ed) => {
         const rows = roundsOf(ed);
         const sel = pickedIn(ed);
+        const teams = teamsOf(ed.id);
+        const selTeams = pickedTeamsIn(ed.id);
+        const teamGames = gamesForTeams(ed.id, new Set(selTeams.map((t) => t.name)));
         return (
           <div className="srcfiles-ed" key={ed.id}>
             {editions.length > 1 && <h3 className="srcfiles-ed-name">{ed.label}</h3>}
@@ -324,6 +351,62 @@ export function UploadCleanup({ slug }: { slug: string }) {
                     Remove everything in {editions.length > 1 ? `“${ed.label}”` : "this tournament"}
                   </button>
                 </div>
+
+                {/* By team, for when one mirror's games were uploaded into
+                    another's edition: the two tournaments then share the same
+                    round numbers, so only the teams tell them apart. */}
+                {teams.length > 0 && (
+                  <details className="srcfiles-fold">
+                    <summary>
+                      Remove by team — {teams.length} team{teams.length === 1 ? "" : "s"} in this edition
+                      {selTeams.length > 0 && <span className="muted"> · {selTeams.length} selected</span>}
+                    </summary>
+                    <p className="muted srcfiles-note">
+                      Removes every game the chosen teams played, whatever round it fell in. Packets are left alone.
+                      Use this when games that belong to a different tournament were uploaded here.
+                    </p>
+                    <div className="srcfiles-scroll">
+                      <table className="data-table srcfiles-table">
+                        <thead>
+                          <tr><th className="srcfiles-check"></th><th>Team</th><th className="right">Games</th><th>Rounds</th></tr>
+                        </thead>
+                        <tbody>
+                          {teams.map((t) => (
+                            <tr key={t.name}>
+                              <td className="srcfiles-check">
+                                <input
+                                  type="checkbox" checked={!!pickedTeam[`${ed.id}:${t.name}`]}
+                                  aria-label={`Remove games played by ${t.name}`}
+                                  onChange={() => setPickedTeam((p) => ({ ...p, [`${ed.id}:${t.name}`]: !p[`${ed.id}:${t.name}`] }))}
+                                />
+                              </td>
+                              <td className="import-src">{t.name}</td>
+                              <td className="right mono">{t.games}</td>
+                              <td className="mono muted">{[...t.rounds].sort((a, b) => a - b).map(roundLabel).join(", ")}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="srcfiles-actions">
+                      <button type="button" className="mini-btn" disabled={busy}
+                        onClick={() => setPickedTeam((p) => { const n = { ...p }; for (const t of teams) n[`${ed.id}:${t.name}`] = false; return n; })}>Clear</button>
+                      <button
+                        className="btn-primary btn-sm danger-btn" disabled={busy || !selTeams.length}
+                        onClick={() => remove(
+                          { editionId: ed.id, teams: selTeams.map((t) => t.name) },
+                          [
+                            `Remove every game played by ${selTeams.length} team${selTeams.length === 1 ? "" : "s"} in “${ed.label}” — ${teamGames} game(s)?`,
+                            "",
+                            ...selTeams.map((t) => `• ${t.name}`),
+                          ].join(String.fromCharCode(10))
+                        )}
+                      >
+                        {busy ? "Removing…" : selTeams.length ? `Remove ${teamGames} game${teamGames === 1 ? "" : "s"} & rebuild` : "Remove selected teams' games"}
+                      </button>
+                    </div>
+                  </details>
+                )}
               </>
             )}
           </div>

@@ -20,6 +20,8 @@ export function CategoryPlayersPage() {
     { key: "pts", label: "Points", align: "right", sortVal: (p) => p.points, render: (p) => p.points },
     { key: "early", label: "Earliest Buzz", align: "right", sortVal: (p) => p.earliest ?? 1e9, render: (p) => (p.earliest === null ? "—" : p.earliest), title: "Earliest word position of a correct buzz" },
     { key: "avg", label: "Avg Buzz", align: "right", sortVal: (p) => p.avgBuzz ?? 1e9, render: (p) => (p.avgBuzz === null ? "—" : num(p.avgBuzz)) },
+    { key: "bpa", label: "BPA", align: "right", sortVal: (p) => p.bpa ?? -1, render: (p) => num(p.bpa),
+      title: "Buzz point area-under-the-curve for this category: how much of each question went unread thanks to early correct buzzes, per tossup heard in the category" },
     { key: "first", label: "First Buzzes", align: "right", sortVal: (p) => p.firstBuzzes, render: (p) => p.firstBuzzes, title: "Times the earliest buzzer on a tossup in this category" },
     { key: "top3", label: "Top 3 Buzzes", align: "right", sortVal: (p) => p.top3Buzzes, render: (p) => p.top3Buzzes },
   ];
