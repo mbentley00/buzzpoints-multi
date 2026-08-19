@@ -303,7 +303,7 @@ export function Settings() {
           </label>
           <small className="muted">
             {allowRequests
-              ? "Anyone who can view this tournament can propose a buzz fix or a rename, and you approve or reject it on the Corrections page."
+              ? "Anyone who can view this tournament can propose a buzz fix, a bonus-parts fix, or a rename, and you approve or reject it on the Corrections page."
               : "Off — the Edit and rename controls are hidden from viewers, and no new requests can be submitted. You and any co-owners still edit directly."}
           </small>
         </div>

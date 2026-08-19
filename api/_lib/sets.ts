@@ -2,7 +2,7 @@
 // re-aggregation helper used by ingest and the edit endpoints.
 import { put, del } from "@vercel/blob";
 import { readBlobJson } from "./blob.js";
-import { aggregate, bonusFilesFromImported, ImportedBonus, PacketFile, GameFile, Correction, VirtualCategory, Rename, renameKind, MetaMap, TagEdits, AggregateConfig } from "./aggregate.js";
+import { aggregate, bonusFilesFromImported, ImportedBonus, PacketFile, GameFile, Correction, BonusCorrection, bnCorrKeyOf, VirtualCategory, Rename, renameKind, MetaMap, TagEdits, AggregateConfig } from "./aggregate.js";
 import { getScoring } from "./scoring.js";
 
 export interface Edition {
@@ -176,6 +176,7 @@ export function sanitizeEntry(e: SetEntry, user: string | null) {
 export interface CorrectionRequest {
   id: string;
   correction?: Correction;
+  bonus?: BonusCorrection;
   rename?: Rename;
   by: string;
   at: string;
@@ -198,6 +199,42 @@ export const writeSource = (slug: string, s: SetSource) => writeJson(`sets/${slu
 
 export const readCorrections = (slug: string) => readBlobJson<Correction[]>(`sets/${slug}/_corrections.json`, false).then((c) => c || []);
 export const writeCorrections = (slug: string, c: Correction[]) => writeJson(`sets/${slug}/_corrections.json`, c);
+
+// Per-hearing bonus corrections: which parts a team actually got. Same lifecycle
+// as buzz corrections — the owner writes them directly, viewers propose them.
+export const readBonusCorrections = (slug: string) =>
+  readBlobJson<BonusCorrection[]>(`sets/${slug}/_bonuscorrections.json`, false).then((c) => c || []);
+export const writeBonusCorrections = (slug: string, c: BonusCorrection[]) => writeJson(`sets/${slug}/_bonuscorrections.json`, c);
+
+export const bnCorrKey = (c: BonusCorrection) => bnCorrKeyOf(c.round, c.num, c.team, c.fromPartPts || [], c.fromBbPts || []);
+
+const ptsList = (v: unknown, len?: number): number[] | null => {
+  if (!Array.isArray(v) || v.length > 12) return null;
+  if (len !== undefined && v.length !== len) return null;
+  const out = v.map(Number);
+  // Whole points only, and within the range any real bonus part could score.
+  return out.some((n) => !Number.isInteger(n) || n < -30 || n > 100) ? null : out;
+};
+
+export function validBonusCorrection(c: any): c is BonusCorrection {
+  if (!c || typeof c.round !== "number" || typeof c.num !== "number" || typeof c.team !== "string") return false;
+  if (!Number.isInteger(c.round) || !Number.isInteger(c.num) || !c.team || c.team.length > 200) return false;
+  const from = ptsList(c.fromPartPts), fromBb = ptsList(c.fromBbPts);
+  if (!from || !fromBb) return false;
+  // The replacement has to describe the same parts the bonus actually has.
+  const to = ptsList(c.toPartPts, from.length);
+  if (!to) return false;
+  if (c.toBbPts !== undefined && c.toBbPts !== null && !ptsList(c.toBbPts, from.length)) return false;
+  // An edit that changes nothing is not an edit.
+  const bb = c.toBbPts ?? fromBb;
+  return to.join() !== from.join() || bb.join() !== fromBb.join();
+}
+
+// One correction per hearing; a later edit of the same hearing replaces it.
+export function mergeBonusCorrection(list: BonusCorrection[], incoming: BonusCorrection): BonusCorrection[] {
+  const k = bnCorrKey(incoming);
+  return [...list.filter((c) => bnCorrKey(c) !== k), incoming];
+}
 
 // Set-wide player and team renames applied on (re-)aggregation. Same lifecycle
 // as corrections: the owner writes them directly, viewers propose them.
@@ -640,6 +677,7 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   const multi = editions.length > 1;
   const virtualCats = await readVirtualCats(slug);
   const renames = await readRenames(slug);
+  const bonusCorrections = await readBonusCorrections(slug);
   const metaMap = await readMetaMap(slug);
   const tagEdits = await readTagEdits(slug);
   cfg.metaMap = metaMap;
@@ -664,7 +702,7 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   const playerEds = new Map<string, string[]>();
   const playerKey = (r: any) => `${r.name}\u0000${r.team}`;
   for (const ed of editions) {
-    const out = aggregate(ed.packets, ed.games, cfg, corrections, virtualCats, renames);
+    const out = aggregate(ed.packets, ed.games, cfg, corrections, virtualCats, renames, bonusCorrections);
     overrideBonuses(out, [ed]);
     const m = out["meta.json"] as any;
     editionSummaries.push({ id: ed.id, label: ed.label, numGames: m.numGames, numTeams: m.numTeams, numPlayers: m.numPlayers, numTossups: m.numTossups, rounds: m.rounds.length });
@@ -682,7 +720,7 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   // than one mirror, so single-edition output is unchanged.
   const combinedGames = editions.flatMap((e) => (e.games || []).map((g) => ({ ...g, editionId: e.id })));
   const combined = combinedPackets(editions);
-  const out = aggregate(combined, combinedGames, cfg, corrections, virtualCats, renames);
+  const out = aggregate(combined, combinedGames, cfg, corrections, virtualCats, renames, bonusCorrections);
   overrideBonuses(out, editions);
   (out["meta.json"] as any).editions = editionSummaries;
   if (multi) {
@@ -734,7 +772,7 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
     // GAMES — which carry every stat — stay correctly split by edition.
     const roundsSet = new Set<number>([...byEd.values()].flatMap((s) => [...s]));
     const pk = combined.filter((p) => roundsSet.has(p.round));
-    const tout = aggregate(pk, gm, cfg, corrections, virtualCats, renames);
+    const tout = aggregate(pk, gm, cfg, corrections, virtualCats, renames, bonusCorrections);
     overrideBonuses(tout, editions, roundsSet);
     const slugT = tagSlug(name);
     await writeFiles(`sets/${slug}/tags/${slugT}/`, tout);

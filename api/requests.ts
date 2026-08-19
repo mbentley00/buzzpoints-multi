@@ -9,6 +9,7 @@ import {
   getSetEntry, readRequests, writeRequests, readSource, readCorrections, writeCorrections,
   aggregateAndWrite, mergeCorrection, validCorrection, canView, effectiveVisibility, CorrectionRequest,
   readRenames, writeRenames, mergeRename, validRename, teamMergeConflict, isSetOwner, ownerEmails, requestsAllowed,
+  readBonusCorrections, writeBonusCorrections, mergeBonusCorrection, validBonusCorrection,
 } from "./_lib/sets.js";
 import { renameKind } from "./_lib/aggregate.js";
 import { sendEmail, appUrl, correctionRequestBody } from "./_lib/email.js";
@@ -19,6 +20,11 @@ function requestSummary(r: CorrectionRequest): string {
     if (renameKind(r.rename) === "team") return `Rename team: ${r.rename.from} → ${r.rename.to}.`;
     const scope = r.rename.team ? ` on ${r.rename.team}` : " (every team)";
     return `Rename player${scope}: ${r.rename.from} → ${r.rename.to}.`;
+  }
+  if (r.bonus) {
+    const b = r.bonus;
+    const got = (pts: number[]) => pts.map((v, i) => (v > 0 ? i + 1 : null)).filter(Boolean).join(", ") || "none";
+    return `Bonus ${b.round}-${b.num} (${b.team}): parts converted ${got(b.fromPartPts || [])} → ${got(b.toPartPts || [])}.`;
   }
   const c = r.correction as any;
   if (!c) return "Edit.";
@@ -50,10 +56,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // ---- submit a correction request (any logged-in viewer) ----
   if (body.action === "submit") {
-    const { slug, correction, rename, desc } = body;
+    const { slug, correction, bonus, rename, desc } = body;
     const isRename = rename !== undefined;
-    if (typeof slug !== "string" || (isRename ? !validRename(rename) : !validCorrection(correction)))
-      return res.status(400).json({ error: isRename ? "Enter a different, non-empty name." : "Invalid request." });
+    const isBonus = bonus !== undefined;
+    const valid = isRename ? validRename(rename) : isBonus ? validBonusCorrection(bonus) : validCorrection(correction);
+    if (typeof slug !== "string" || !valid)
+      return res.status(400).json({
+        error: isRename ? "Enter a different, non-empty name."
+          : isBonus ? "Pick a different set of parts than the ones already recorded."
+          : "Invalid request.",
+      });
     try {
       const entry = await getSetEntry(slug);
       if (!entry) return res.status(404).json({ error: "Tournament not found." });
@@ -66,7 +78,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const stamp = { by: user, at: new Date().toISOString() };
       const r: CorrectionRequest = {
         id: crypto.randomUUID(),
-        ...(isRename ? { rename: { ...rename, ...stamp } } : { correction: { ...correction, ...stamp } }),
+        ...(isRename ? { rename: { ...rename, ...stamp } }
+          : isBonus ? { bonus: { ...bonus, ...stamp } }
+          : { correction: { ...correction, ...stamp } }),
         by: user, at: stamp.at, status: "pending",
         desc: typeof desc === "string" ? desc.slice(0, 300) : undefined,
       };
@@ -109,6 +123,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (conflict) return res.status(400).json({ error: conflict });
         }
         await writeRenames(slug, mergeRename(renames, r.rename));
+        await aggregateAndWrite(slug, source, await readCorrections(slug));
+      } else if (r.bonus) {
+        await writeBonusCorrections(slug, mergeBonusCorrection(await readBonusCorrections(slug), r.bonus));
         await aggregateAndWrite(slug, source, await readCorrections(slug));
       } else if (r.correction) {
         const next = mergeCorrection(await readCorrections(slug), r.correction);

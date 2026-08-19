@@ -1,4 +1,4 @@
-import { useMemo, useState, ReactNode } from "react";
+import { useMemo, useState, Fragment, ReactNode } from "react";
 
 export interface Column<T> {
   key: string;
@@ -17,6 +17,10 @@ interface Props<T> {
   initialDir?: "asc" | "desc";
   rowKey: (row: T, i: number) => string;
   rowClass?: (row: T) => string;
+  /** An extra row rendered directly under this one — an inline editor, say.
+   *  Return null for rows that have none. It supplies its own <td>, so it can
+   *  span the table however it likes. */
+  expanded?: (row: T, i: number) => ReactNode;
 }
 
 export function DataTable<T>({
@@ -26,6 +30,7 @@ export function DataTable<T>({
   initialDir = "desc",
   rowKey,
   rowClass,
+  expanded,
 }: Props<T>) {
   const [sortKey, setSortKey] = useState<string | undefined>(initialSort);
   const [dir, setDir] = useState<"asc" | "desc">(initialDir);
@@ -80,20 +85,26 @@ export function DataTable<T>({
           </tr>
         </thead>
         <tbody>
-          {sorted.map((row, i) => (
-            <tr key={rowKey(row, i)} className={rowClass ? rowClass(row) : undefined}>
-              {columns.map((col) => (
-                <td
-                  key={col.key}
-                  className={
-                    col.align === "right" ? "right" : col.align === "center" ? "center" : ""
-                  }
-                >
-                  {col.render(row)}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {sorted.map((row, i) => {
+            const extra = expanded?.(row, i);
+            return (
+              <Fragment key={rowKey(row, i)}>
+                <tr className={rowClass ? rowClass(row) : undefined}>
+                  {columns.map((col) => (
+                    <td
+                      key={col.key}
+                      className={
+                        col.align === "right" ? "right" : col.align === "center" ? "center" : ""
+                      }
+                    >
+                      {col.render(row)}
+                    </td>
+                  ))}
+                </tr>
+                {extra && <tr className="buzz-edit-row">{extra}</tr>}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
       {sorted.length === 0 && <p className="empty">No rows.</p>}

@@ -109,6 +109,7 @@ export const renameKind = (r: { kind?: string }): "player" | "team" => (r.kind =
 export interface CorrectionRequest {
   id: string;
   correction?: Correction & { by?: string; at?: string };
+  bonus?: BonusCorrection;
   rename?: Rename;
   by: string;
   at: string;
@@ -273,11 +274,31 @@ export interface PartConv {
   convPct: number;
   convCount: number;
 }
+// A correction to which parts one team got on one bonus (see BonusCorrection in
+// api/_lib/aggregate.ts). Keyed on the points the SOURCE recorded, so it
+// addresses one hearing and survives a later team rename.
+export interface BonusCorrection {
+  round: number;
+  num: number;
+  team: string;
+  fromPartPts: number[];
+  fromBbPts: number[];
+  toPartPts: number[];
+  toBbPts?: number[];
+  by?: string;
+  at?: string;
+}
+
 export interface BonusResult {
   team: string;
   partPts: number[];
   bbPts: number[];
   total: number;
+  // What the source recorded, present only where a correction changed it — the
+  // key the editor addresses this hearing by.
+  origPartPts?: number[];
+  origBbPts?: number[];
+  origTeam?: string;
   // Which edition (mirror) heard this bonus. Present only on the combined view of
   // a multi-edition set, after re-aggregation.
   editionId?: string;

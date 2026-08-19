@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { useSetJson } from "../data";
+import { useSetJson, clearSetCache } from "../data";
 import { useSetCtx } from "../components/Layout";
 import { QuestionTags } from "../components/QuestionTags";
 import { BonusDetail, BonusResult, PartConv, Rosters } from "../types";
@@ -12,6 +12,107 @@ import { QuestionNav, useQuestionNav } from "../components/QuestionNav";
 // Points a team earned on one part (direct + bounceback).
 const partGot = (r: BonusResult, p: PartConv) => (r.partPts[p.idx] || 0) + (r.bbPts[p.idx] || 0);
 const diffInitial = (p: PartConv) => (p.difficulty || "").charAt(0).toUpperCase() || "•";
+
+async function postJson(url: string, body: unknown) {
+  const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((d as any).error || `Failed (${r.status})`);
+  return d;
+}
+
+// Fix which parts a team actually converted. Sources routinely record the right
+// NUMBER of parts against the wrong ones — "the easy and the medium" when it was
+// the medium and the hard — which leaves the per-part conversion, and every
+// difficulty breakdown built on it, describing a bonus nobody heard that way.
+//
+// Same two-track flow as a buzz correction: the owner applies it and the set
+// rebuilds, anyone else with access proposes it and it lands on the Corrections
+// page. Points per part are preserved rather than re-invented: a part that moves
+// from "not got" to "got" is worth what that part was worth to whoever did get
+// it, defaulting to 10.
+function BonusPartsEditor({ slug, d, r, parts, isOwner, onClose }: {
+  slug: string; d: BonusDetail; r: BonusResult; parts: PartConv[]; isOwner: boolean; onClose: () => void;
+}) {
+  // A part's value here: what the source paid for it anywhere in this bonus.
+  const valueOf = (idx: number) =>
+    d.results.map((x) => x.partPts[idx] || 0).find((v) => v > 0) ??
+    d.results.map((x) => x.bbPts[idx] || 0).find((v) => v > 0) ?? 10;
+  const [got, setGot] = useState<boolean[]>(parts.map((p) => partGot(r, p) > 0));
+  const [desc, setDesc] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+
+  const was = parts.map((p) => partGot(r, p) > 0);
+  const changed = got.some((v, i) => v !== was[i]);
+  const nGot = got.filter(Boolean).length;
+
+  async function submit() {
+    setErr(null); setBusy(true);
+    // Addressed by the source's own numbers, so an edit made twice is the same
+    // edit and a later team rename doesn't orphan it.
+    const bonus = {
+      round: d.round, num: d.num, team: r.origTeam ?? r.team,
+      fromPartPts: r.origPartPts ?? r.partPts,
+      fromBbPts: r.origBbPts ?? r.bbPts,
+      // A part kept on a bounceback keeps it; anything else lands as controlled
+      // points, which is where a team's own conversion belongs.
+      toPartPts: parts.map((p, i) => (got[i] && (r.bbPts[p.idx] || 0) === 0 ? valueOf(p.idx) : 0)),
+      toBbPts: parts.map((p, i) => (got[i] && (r.bbPts[p.idx] || 0) > 0 ? valueOf(p.idx) : 0)),
+    };
+    try {
+      if (isOwner) {
+        await postJson("/api/correct", { slug, bonusCorrection: bonus });
+        clearSetCache(slug);
+        window.location.reload();
+      } else {
+        await postJson("/api/requests", { slug, action: "submit", bonus, desc: desc.trim() || undefined });
+        setDone("Correction suggested — the owner will review it.");
+      }
+    } catch (e) { setErr(String((e as Error).message || e)); } finally { setBusy(false); }
+  }
+
+  if (done)
+    return (
+      <td colSpan={99} className="buzz-edit-cell">
+        <div className="buzz-edit"><span className="ok-msg">{done}</span><button className="btn-link" onClick={onClose}>Close</button></div>
+      </td>
+    );
+
+  return (
+    <td colSpan={99} className="buzz-edit-cell">
+      <div className="buzz-edit">
+        <span className="muted">Parts <strong>{r.team}</strong> converted:</span>
+        {parts.map((p, i) => (
+          <label className="field-inline" key={p.idx}>
+            <input type="checkbox" checked={got[i]} onChange={() => setGot((g) => g.map((v, j) => (j === i ? !v : v)))} />
+            <span>
+              Part {i + 1}
+              {p.difficulty ? <span className="muted"> ({p.difficultyName})</span> : null}
+            </span>
+          </label>
+        ))}
+        {!isOwner && (
+          <label className="field-inline" style={{ flex: "1 1 200px" }}>
+            <span>Reason</span>
+            <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="optional note for the owner" style={{ flex: 1 }} />
+          </label>
+        )}
+        <small className="muted" style={{ flexBasis: "100%" }}>
+          {nGot} of {parts.length} parts · the bonus's per-part conversion, this team's PPB, and the difficulty
+          breakdowns are all rebuilt from this.
+        </small>
+        <div className="buzz-edit-actions">
+          <button className="btn-primary btn-sm" disabled={!changed || busy} onClick={submit}>
+            {busy ? "Working…" : isOwner ? "Save & rebuild" : "Suggest correction"}
+          </button>
+          <button className="btn-link" onClick={onClose}>Cancel</button>
+        </div>
+        {err && <span className="error-inline">{err}</span>}
+      </div>
+    </td>
+  );
+}
 
 // Every team that earned a part, shown on hover / click next to its answer line.
 // A team that got it on the bounceback is marked, since that's a different feat
@@ -69,8 +170,9 @@ function rowClass(r: BonusResult, parts: PartConv[]): string {
 }
 
 export function BonusDetailPage() {
-  const { slug, scope, isOwner, editions } = useSetCtx();
+  const { slug, scope, isOwner, editions, user, allowRequests } = useSetCtx();
   const { id = "" } = useParams();
+  const [editing, setEditing] = useState<string | null>(null);
   // A tag (phase) scope has no per-edition file; fall back to combined for it.
   const [version, setVersion] = useState(scope.startsWith("tag:") ? "all" : scope);
   const combinedFile = "bonuses_detail.json";
@@ -91,6 +193,10 @@ export function BonusDetailPage() {
   // present once a multi-edition set has been re-aggregated.
   const showEdition = version === "all" && editions.length > 1 && d.results.some((r) => r.editionId);
   const edLabel = (id?: string) => editions.find((e) => e.id === id)?.label ?? id ?? "";
+  // A hearing is identified by its team and its recorded points, which is what
+  // both the editor and the stored correction key on.
+  const editKey = (r: BonusResult) => `${r.origTeam ?? r.team}|${(r.origPartPts ?? r.partPts).join(",")}|${(r.origBbPts ?? r.bbPts).join(",")}`;
+  const canEdit = !!user && (isOwner || allowRequests);
 
   const columns: Column<BonusResult>[] = [
     {
@@ -118,6 +224,18 @@ export function BonusDetailPage() {
       sortVal: (r) => parts.filter((p) => partGot(r, p) > 0).length,
       render: (r) => <span className="mono">{parts.filter((p) => partGot(r, p) > 0).map(diffInitial).join("") || "—"}</span>,
     },
+    // Per-hearing corrections only make sense against a single edition's own
+    // record; in the combined view one row can stand for several mirrors.
+    ...(canEdit
+      ? [{
+          key: "edit", label: "", align: "right" as const,
+          render: (r: BonusResult) => (
+            <button className="btn-link btn-edit" onClick={() => setEditing(editKey(r) === editing ? null : editKey(r))}>
+              {isOwner ? "Edit" : "Suggest"}
+            </button>
+          ),
+        } as Column<BonusResult>]
+      : []),
   ];
 
   return (
@@ -187,6 +305,11 @@ export function BonusDetailPage() {
               initialDir="desc"
               rowKey={(r, i) => `${r.team}-${i}`}
               rowClass={(r) => rowClass(r, parts)}
+              expanded={(r) =>
+                editing === editKey(r) ? (
+                  <BonusPartsEditor slug={slug} d={d} r={r} parts={parts} isOwner={isOwner} onClose={() => setEditing(null)} />
+                ) : null
+              }
             />
           </div>
         )}

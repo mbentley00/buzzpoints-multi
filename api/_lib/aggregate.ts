@@ -84,6 +84,30 @@ export interface Correction {
 const corrKeyOf = (r: number, num: number, team: string | null, player: string | null, widx: number | null) =>
   `${r}|${num}|${team}|${player}|${widx}`;
 
+// A correction to what ONE team scored on ONE bonus. Sources routinely record
+// the right number of parts against the wrong ones — "they got the easy and the
+// medium", when it was the medium and the hard — which leaves per-part
+// conversion, and every difficulty breakdown built on it, describing a bonus
+// nobody heard that way. Total points are often right while the parts are not,
+// so this is about WHICH parts, not how many.
+//
+// Keyed on the hearing's ORIGINAL recorded points, like a buzz correction is
+// keyed on its original player and word: that addresses one specific hearing,
+// survives a later team rename, and makes re-applying the same edit a no-op.
+export interface BonusCorrection {
+  round: number;
+  num: number;
+  team: string;
+  fromPartPts: number[];
+  fromBbPts: number[];
+  toPartPts: number[];
+  toBbPts?: number[];
+  by?: string;
+  at?: string;
+}
+export const bnCorrKeyOf = (round: number, num: number, team: string | null, partPts: number[], bbPts: number[]) =>
+  `${round}|${num}|${team}|${partPts.join(",")}|${bbPts.join(",")}`;
+
 // A set-wide rename of one player or one team. Sources spell the same person or
 // the same school differently between games ("Mike Bentley" / "Michael Bentley",
 // "Chicago A" / "UChicago A"), or simply get a name wrong; a rename folds every
@@ -509,7 +533,8 @@ export function aggregate(
   cfg: AggregateConfig,
   corrections: Correction[] = [],
   virtualCats: VirtualCategory[] = [],
-  renames: Rename[] = []
+  renames: Rename[] = [],
+  bonusCorrections: BonusCorrection[] = []
 ): Record<string, unknown> {
   const scoring = cfg.scoring;
   const hasPower = scoring.hasPower;
@@ -529,6 +554,9 @@ export function aggregate(
 
   const corrMap = new Map<string, Correction>();
   for (const c of corrections) corrMap.set(corrKeyOf(c.round, c.num, c.team, c.fromPlayer, c.fromWordIndex), c);
+  const bnCorrMap = new Map<string, BonusCorrection>();
+  for (const c of bonusCorrections)
+    bnCorrMap.set(bnCorrKeyOf(c.round, c.num, c.team, c.fromPartPts || [], c.fromBbPts || []), c);
 
   // Team renames, applied before anything else reads a team name: rosters,
   // standings and the scope of a player rename all key off the name a team ends
@@ -591,7 +619,7 @@ export function aggregate(
 
   const tuBuzzes = new Map<string, Buzz[]>();
   const tuHeard = new Map<string, number>();
-  const bnResults = new Map<string, { team: string | null; partPts: number[]; bbPts: number[]; total: number; editionId?: string }[]>();
+  const bnResults = new Map<string, { team: string | null; partPts: number[]; bbPts: number[]; total: number; origPartPts?: number[]; origBbPts?: number[]; origTeam?: string; editionId?: string }[]>();
 
   type PL = { name: string; team: string; games: Set<string>; tuh: number; powers: number; gets: number; incorrect: number; pts: number; unread: number };
   const pl = new Map<string, PL>();
@@ -706,6 +734,9 @@ export function aggregate(
       }
       let converted = false;
       let controlling: string | null = null;
+      // The controlling team as the SOURCE spelled it. A bonus correction is
+      // addressed by that name, so renaming a team never orphans one.
+      let controllingOrig: string | null = null;
       const ordered: { value: number; pname: string | null; bteam: string | null; widx: number | null }[] = [];
 
       for (const bz of mq.buzzes || []) {
@@ -773,7 +804,7 @@ export function aggregate(
             addCat(tc, value, widx, prec, unread);
           }
         }
-        if (isCorrect(value)) { converted = true; controlling = bteam; }
+        if (isCorrect(value)) { converted = true; controlling = bteam; controllingOrig = origTeam; }
       }
 
       // per-player buzz log (chronological, with rebound detection)
@@ -796,11 +827,33 @@ export function aggregate(
         const bdef = bkey ? bonuses.get(bkey) : undefined;
         if (bdef && bkey) {
           const parts = mq.bonus.parts || [];
-          const partPts = parts.map((p) => p.controlled_points || 0);
-          const bbPts = parts.map((p) => p.bounceback_points || 0);
+          const origPartPts = parts.map((p) => p.controlled_points || 0);
+          const origBbPts = parts.map((p) => p.bounceback_points || 0);
+          // Which parts this team actually got, if someone has corrected them.
+          const bc = bnCorrMap.get(bnCorrKeyOf(r, bnum!, controllingOrig, origPartPts, origBbPts));
+          const partPts = bc?.toPartPts ?? origPartPts;
+          const bbPts = bc?.toBbPts ?? origBbPts;
           const total = partPts.reduce((a, b) => a + b, 0) + bbPts.reduce((a, b) => a + b, 0);
+          // A team's bonus points come from the source's own per-game total, not
+          // from these parts, so a correction that changes how MANY parts were
+          // got would otherwise leave the headline PPB disagreeing with the
+          // bonus it was computed from. Carry the difference across to the team
+          // and to the game score that decides the result.
+          if (bc && controlling) {
+            const origTotal = origPartPts.reduce((a, b) => a + b, 0) + origBbPts.reduce((a, b) => a + b, 0);
+            const delta = total - origTotal;
+            if (delta) { tmOf(controlling).bonusPts += delta; addGamePts(controlling, delta); }
+          }
           let arr = bnResults.get(bkey); if (!arr) { arr = []; bnResults.set(bkey, arr); }
-          arr.push({ team: controlling, partPts, bbPts, total, ...(edId ? { editionId: edId } : {}) });
+          arr.push({
+            team: controlling, partPts, bbPts, total,
+            // The source's own numbers, kept so the editor can address this
+            // hearing — and only when they differ, so untouched sets don't carry
+            // a copy of every row.
+            ...(bc ? { origPartPts, origBbPts } : {}),
+            ...(controllingOrig && controllingOrig !== controlling ? { origTeam: controllingOrig } : {}),
+            ...(edId ? { editionId: edId } : {}),
+          });
           if (controlling) {
             tmOf(controlling).bonusesHeard += 1;
             const tbc = nestCat<BnCat>(tmBonusCat, controlling, bdef.subcategory, () => ({ heard: 0, pts: 0, main: bdef.category, parts: new Map() }));

@@ -1,5 +1,6 @@
 // Owner applies an edit directly (re-aggregates the set).
 // POST /api/correct { slug, correction }  -> reassign / move one buzz
+// POST /api/correct { slug, bonusCorrection } -> fix which bonus parts a team got
 // POST /api/correct { slug, rename }      -> rename a player or team across the set
 // POST /api/correct { slug, undoRename }  -> drop a stored rename
 import type { VercelRequest, VercelResponse } from "@vercel/node";
@@ -7,6 +8,7 @@ import { currentUser } from "./_lib/auth.js";
 import {
   getSetEntry, readSource, readCorrections, writeCorrections, aggregateAndWrite, mergeCorrection, validCorrection,
   readRenames, writeRenames, mergeRename, dropRename, validRename, teamMergeConflict, isSetOwner,
+  readBonusCorrections, writeBonusCorrections, mergeBonusCorrection, validBonusCorrection,
 } from "./_lib/sets.js";
 import { renameKind } from "./_lib/aggregate.js";
 
@@ -15,12 +17,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const user = currentUser(req);
   if (!user) return res.status(401).json({ error: "Log in to edit." });
 
-  const { slug, correction, rename, undoRename } = (req.body || {}) as any;
+  const { slug, correction, bonusCorrection, rename, undoRename } = (req.body || {}) as any;
   if (typeof slug !== "string") return res.status(400).json({ error: "Invalid request." });
 
   const isRename = rename !== undefined;
   const isUndo = undoRename !== undefined;
-  if (!isRename && !isUndo && !validCorrection(correction))
+  const isBonus = bonusCorrection !== undefined;
+  if (isBonus && !validBonusCorrection(bonusCorrection))
+    return res.status(400).json({ error: "Pick a different set of parts than the ones already recorded." });
+  if (!isRename && !isUndo && !isBonus && !validCorrection(correction))
     return res.status(400).json({ error: "Invalid correction." });
   if (isRename && !validRename(rename))
     return res.status(400).json({ error: "Enter a different, non-empty name (120 characters max)." });
@@ -46,6 +51,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await writeRenames(slug, next);
       await aggregateAndWrite(slug, source, await readCorrections(slug));
       return res.status(200).json({ ok: true, renames: next });
+    }
+
+    if (isBonus) {
+      const stamped = { ...bonusCorrection, by: user, at: new Date().toISOString() };
+      await writeBonusCorrections(slug, mergeBonusCorrection(await readBonusCorrections(slug), stamped));
+      await aggregateAndWrite(slug, source, await readCorrections(slug));
+      return res.status(200).json({ ok: true });
     }
 
     const corrections = await readCorrections(slug);
