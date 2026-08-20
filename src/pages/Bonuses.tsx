@@ -63,6 +63,11 @@ export function Bonuses() {
       <PageHeader title="Bonuses" subtitle={`${rows.length} bonuses`}>
         <RoundFilter rounds={meta.rounds} value={round} onChange={setRound} />
         <SearchInput value={q} onChange={setQ} placeholder="Search answer / category" />
+        {/* A view of these same bonuses, not a section of its own — the top bar
+            has more tabs than it can show already. */}
+        <Link className="btn-secondary btn-sm" to={`/set/${slug}/bonus-order`}>
+          By difficulty order →
+        </Link>
       </PageHeader>
       {cat.active && <CategoryFilterChip label={cat.label} onClear={cat.clear} />}
       {tag && (

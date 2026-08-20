@@ -43,7 +43,9 @@ export interface GameFile {
     }[];
     bonus?: {
       question?: { question_number?: number };
-      parts?: { controlled_points?: number; bounceback_points?: number }[];
+      // Typed loosely on purpose: real files carry strings here ("10", "NA"),
+      // so anything reading them has to coerce rather than trust the shape.
+      parts?: { controlled_points?: number | string | null; bounceback_points?: number | string | null }[];
     };
   }[];
 }
@@ -531,6 +533,15 @@ function buildVirtualNode<A>(
   return { category: name, ...main, heard: Number(main.heard) || 0, subs, virtual: true } as TreeNode;
 }
 
+// Points a bonus part scored. Anything that isn't a finite number — most often
+// the literal "NA" for a part the scorer left unrecorded — is worth nothing,
+// which keeps the arithmetic arithmetic. Such a part reads as unconverted,
+// because nothing here can claim otherwise.
+const numPts = (v: unknown): number => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
 /* ----------------------------- bonus difficulty order ----------------------------- */
 // Conversion grouped by the ORDER a bonus presents its difficulties in — "hem"
 // for hard-easy-medium against "meh" for medium-easy-hard — so a format can be
@@ -957,8 +968,14 @@ export function aggregate(
         const bdef = bkey ? bonuses.get(bkey) : undefined;
         if (bdef && bkey) {
           const parts = mq.bonus.parts || [];
-          const origPartPts = parts.map((p) => p.controlled_points || 0);
-          const origBbPts = parts.map((p) => p.bounceback_points || 0);
+          // Coerced, not defaulted with `||`: sources write "NA" into a part they
+          // didn't record, and a non-empty string is truthy, so `"NA" || 0` kept
+          // the string. It then turned `0 + 0 + "NA"` into the string "0NA0",
+          // which silently spread through the bonus's points, its PPB, the
+          // team's bonus points and every average built on them — all of which
+          // came out as NaN and rendered as an empty "—".
+          const origPartPts = parts.map((p) => numPts(p.controlled_points));
+          const origBbPts = parts.map((p) => numPts(p.bounceback_points));
           // Which parts this team actually got, if someone has corrected them.
           const bc = bnCorrMap.get(bnCorrKeyOf(r, bnum!, controllingOrig, origPartPts, origBbPts));
           const partPts = bc?.toPartPts ?? origPartPts;

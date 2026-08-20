@@ -117,6 +117,7 @@ export function BonusOrders() {
   if (error && /404/.test(error))
     return (
       <div className="detail">
+        <div className="breadcrumb"><Link to={`/set/${slug}/bonus`} className="link">← Bonuses</Link></div>
         <PageHeader title="Bonuses — Difficulty order" subtitle="How each bonus format converted" />
         <p className="caveat">
           This tournament hasn't been rebuilt since this view was added.{" "}
@@ -133,6 +134,7 @@ export function BonusOrders() {
 
   return (
     <div className="detail">
+      <div className="breadcrumb"><Link to={`/set/${slug}/bonus`} className="link">← Bonuses</Link></div>
       <PageHeader
         title="Bonuses — Difficulty order"
         subtitle="How each bonus format converted, and whether a part played to its billing"
@@ -168,7 +170,19 @@ export function BonusOrders() {
               </button>
               <span className="muted ord-sum">
                 {row.bonuses} bonus{row.bonuses === 1 ? "" : "es"} · {row.heard} heard · {num(row.ppb, 2)} PPB
-                {row.hardPct !== null && <> · hard {pct(row.hardPct)}</>}
+              </span>
+              {/* Every part's conversion, in the order's own sequence, so a
+                  collapsed row still says how the whole format played rather
+                  than only its hard part. */}
+              <span className="ord-parts">
+                {row.parts.map((p) => (
+                  <span className="ord-part" key={p.idx} title={`Part ${p.idx + 1} — ${p.difficultyName}`}>
+                    <span className={`ord-mark ord-mark-${p.difficulty || "u"}`}>
+                      {p.difficulty ? p.difficulty.toUpperCase() : "?"}
+                    </span>
+                    <span className="ord-part-pct">{cell(p.convPct)}</span>
+                  </span>
+                ))}
               </span>
             </h2>
             {isOpen && <OrderTable row={row} />}

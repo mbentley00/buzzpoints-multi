@@ -1201,3 +1201,8 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
 .ord-total td { background: var(--surface-2); font-weight: 600; }
 .ord-cat .btn-link { text-decoration: none; font-weight: 600; }
 .ord-sub-name { padding-left: 22px; color: var(--ink-soft); }
+/* Each part's conversion beside its difficulty mark, so a collapsed order still
+   reports the whole format rather than only its hard part. */
+.ord-parts { display: inline-flex; gap: 10px; align-items: center; flex-wrap: wrap; font-weight: 400; font-size: 13px; }
+.ord-part { display: inline-flex; gap: 4px; align-items: center; }
+.ord-part-pct { font-variant-numeric: tabular-nums; color: var(--ink-soft); }
