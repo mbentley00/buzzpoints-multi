@@ -86,6 +86,7 @@ export function SetLayout() {
   const tabs = [
     { to: `${base}/tossup`, label: "Tossups" },
     ...(meta?.hasBonuses ? [{ to: `${base}/bonus`, label: "Bonuses" }] : []),
+    ...(meta?.hasBonuses ? [{ to: `${base}/bonus-order`, label: "Difficulty Order" }] : []),
     { to: `${base}/packet`, label: "Packets" },
     { to: `${base}/buzzer-races`, label: "Buzzer Races" },
     { to: `${base}/first-sentence`, label: "First Sentence" },

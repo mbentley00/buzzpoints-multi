@@ -289,6 +289,29 @@ export interface BonusCorrection {
   at?: string;
 }
 
+// Bonus conversion grouped by the ORDER a format presents its difficulties in
+// ("hem" = hard, easy, medium), so one difficulty can be compared across orders.
+// See bonusOrderFile in api/_lib/aggregate.ts.
+export interface BonusOrderStats {
+  bonuses: number;
+  heard: number;
+  ppb: number;
+  // null when the order has no part of that difficulty at all — which must not
+  // read the same as "nobody converted them".
+  easyPct: number | null;
+  medPct: number | null;
+  hardPct: number | null;
+  // One per position, in the order's own sequence.
+  parts: { idx: number; difficulty: string; difficultyName: string; convPct: number | null }[];
+}
+export interface BonusOrderSub extends BonusOrderStats { subcategory: string; subLabel: string }
+export interface BonusOrderCat extends BonusOrderStats { category: string; subs: BonusOrderSub[] }
+export interface BonusOrderRow extends BonusOrderStats {
+  order: string;   // "hem", or with "?" for any unmarked part
+  label: string;   // "Hard · Easy · Medium"
+  categories: BonusOrderCat[];
+}
+
 export interface BonusResult {
   team: string;
   partPts: number[];

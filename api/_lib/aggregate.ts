@@ -531,6 +531,101 @@ function buildVirtualNode<A>(
   return { category: name, ...main, heard: Number(main.heard) || 0, subs, virtual: true } as TreeNode;
 }
 
+/* ----------------------------- bonus difficulty order ----------------------------- */
+// Conversion grouped by the ORDER a bonus presents its difficulties in — "hem"
+// for hard-easy-medium against "meh" for medium-easy-hard — so a format can be
+// asked whether its hard part actually played hard where it sat. Comparing a
+// difficulty across orders is the point, so every row reports the same
+// per-difficulty and per-position figures.
+//
+// One bonus feeds exactly one order group, and every bonus in a group has the
+// same number of parts, which is what lets position `i` mean the same thing
+// down a column. An unmarked part is "?" rather than being dropped or guessed
+// at: it keeps the row's length honest and keeps those bonuses countable.
+export interface BonusOrderInput {
+  category: string;      // main category
+  subcategory: string;   // full path
+  mods: string[];        // difficulty modifier per part ("" when unmarked)
+  heard: number;         // hearings of this bonus
+  got: number[];         // hearings that earned each part
+  points: number;        // total points earned across those hearings
+}
+const ORDER_NAME: Record<string, string> = { e: "Easy", m: "Medium", h: "Hard" };
+const orderLabel = (order: string) =>
+  [...order].map((c) => ORDER_NAME[c] || (c === "?" ? "Unmarked" : c.toUpperCase())).join(" · ");
+
+type OrdAcc = {
+  bonuses: number; heard: number; pts: number;
+  part: [number, number][];              // per position: [earned, offered]
+  diff: Map<string, [number, number]>;   // per difficulty letter: [earned, offered]
+};
+const ordNew = (): OrdAcc => ({ bonuses: 0, heard: 0, pts: 0, part: [], diff: new Map() });
+function ordAdd(a: OrdAcc, b: BonusOrderInput) {
+  a.bonuses++; a.heard += b.heard; a.pts += b.points;
+  for (let i = 0; i < b.mods.length; i++) {
+    const got = b.got[i] || 0;
+    const slot = a.part[i] || (a.part[i] = [0, 0]);
+    slot[0] += got; slot[1] += b.heard;
+    const d = b.mods[i] || "?";
+    const ds = a.diff.get(d) || [0, 0];
+    ds[0] += got; ds[1] += b.heard;
+    a.diff.set(d, ds);
+  }
+}
+const ordFin = (a: OrdAcc, order: string) => ({
+  bonuses: a.bonuses, heard: a.heard,
+  ppb: a.heard ? Math.round((100 * a.pts) / a.heard) / 100 : 0,
+  // null rather than 0 where a difficulty isn't in this order at all — "not
+  // applicable" and "nobody got them" must not read the same.
+  easyPct: a.diff.has("e") ? pct(a.diff.get("e")![0], a.diff.get("e")![1]) : null,
+  medPct: a.diff.has("m") ? pct(a.diff.get("m")![0], a.diff.get("m")![1]) : null,
+  hardPct: a.diff.has("h") ? pct(a.diff.get("h")![0], a.diff.get("h")![1]) : null,
+  parts: [...order].map((c, i) => ({
+    idx: i, difficulty: c === "?" ? "" : c, difficultyName: diffLabel(c === "?" ? "" : c),
+    convPct: a.part[i] ? pct(a.part[i][0], a.part[i][1]) : null,
+  })),
+});
+
+// The whole view: one row per order, each broken down by category and then by
+// subcategory, so "did hard parts play harder here" can be asked of a subject
+// as well as of the set.
+export function bonusOrderFile(rows: BonusOrderInput[]): Record<string, unknown>[] {
+  type Group = { acc: OrdAcc; cats: Map<string, { acc: OrdAcc; subs: Map<string, OrdAcc> }> };
+  const groups = new Map<string, Group>();
+  for (const b of rows) {
+    if (!b.mods.length) continue; // a bonus with no parts has no order
+    const order = b.mods.map((m) => m || "?").join("");
+    let g = groups.get(order);
+    if (!g) { g = { acc: ordNew(), cats: new Map() }; groups.set(order, g); }
+    ordAdd(g.acc, b);
+    let c = g.cats.get(b.category);
+    if (!c) { c = { acc: ordNew(), subs: new Map() }; g.cats.set(b.category, c); }
+    ordAdd(c.acc, b);
+    let sub = c.subs.get(b.subcategory);
+    if (!sub) { sub = ordNew(); c.subs.set(b.subcategory, sub); }
+    ordAdd(sub, b);
+  }
+  const byHeard = <T extends { heard: number }>(a: T, z: T) => z.heard - a.heard;
+  return [...groups.entries()]
+    .map(([order, g]) => ({
+      order, label: orderLabel(order),
+      ...ordFin(g.acc, order),
+      categories: [...g.cats.entries()]
+        .map(([category, c]) => ({
+          category,
+          ...ordFin(c.acc, order),
+          subs: [...c.subs.entries()]
+            .map(([subcategory, sub]) => ({
+              subcategory, subLabel: subcategory.split(" - ").slice(-1)[0].trim(),
+              ...ordFin(sub, order),
+            }))
+            .sort(byHeard),
+        }))
+        .sort(byHeard),
+    }))
+    .sort(byHeard);
+}
+
 /* ----------------------------- bonus category helpers ----------------------------- */
 const DIFF_NAME: Record<string, string> = { e: "Easy", m: "Medium", h: "Hard" };
 // The difficulty a source marked a bonus part with, or "" when it marked none.
@@ -1034,6 +1129,7 @@ export function aggregate(
     const bnSumm: Record<string, unknown>[] = [];
     const bnDetail: Record<string, unknown> = {};
     const catBnSub = new Map<string, CatBnAcc>();
+    const orderRows: BonusOrderInput[] = [];
     // The same bonus numbers grouped by tag rather than by category.
     const tagBnAcc = new Map<string, CatBnAcc>();
     for (const [id, b] of [...bonuses.entries()].sort()) {
@@ -1054,6 +1150,11 @@ export function aggregate(
         const slot = cb.parts.get(diff) || [0, 0]; slot[0] += got; slot[1] += heard; cb.parts.set(diff, slot);
       }
       cb.main = b.category; cb.heard += heard; cb.pts += totalPts;
+      orderRows.push({
+        category: b.category, subcategory: b.subcategory, mods: b.parts.map((_, i) => diffAt(b.difficultyModifiers, i)),
+        heard, points: totalPts,
+        got: b.parts.map((_, i) => results.filter((r) => (r.partPts[i] || 0) > 0 || (r.bbPts[i] || 0) > 0).length),
+      });
       for (const tag of b.tags) {
         let ta = tagBnAcc.get(tag);
         if (!ta) { ta = bnNew(); ta.main = tagDim(tag); tagBnAcc.set(tag, ta); }
@@ -1085,6 +1186,7 @@ export function aggregate(
       if (node) bnTree.unshift(node);
     }
     files["categories_bonus.json"] = bnTree;
+    files["bonus_orders.json"] = bonusOrderFile(orderRows);
     // Same grouping-by-dimension as the tossup tags, with bonus columns.
     const bnTagDims = new Map<string, { tag: string; value: string; stats: ReturnType<typeof bnFin> }[]>();
     for (const [tag, acc] of tagBnAcc) {
@@ -1462,6 +1564,7 @@ export function bonusFilesFromImported(list: ImportedBonus[], virtualCats: Virtu
   const bnSumm: Record<string, unknown>[] = [];
   const bnDetail: Record<string, unknown> = {};
   const catBnSub = new Map<string, CatBnAcc>();
+  const orderRows: BonusOrderInput[] = [];
   for (const [id, b] of [...merged.entries()].sort()) {
     // Imported bonus stats carry their category as a raw metadata string.
     const { main, full: sub } = resolveMeta(b.category, metaMap ?? null);
@@ -1481,6 +1584,10 @@ export function bonusFilesFromImported(list: ImportedBonus[], virtualCats: Virtu
       const slot = cb.parts.get(diff) || [0, 0]; slot[0] += got; slot[1] += heard; cb.parts.set(diff, slot);
     }
     cb.main = main; cb.heard += heard; cb.pts += totalPts;
+    orderRows.push({
+      category: main, subcategory: sub, mods: b.answers.map((_, i) => diffAt(b.difficultyModifiers, i)),
+      heard, points: totalPts, got: b.answers.map((_, i) => b.got[i] || 0),
+    });
     bnSumm.push({
       id, round: b.round, num: b.num, category: main, subcategory: sub, heard, ppb,
       easyPct: byDiff.e?.convPct ?? null, medPct: byDiff.m?.convPct ?? null, hardPct: byDiff.h?.convPct ?? null,
@@ -1497,5 +1604,8 @@ export function bonusFilesFromImported(list: ImportedBonus[], virtualCats: Virtu
     const node = buildVirtualNode<CatBnAcc>(v.name, virtualMembers(v), catBnSub, bnNew, bnAdd, bnFin);
     if (node) bnTree.unshift(node);
   }
-  return { "bonuses.json": bnSumm, "bonuses_detail.json": bnDetail, "categories_bonus.json": bnTree };
+  return {
+    "bonuses.json": bnSumm, "bonuses_detail.json": bnDetail, "categories_bonus.json": bnTree,
+    "bonus_orders.json": bonusOrderFile(orderRows),
+  };
 }

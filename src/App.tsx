@@ -8,6 +8,7 @@ import { SetHome } from "./pages/SetHome";
 import { Tossups } from "./pages/Tossups";
 import { TossupDetailPage } from "./pages/TossupDetail";
 import { Bonuses } from "./pages/Bonuses";
+import { BonusOrders } from "./pages/BonusOrders";
 import { BonusDetailPage } from "./pages/BonusDetail";
 import { BuzzerRaces } from "./pages/BuzzerRaces";
 import { FirstSentence } from "./pages/FirstSentence";
@@ -46,6 +47,7 @@ export default function App() {
         <Route path="tossup" element={<Tossups />} />
         <Route path="tossup/:id" element={<TossupDetailPage />} />
         <Route path="bonus" element={<Bonuses />} />
+        <Route path="bonus-order" element={<BonusOrders />} />
         <Route path="bonus/:id" element={<BonusDetailPage />} />
         <Route path="buzzer-races" element={<BuzzerRaces />} />
         <Route path="first-sentence" element={<FirstSentence />} />
