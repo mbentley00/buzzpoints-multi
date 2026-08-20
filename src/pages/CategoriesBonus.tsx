@@ -13,10 +13,10 @@ export function CategoriesBonus() {
 
   const columns: CatColumn<CatBonusRow, CatBonusSub>[] = [
     { label: "Heard", align: "right", main: (g) => g.heard, sub: (s) => s.heard },
-    { label: "PPB", align: "right", main: (g) => num(g.ppb, 2), sub: (s) => num(s.ppb, 2) },
-    { label: "Easy%", align: "right", main: (g) => pct(g.easyPct), sub: (s) => pct(s.easyPct) },
-    { label: "Medium%", align: "right", main: (g) => pct(g.medPct), sub: (s) => pct(s.medPct) },
-    { label: "Hard%", align: "right", main: (g) => pct(g.hardPct), sub: (s) => pct(s.hardPct) },
+    { label: "PPB", align: "right", main: (g) => num(g.ppb, 2), sub: (s) => num(s.ppb, 2), sortMain: (g) => g.ppb, sortSub: (s) => s.ppb },
+    { label: "Easy%", align: "right", main: (g) => pct(g.easyPct), sub: (s) => pct(s.easyPct), sortMain: (g) => g.easyPct, sortSub: (s) => s.easyPct },
+    { label: "Medium%", align: "right", main: (g) => pct(g.medPct), sub: (s) => pct(s.medPct), sortMain: (g) => g.medPct, sortSub: (s) => s.medPct },
+    { label: "Hard%", align: "right", main: (g) => pct(g.hardPct), sub: (s) => pct(s.hardPct), sortMain: (g) => g.hardPct, sortSub: (s) => s.hardPct },
   ];
 
   return (

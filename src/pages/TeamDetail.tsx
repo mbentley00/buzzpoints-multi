@@ -40,19 +40,25 @@ export function TeamDetailPage() {
     { label: "Get", align: "right", main: (g) => g.gets, sub: (s) => s.gets },
     { label: meta.hasNeg ? "Neg" : "Inc", align: "right", main: (g) => g.incorrect, sub: (s) => s.incorrect },
     { label: "Points", align: "right", main: (g) => g.points, sub: (s) => s.points },
-    { label: "Rank", align: "right", title: "This team's rank in the category by total points, of the teams that played it", main: (g) => rankCell(g.rank, g.rankOf), sub: (s) => rankCell(s.rank, s.rankOf) },
-    { label: "Earliest", align: "right", main: (g) => g.earliest ?? "—", sub: (s) => s.earliest ?? "—" },
-    { label: "Avg Buzz", align: "right", main: (g) => buzz(g.avgBuzz), sub: (s) => buzz(s.avgBuzz) },
-    { label: "BPA", align: "right", title: "Buzz point area-under-the-curve: how much of each question went unread thanks to early correct buzzes, per tossup heard. Higher is faster.", main: (g) => num(g.bpa), sub: (s) => num(s.bpa) },
-    { label: "% Pts", align: "right", main: (g) => num(g.pctPoints, 1), sub: (s) => num(s.pctPoints, 1) },
+    { label: "Rank", align: "right", title: "This team's rank in the category by total points, of the teams that played it", main: (g) => rankCell(g.rank, g.rankOf), sub: (s) => rankCell(s.rank, s.rankOf),
+      // Rank 1 is the best, so ascending is the useful default reading.
+      sortMain: (g) => g.rank ?? null, sortSub: (s) => s.rank ?? null },
+    { label: "Earliest", align: "right", main: (g) => g.earliest ?? "—", sub: (s) => s.earliest ?? "—",
+      sortMain: (g) => g.earliest, sortSub: (s) => s.earliest },
+    { label: "Avg Buzz", align: "right", main: (g) => buzz(g.avgBuzz), sub: (s) => buzz(s.avgBuzz),
+      sortMain: (g) => g.avgBuzz, sortSub: (s) => s.avgBuzz },
+    { label: "BPA", align: "right", title: "Buzz point area-under-the-curve: how much of each question went unread thanks to early correct buzzes, per tossup heard. Higher is faster.", main: (g) => num(g.bpa), sub: (s) => num(s.bpa),
+      sortMain: (g) => g.bpa, sortSub: (s) => s.bpa },
+    { label: "% Pts", align: "right", main: (g) => num(g.pctPoints, 1), sub: (s) => num(s.pctPoints, 1),
+      sortMain: (g) => g.pctPoints, sortSub: (s) => s.pctPoints },
   ];
 
   const bonusCols: CatColumn<CatBonusRow, CatBonusSub>[] = [
     { label: "Heard", align: "right", main: (g) => g.heard, sub: (s) => s.heard },
-    { label: "PPB", align: "right", main: (g) => num(g.ppb, 2), sub: (s) => num(s.ppb, 2) },
-    { label: "Easy%", align: "right", main: (g) => pct(g.easyPct), sub: (s) => pct(s.easyPct) },
-    { label: "Medium%", align: "right", main: (g) => pct(g.medPct), sub: (s) => pct(s.medPct) },
-    { label: "Hard%", align: "right", main: (g) => pct(g.hardPct), sub: (s) => pct(s.hardPct) },
+    { label: "PPB", align: "right", main: (g) => num(g.ppb, 2), sub: (s) => num(s.ppb, 2), sortMain: (g) => g.ppb, sortSub: (s) => s.ppb },
+    { label: "Easy%", align: "right", main: (g) => pct(g.easyPct), sub: (s) => pct(s.easyPct), sortMain: (g) => g.easyPct, sortSub: (s) => s.easyPct },
+    { label: "Medium%", align: "right", main: (g) => pct(g.medPct), sub: (s) => pct(s.medPct), sortMain: (g) => g.medPct, sortSub: (s) => s.medPct },
+    { label: "Hard%", align: "right", main: (g) => pct(g.hardPct), sub: (s) => pct(s.hardPct), sortMain: (g) => g.hardPct, sortSub: (s) => s.hardPct },
   ];
 
   const rosterCols: Column<RosterPlayer>[] = [
