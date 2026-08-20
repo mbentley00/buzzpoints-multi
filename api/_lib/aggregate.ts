@@ -142,9 +142,39 @@ export interface VirtualCategory {
   name: string;
   members: string[];
 }
-// A full subcategory path `fs` belongs to member `m` when it is `m` itself or a
-// descendant of it ("Fine Arts" matches "Fine Arts - Auditory - Opera").
-const vmatchSub = (fs: string, m: string) => fs === m || fs.startsWith(m + " - ");
+// A full subcategory path `fs` belongs to member `m` when it is `m` itself, a
+// descendant of it ("Fine Arts" matches "Fine Arts - Auditory - Opera"), or ends
+// with it as its leaf.
+//
+// That last case is what makes a merged category work across a set's two
+// category vocabularies. Tossup and bonus metadata routinely spell the same
+// subject differently — a set can file tossups under a flat "Biology" while its
+// bonuses use "Science - Biology" — and the picker can only offer one of them.
+// Without leaf matching, picking "Biology" silently did nothing on the bonus
+// side, so a merged category came out holding whichever members happened to be
+// spelled the same in both.
+const vmatchSub = (fs: string, m: string) =>
+  fs === m || fs.startsWith(m + " - ") || fs.endsWith(" - " + m);
+
+// What a merged category actually claims: the members the owner picked, plus its
+// own name. A merged "Science" sitting beside a real "Science" branch under the
+// same heading is not a merge — it's the same name twice, which is exactly how
+// this looked when the picked members only matched half of a set's categories.
+export const virtualMembers = (v: VirtualCategory) => [...new Set([...v.members, v.name])];
+
+// The subcategories some merged category has taken over. They are removed from
+// the top level of the tree, because a merge that leaves its members standing
+// alongside the thing they merged into hasn't merged anything.
+function absorbedSubs(virtualCats: VirtualCategory[], keys: Iterable<string>): Set<string> {
+  const out = new Set<string>();
+  for (const fs of keys)
+    for (const v of virtualCats)
+      if (virtualMembers(v).some((m) => vmatchSub(fs, m))) { out.add(fs); break; }
+  return out;
+}
+// The stats map with those subcategories taken out, for building the real tree.
+const withoutAbsorbed = <A>(subStats: Map<string, A>, absorbed: Set<string>) =>
+  absorbed.size ? new Map([...subStats].filter(([fs]) => !absorbed.has(fs))) : subStats;
 
 const SEP = "||"; // delimiter for composite (player, team[, sub]) keys
 const RACE_WINDOW = 5;
@@ -479,14 +509,19 @@ function buildVirtualNode<A>(
   const mainAcc = newAcc();
   const seen = new Set<string>();
   const subs: SubNode[] = [];
+  // First member to match a subcategory claims it. Members overlap constantly —
+  // an explicit "Biology" and the category's own name both reach a bonus filed
+  // under "Science - Biology" — and without this the same questions appear under
+  // two rows of one merged category, which reads as the merge having half worked.
   for (const m of members) {
     const memAcc = newAcc();
     let has = false;
     for (const [fs, s] of subStats) {
-      if (!vmatchSub(fs, m)) continue;
+      if (seen.has(fs) || !vmatchSub(fs, m)) continue;
+      seen.add(fs);
       addAcc(memAcc, s);
+      addAcc(mainAcc, s);
       has = true;
-      if (!seen.has(fs)) { seen.add(fs); addAcc(mainAcc, s); }
     }
     if (has) subs.push({ subcategory: m, subLabel: m.split(" - ").slice(-1)[0].trim(), ...fin(memAcc), leaves: [] });
   }
@@ -1041,10 +1076,13 @@ export function aggregate(
     }
     files["bonuses.json"] = bnSumm;
     files["bonuses_detail.json"] = bnDetail;
-    const bnTree = buildCategoryTree<CatBnAcc>(catBnSub, bnNew, bnAdd, bnFin);
-    for (const v of virtualCats) {
-      const node = buildVirtualNode<CatBnAcc>(v.name, v.members, catBnSub, bnNew, bnAdd, bnFin);
-      if (node) bnTree.push(node);
+    const bnAbsorbed = absorbedSubs(virtualCats, catBnSub.keys());
+    const bnTree = buildCategoryTree<CatBnAcc>(withoutAbsorbed(catBnSub, bnAbsorbed), bnNew, bnAdd, bnFin);
+    // Merged categories lead: they are the owner's own organization of the set,
+    // and appended last they sat below every category they were meant to replace.
+    for (const v of [...virtualCats].reverse()) {
+      const node = buildVirtualNode<CatBnAcc>(v.name, virtualMembers(v), catBnSub, bnNew, bnAdd, bnFin);
+      if (node) bnTree.unshift(node);
     }
     files["categories_bonus.json"] = bnTree;
     // Same grouping-by-dimension as the tossup tags, with bonus columns.
@@ -1228,7 +1266,8 @@ export function aggregate(
     avgBuzzPct: a.buzzN ? round1((100 * a.buzzSum) / a.buzzN) : null,
     firstSentConvPct: pct(a.firstConv, a.heard), secondSentConvPct: pct(a.secondConv, a.heard), incorrectPct: pct(a.incorrectBefore, a.heard),
   });
-  const ct = buildCategoryTree<CatTuAcc>(catTuSub, tuCatNew, tuCatAdd, tuCatFin);
+  const tuAbsorbed = absorbedSubs(virtualCats, catTuSub.keys());
+  const ct = buildCategoryTree<CatTuAcc>(withoutAbsorbed(catTuSub, tuAbsorbed), tuCatNew, tuCatAdd, tuCatFin);
 
   const categoriesPlayers: Record<string, unknown> = {};
   let cpCounter = 0;
@@ -1281,12 +1320,13 @@ export function aggregate(
   }
   // Owner-defined merged categories: extra top-level nodes aggregating their
   // member subcategories. Each member also gets a per-category players view.
-  for (const v of virtualCats) {
-    const node = buildVirtualNode<CatTuAcc>(v.name, v.members, catTuSub, tuCatNew, tuCatAdd, tuCatFin);
+  for (const v of [...virtualCats].reverse()) {
+    const members = virtualMembers(v);
+    const node = buildVirtualNode<CatTuAcc>(v.name, members, catTuSub, tuCatNew, tuCatAdd, tuCatFin);
     if (!node) continue;
-    emitNode(node, v.name, (fs) => v.members.some((m) => vmatchSub(fs, m)));
+    emitNode(node, v.name, (fs) => members.some((m) => vmatchSub(fs, m)));
     for (const s of node.subs) emitNode(s, s.subcategory, (fs) => vmatchSub(fs, s.subcategory));
-    ct.push(node);
+    ct.unshift(node);
   }
   files["categories_tossup.json"] = ct;
 
@@ -1451,10 +1491,11 @@ export function bonusFilesFromImported(list: ImportedBonus[], virtualCats: Virtu
       parts: b.parts, answers: b.answers, difficultyModifiers: b.difficultyModifiers, heard, ppb, totalPts, partConv, results: [],
     };
   }
-  const bnTree = buildCategoryTree<CatBnAcc>(catBnSub, bnNew, bnAdd, bnFin);
-  for (const v of virtualCats) {
-    const node = buildVirtualNode<CatBnAcc>(v.name, v.members, catBnSub, bnNew, bnAdd, bnFin);
-    if (node) bnTree.push(node);
+  const bnAbsorbed = absorbedSubs(virtualCats, catBnSub.keys());
+  const bnTree = buildCategoryTree<CatBnAcc>(withoutAbsorbed(catBnSub, bnAbsorbed), bnNew, bnAdd, bnFin);
+  for (const v of [...virtualCats].reverse()) {
+    const node = buildVirtualNode<CatBnAcc>(v.name, virtualMembers(v), catBnSub, bnNew, bnAdd, bnFin);
+    if (node) bnTree.unshift(node);
   }
   return { "bonuses.json": bnSumm, "bonuses_detail.json": bnDetail, "categories_bonus.json": bnTree };
 }

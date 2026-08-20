@@ -13,15 +13,26 @@ export function MergeCategoriesEditor({ slug, groups }: { slug: string; groups: 
     () => groups.filter((g) => g.virtual).map((g) => ({ name: g.category, members: g.subs.map((s) => s.subcategory) })),
     [groups]
   );
-  // Every real (non-virtual) category/subcategory/leaf, flattened for the picker.
+  // Every category/subcategory/leaf, flattened for the picker — including the
+  // ones already inside a merged category. A member leaves the top level of the
+  // tree once it's merged, so drawing the picker from the top level alone would
+  // make anything already chosen disappear from the list it was chosen in, with
+  // no way to move it or take it back out.
   const options = useMemo<Option[]>(() => {
     const opts: Option[] = [];
+    const seen = new Set<string>();
+    const add = (value: string, label: string, depth: number) => {
+      if (seen.has(value)) return;
+      seen.add(value);
+      opts.push({ value, label, depth });
+    };
     for (const g of groups) {
-      if (g.virtual) continue;
-      opts.push({ value: g.category, label: g.category, depth: 0 });
+      // A merged category is a name the owner invented, not something to nest
+      // another merge inside; only its members are offered.
+      if (!g.virtual) add(g.category, g.category, 0);
       for (const s of g.subs) {
-        opts.push({ value: s.subcategory, label: s.subLabel, depth: 1 });
-        for (const lf of s.leaves || []) opts.push({ value: lf.subcategory, label: lf.subLabel, depth: 2 });
+        add(s.subcategory, s.subLabel, g.virtual ? 0 : 1);
+        for (const lf of s.leaves || []) add(lf.subcategory, lf.subLabel, g.virtual ? 1 : 2);
       }
     }
     return opts;
