@@ -18,7 +18,8 @@ import { sendEmail, appUrl, publishReminderBody } from "./_lib/email.js";
 // every hand correction layered on them. The stat files are left out on purpose —
 // they're derived, they're the bulk of the bytes, and a restore rebuilds them.
 const SET_FILES = [
-  "_source.json", "_corrections.json", "_renames.json", "_metamap.json", "_tagedits.json",
+  "_source.json", "_corrections.json", "_bonuscorrections.json", "_bonusdiffs.json",
+  "_renames.json", "_metamap.json", "_tagedits.json",
   "_virtualcats.json", "_roundtags.json", "_access.json", "_links.json", "_requests.json", "_yf.json",
 ] as const;
 const CORE_FILES = ["users.json", "moderation.json"] as const;

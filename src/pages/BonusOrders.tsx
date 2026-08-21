@@ -30,7 +30,36 @@ function OrderMarks({ order }: { order: string }) {
   );
 }
 
-function StatCells({ s }: { s: BonusOrderStats }) {
+// The conversion figures always read easy, then medium, then hard — never the
+// order's own sequence. These are the numbers you compare BETWEEN orders, and
+// they only compare if they sit in the same place in every one of them; listing
+// an MEH bonus as medium-easy-hard and an HEM one as hard-easy-medium meant
+// reading two rows in different directions to compare one difficulty. The
+// sequence itself is still right there in the marks beside the name, and the
+// numbered columns below say exactly where each part sat.
+const DIFF_SLOTS = [
+  { key: "e", mark: "E", label: "Easy" },
+  { key: "m", mark: "M", label: "Medium" },
+  { key: "h", mark: "H", label: "Hard" },
+  { key: "u", mark: "?", label: "Unmarked" },
+] as const;
+const slotPct = (s: BonusOrderStats, key: string) =>
+  key === "e" ? s.easyPct : key === "m" ? s.medPct : key === "h" ? s.hardPct : s.unmarkedPct ?? null;
+
+function DiffPcts({ s }: { s: BonusOrderStats }) {
+  return (
+    <span className="ord-parts">
+      {DIFF_SLOTS.filter((d) => slotPct(s, d.key) !== null).map((d) => (
+        <span className="ord-part" key={d.key} title={`${d.label} part${d.key === "u" ? "s with no mark" : "s"} of this order`}>
+          <span className={`ord-mark ord-mark-${d.key}`}>{d.mark}</span>
+          <span className="ord-part-pct">{cell(slotPct(s, d.key))}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function StatCells({ s, unmarked }: { s: BonusOrderStats; unmarked: boolean }) {
   return (
     <>
       <td className="right mono">{s.bonuses}</td>
@@ -39,6 +68,7 @@ function StatCells({ s }: { s: BonusOrderStats }) {
       <td className="right mono">{cell(s.easyPct)}</td>
       <td className="right mono">{cell(s.medPct)}</td>
       <td className="right mono">{cell(s.hardPct)}</td>
+      {unmarked && <td className="right mono">{cell(s.unmarkedPct ?? null)}</td>}
       {s.parts.map((p) => (
         <td key={p.idx} className="right mono" title={`Part ${p.idx + 1} — ${p.difficultyName}`}>{cell(p.convPct)}</td>
       ))}
@@ -50,6 +80,8 @@ function StatCells({ s }: { s: BonusOrderStats }) {
 function OrderTable({ row }: { row: BonusOrderRow }) {
   const [openCats, setOpenCats] = useState<Record<string, boolean>>({});
   const maxParts = row.parts.length;
+  // Only orders that actually contain an unmarked part get the column for it.
+  const unmarked = row.order.includes("?");
   return (
     <div className="table-wrap">
       <table className="data-table ord-table">
@@ -62,6 +94,7 @@ function OrderTable({ row }: { row: BonusOrderRow }) {
             <th className="right" title="Conversion of this order's easy part(s)">Easy%</th>
             <th className="right" title="Conversion of this order's medium part(s)">Med%</th>
             <th className="right" title="Conversion of this order's hard part(s)">Hard%</th>
+            {unmarked && <th className="right" title="Conversion of the part(s) this order leaves unmarked">?%</th>}
             {row.parts.map((p) => (
               <th key={p.idx} className="right" title={`Part ${p.idx + 1} of the bonus — ${p.difficultyName} in this order`}>
                 {p.idx + 1}. {p.difficultyName.charAt(0) || "?"}
@@ -72,7 +105,7 @@ function OrderTable({ row }: { row: BonusOrderRow }) {
         <tbody>
           <tr className="ord-total">
             <td><strong>All categories</strong></td>
-            <StatCells s={row} />
+            <StatCells s={row} unmarked={unmarked} />
           </tr>
           {row.categories.map((c: BonusOrderCat) => {
             const open = !!openCats[c.category];
@@ -84,20 +117,20 @@ function OrderTable({ row }: { row: BonusOrderRow }) {
                       {open ? "▾" : "▸"} {c.category}
                     </button>
                   </td>
-                  <StatCells s={c} />
+                  <StatCells s={c} unmarked={unmarked} />
                 </tr>
                 {open &&
                   c.subs.map((sub) => (
                     <tr key={`${c.category}|${sub.subcategory}`} className="ord-sub">
                       <td className="ord-sub-name">{sub.subLabel}</td>
-                      <StatCells s={sub} />
+                      <StatCells s={sub} unmarked={unmarked} />
                     </tr>
                   ))}
               </Fragment>
             );
           })}
           {row.categories.length === 0 && (
-            <tr><td colSpan={7 + maxParts} className="muted">No categories.</td></tr>
+            <tr><td colSpan={7 + (unmarked ? 1 : 0) + maxParts} className="muted">No categories.</td></tr>
           )}
         </tbody>
       </table>
@@ -141,10 +174,11 @@ export function BonusOrders() {
       />
       <p className="explainer">
         Bonuses grouped by the order they present their difficulties in — <strong>HEM</strong> is hard, easy, medium.
-        Read a difficulty column downward to compare the same billing across formats: whether the hard part of an{" "}
-        <strong>HEM</strong> bonus really played harder than the hard part of an <strong>MEH</strong> one. The numbered
-        columns are the positions in the bonus, so you can see where each difficulty actually sat. Open an order to
-        break it down by category, and a category to reach its subcategories.
+        Every percentage reads <strong>easy, then medium, then hard</strong>, whichever order the format itself uses, so
+        the same billing lines up down the page: whether the hard part of an <strong>HEM</strong> bonus really played
+        harder than the hard part of an <strong>MEH</strong> one. The marks beside each name are the order's own
+        sequence, and the numbered columns are the positions in the bonus, so you can still see where each difficulty
+        actually sat. Open an order to break it down by category, and a category to reach its subcategories.
         {meta.hasTeamBonuses === false && " Conversion here comes from the imported per-part totals."}
       </p>
       {rows.length === 0 && (
@@ -171,19 +205,9 @@ export function BonusOrders() {
               <span className="muted ord-sum">
                 {row.bonuses} bonus{row.bonuses === 1 ? "" : "es"} · {row.heard} heard · {num(row.ppb, 2)} PPB
               </span>
-              {/* Every part's conversion, in the order's own sequence, so a
-                  collapsed row still says how the whole format played rather
-                  than only its hard part. */}
-              <span className="ord-parts">
-                {row.parts.map((p) => (
-                  <span className="ord-part" key={p.idx} title={`Part ${p.idx + 1} — ${p.difficultyName}`}>
-                    <span className={`ord-mark ord-mark-${p.difficulty || "u"}`}>
-                      {p.difficulty ? p.difficulty.toUpperCase() : "?"}
-                    </span>
-                    <span className="ord-part-pct">{cell(p.convPct)}</span>
-                  </span>
-                ))}
-              </span>
+              {/* Easy, medium, hard — in that order in every section, so the
+                  collapsed list can be read straight down one difficulty. */}
+              <DiffPcts s={row} />
             </h2>
             {isOpen && <OrderTable row={row} />}
           </section>

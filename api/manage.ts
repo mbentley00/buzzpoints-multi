@@ -13,9 +13,10 @@ import {
   readAccess, writeAccess, readLinks, writeLinks, canViewContent, effectiveVisibility, InviteLink, Visibility, AccessRole,
   writeVirtualCats, readRoundTags, writeRoundTags, DEFAULT_ROUND_TAGS, RoundTags, RoundTagsDoc, TOURNAMENT_LEVELS,
   editionsOf, canonicalizeEditions, Edition, SetSource, AccessRequest, readRenames, writeRenames, renameKey,
-  readMetaMap, writeMetaMap, readTagEdits, writeTagEdits, isSetOwner, isPrimaryOwner, ownerEmails, requestsAllowed,
+  readMetaMap, writeMetaMap, readTagEdits, writeTagEdits, readBonusDiffs, writeBonusDiffs,
+  isSetOwner, isPrimaryOwner, ownerEmails, requestsAllowed,
 } from "./_lib/sets.js";
-import { VirtualCategory, scanRoundAlignment, metaFields, MetaMap, MetaField } from "./_lib/aggregate.js";
+import { VirtualCategory, scanRoundAlignment, metaFields, MetaMap, MetaField, BonusDiffs } from "./_lib/aggregate.js";
 import { LETTER_ROUND_BASE } from "./_lib/publish.js";
 import { sendEmail, appUrl, accessRequestBody, accessGrantedBody, coOwnerBody } from "./_lib/email.js";
 
@@ -238,6 +239,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Applied player and team renames, so the owner can see and undo them (undo itself
       // goes through /api/correct, which owns the renames file).
       if (req.query.op === "renames") return res.status(200).json({ renames: await readRenames(slug) });
+      // Difficulty marks the owner has already corrected. The bonuses that still
+      // NEED correcting come from meta.bonusDiffWarnings, which the client
+      // already has — this is only so a fix can be reviewed and put back.
+      if (req.query.op === "bonusdiff") return res.status(200).json({ bonusDiffs: await readBonusDiffs(slug) });
       // What the question metadata actually looks like across the set: every
       // distinct comma-separated shape, with how often it occurs and sample
       // values per field, so the owner can say which field means what.
@@ -408,6 +413,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await writeTagEdits(slug, next);
       await aggregateAndWrite(slug, source, await readCorrections(slug));
       return res.status(200).json({ ok: true, tagEdits: next });
+    } else if (op === "bonus-difficulty") {
+      // Which parts of a bonus are easy, medium and hard, when the packet said
+      // something impossible ("medium, easy, easy"). Layered over the source the
+      // way tag edits are, so a corrected re-upload isn't fighting an old fix.
+      if (entry.kind === "results") return res.status(400).json({ error: "Bonus difficulty marks apply to buzz tournaments only." });
+      const edits = body.edits;
+      if (!edits || typeof edits !== "object" || Array.isArray(edits)) return res.status(400).json({ error: "Invalid difficulty edits." });
+      const ids = Object.keys(edits);
+      if (!ids.length) return res.status(400).json({ error: "No difficulty changes to apply." });
+      if (ids.length > 500) return res.status(400).json({ error: "Too many bonuses at once." });
+      const source = await readSource(slug);
+      if (!source) return res.status(500).json({ error: "Source data not found (set predates source storage; re-create it)." });
+      // The marks as the packet gave them, under the CANONICAL round numbering —
+      // the same numbering the stats, the warnings and the fixes all use.
+      const orig = new Map<string, string[]>();
+      for (const e of canonicalizeEditions(editionsOf(source)))
+        for (const p of e.packets || [])
+          (p.bonuses || []).forEach((b: any, i: number) => orig.set(`${p.round}-${i + 1}`, (b?.difficultyModifiers as string[]) || []));
+      const next: BonusDiffs = { ...(await readBonusDiffs(slug)) };
+      for (const id of ids) {
+        if (!/^\d+-\d+$/.test(id)) return res.status(400).json({ error: "Unknown bonus." });
+        if (!orig.has(id)) return res.status(404).json({ error: `There is no bonus ${id} in this tournament.` });
+        const v = edits[id];
+        if (v === null) { delete next[id]; continue; } // put the packet's own marks back
+        if (!Array.isArray(v) || v.length > 12 || v.some((m: unknown) => typeof m !== "string" || !/^[emh]?$/.test(m)))
+          return res.status(400).json({ error: "Each mark must be easy, medium, hard, or left blank." });
+        const mods = (v as string[]).map((m) => m);
+        const from = orig.get(id)!;
+        // A "fix" that agrees with the packet isn't one: storing it would only
+        // give a later, corrected re-upload something to fight with.
+        if (mods.length === from.length && mods.every((m, i) => m === (from[i] || ""))) delete next[id];
+        else next[id] = { mods, from, by: user || undefined, at: new Date().toISOString() };
+      }
+      await writeBonusDiffs(slug, next);
+      const { meta } = await aggregateAndWrite(slug, source, await readCorrections(slug));
+      return res.status(200).json({ ok: true, bonusDiffs: next, bonusDiffWarnings: meta.bonusDiffWarnings || [] });
     } else if (op === "roundtags") {
       if (entry.kind === "results") return res.status(400).json({ error: "Round tags apply to buzz tournaments only." });
       const clean = sanitizeRoundTags(body.roundTags);

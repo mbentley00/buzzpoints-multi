@@ -6,7 +6,7 @@ import { AuthNav } from "../components/Common";
 import { detectScoring } from "../detectScoring";
 import { uploadFiles } from "../upload";
 import { FileDrop } from "../components/FileDrop";
-import { Visibility, TOURNAMENT_LEVELS, RoundWarning } from "../types";
+import { Visibility, TOURNAMENT_LEVELS, RoundWarning, BonusDiffWarning } from "../types";
 import { warningText } from "../components/SourceFiles";
 
 interface CategoryWarning { category: string; count: number; reason: string; examples: string[] }
@@ -65,7 +65,7 @@ export function CreateSet() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<string | null>(null);
-  const [warned, setWarned] = useState<{ slug: string; warnings: CategoryWarning[]; rounds: RoundWarning[] } | null>(null);
+  const [warned, setWarned] = useState<{ slug: string; warnings: CategoryWarning[]; rounds: RoundWarning[]; bonusDiffs: BonusDiffWarning[] } | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function onGames(files: File[]) {
@@ -178,13 +178,15 @@ export function CreateSet() {
         return;
       }
       refreshIndex();
-      // If the category heuristic flagged likely-mislabeled categories, or the
-      // packets' rounds don't line up with the games', pause on a review screen so
-      // the owner can fix things before relying on the stats.
+      // If the category heuristic flagged likely-mislabeled categories, the
+      // packets' rounds don't line up with the games', or a bonus carries
+      // difficulty marks that can't be right, pause on a review screen so the
+      // owner can fix things before relying on the stats.
       const warnings: CategoryWarning[] = Array.isArray(json.categoryWarnings) ? json.categoryWarnings : [];
       const rounds: RoundWarning[] = Array.isArray(json.roundWarnings) ? json.roundWarnings : [];
-      if (warnings.length || rounds.length) {
-        setWarned({ slug: json.slug, warnings, rounds });
+      const bonusDiffs: BonusDiffWarning[] = Array.isArray(json.bonusDiffWarnings) ? json.bonusDiffWarnings : [];
+      if (warnings.length || rounds.length || bonusDiffs.length) {
+        setWarned({ slug: json.slug, warnings, rounds, bonusDiffs });
         setBusy(false);
         setStatus(null);
         return;
@@ -251,6 +253,34 @@ export function CreateSet() {
             </div>
           </div>
         )}
+        {!authLoading && user && warned && warned.bonusDiffs.length > 0 && (
+          <div className="cat-warn bndiff-warn" role="status">
+            <strong>
+              Your tournament was created — but{" "}
+              {warned.bonusDiffs.length === 1 ? "one bonus has" : `${warned.bonusDiffs.length} bonuses have`} difficulty
+              marks that can't be right.
+            </strong>
+            <p className="muted">
+              A three-part bonus is written easy, medium and hard. Where the packet tagged one "medium, easy, easy" its
+              real hard part will be counted as an easy one, and every easy/medium/hard figure built on it — conversion
+              by category, and the Difficulty order view — is off by that part. Re-mark the parts and the stats are
+              rebuilt; the packet file isn't touched.
+            </p>
+            <ul className="cat-warn-list">
+              {warned.bonusDiffs.slice(0, 8).map((w) => (
+                <li key={w.id}>
+                  <span className="cat-warn-name">Round {w.round}, bonus {w.num}</span>
+                  <span className="cat-warn-reason">{w.reason}</span>
+                </li>
+              ))}
+              {warned.bonusDiffs.length > 8 && <li className="muted">…and {warned.bonusDiffs.length - 8} more.</li>}
+            </ul>
+            <div className="cat-warn-actions">
+              <Link className="btn-primary" to={`/set/${warned.slug}/settings#bonusdiff`}>Fix difficulty marks</Link>
+              <Link className="link" to={`/set/${warned.slug}`}>Skip for now →</Link>
+            </div>
+          </div>
+        )}
         {!authLoading && user && warned && warned.warnings.length > 0 && (
           <div className="cat-warn" role="status">
             <strong>Some categories look off.</strong>
@@ -277,7 +307,7 @@ export function CreateSet() {
             </div>
           </div>
         )}
-        {!authLoading && user && warned && !warned.warnings.length && (
+        {!authLoading && user && warned && !warned.warnings.length && !warned.bonusDiffs.length && (
           <p><Link to="/" className="link">← Back to tournaments</Link></p>
         )}
         {!authLoading && user && !submitted && !warned && (

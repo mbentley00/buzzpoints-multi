@@ -7,6 +7,7 @@ import { Loading } from "../components/Common";
 import { RoundTagsEditor } from "../components/RoundTagsEditor";
 import { RoundAlignEditor, GameFilesEditor, UploadCleanup, RenamesEditor } from "../components/SourceFiles";
 import { MetaMapEditor } from "../components/MetaMapEditor";
+import { BonusDifficultyEditor } from "../components/BonusDifficulty";
 
 const VIS_OPTIONS: { id: Visibility; label: string; desc: string }[] = [
   { id: "listed", label: "Listed (login + invite)", desc: "Shown in the list; only invited, logged-in people can view." },
@@ -332,6 +333,21 @@ export function Settings() {
             filter and compare on, like the writer.
           </p>
           <MetaMapEditor slug={slug} />
+
+          {meta?.hasBonuses && (
+            <>
+              <h2 id="bonusdiff" style={{ marginTop: 28 }}>Bonus difficulty marks</h2>
+              <p className="muted">
+                A three-part bonus is written easy, medium and hard — in some order. When a packet tags one
+                "medium, easy, easy" the mistake is invisible everywhere except{" "}
+                <Link to={`/set/${slug}/bonus-order`} className="link">Difficulty order</Link>, where the bonus turns up
+                under an order nobody wrote: its real hard part is counted as an easy one, and every easy/medium/hard
+                figure in the tournament is averaged with a part that was never that difficulty. Re-mark the parts here
+                and the stats are rebuilt — the packet file itself is left alone.
+              </p>
+              <BonusDifficultyEditor slug={slug} warnings={meta?.bonusDiffWarnings ?? []} />
+            </>
+          )}
 
           <h2 id="rounds" style={{ marginTop: 28 }}>Round alignment</h2>
           <p className="muted">

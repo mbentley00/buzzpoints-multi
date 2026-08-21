@@ -59,16 +59,35 @@ export interface AggregateConfig {
   metaMap?: MetaMap | null;
   // Per-question tag edits the owner made by hand, keyed "<round>-<num>".
   tagEdits?: TagEdits | null;
+  // Difficulty marks the owner corrected by hand, keyed "<round>-<num>". A packet
+  // that tags a bonus "medium, easy, easy" is describing a bonus nobody wrote;
+  // the override REPLACES what the packet said for that bonus, part for part.
+  bonusDiffs?: BonusDiffs | null;
 }
 
 // Hand edits layered over the tags derived from metadata.
 export interface TagEdit { add?: string[]; remove?: string[] }
 export interface TagEdits { tossups?: Record<string, TagEdit>; bonuses?: Record<string, TagEdit> }
+
+// One bonus's corrected difficulty marks, keyed "<round>-<num>". `from` is what
+// the packet said before the fix, kept so the owner can see what they changed and
+// put it back — the packet itself is never rewritten.
+export interface BonusDiffFix { mods: string[]; from?: string[]; by?: string; at?: string }
+export type BonusDiffs = Record<string, BonusDiffFix>;
 const applyTagEdits = (tags: string[], e?: TagEdit): string[] => {
   if (!e) return tags;
   const out = tags.filter((t) => !(e.remove || []).includes(t));
   for (const t of e.add || []) if (!out.includes(t)) out.push(t);
   return out;
+};
+
+// An owner's correction to one bonus's difficulty marks, layered over what the
+// packet tagged. The bonus's own part count wins: a fix stored before a re-upload
+// changed the packet must not invent a fourth part or drop a real one.
+const applyDiffFix = (mods: string[], answers: string[], fix?: string[]): string[] => {
+  if (!fix || !fix.length) return mods;
+  const n = Math.max(mods.length, answers.length) || fix.length;
+  return Array.from({ length: n }, (_, i) => (i < fix.length ? fix[i] || "" : mods[i] || ""));
 };
 
 // A buzz reassignment / move keyed on the buzz's original attributes.
@@ -451,6 +470,125 @@ export function scanRoundAlignment(packets: RoundScanPacket[], games: { round: n
   return out;
 }
 
+/* ----------------------------- bonus difficulty marks ----------------------------- */
+// A three-part bonus is written easy, medium and hard — in some order. When a
+// packet tags one "medium, easy, easy" it has mistyped a mark, and everything
+// built on those marks inherits the mistake silently: the bonus lands in a
+// difficulty order nobody wrote ("mee"), its real hard part is counted as an easy
+// one, and the set's easy/medium/hard conversion is averaged with a part that was
+// never easy. Difficulty Order is where it shows up, because that view groups by
+// exactly the string that went wrong.
+//
+// So the marks are checked per bonus and the broken ones reported for the owner to
+// fix by hand (Settings -> Bonus difficulty marks). A set that marks NO
+// difficulties anywhere is untagged rather than mis-tagged, and is left alone.
+export interface BonusDiffInput {
+  id: string;
+  round: number;
+  num: number;
+  mods: string[];      // difficulty mark per part ("" when unmarked)
+  answers: string[];   // answer line per part, to identify the bonus
+  heard: number;
+  got: number[];       // hearings that earned each part
+}
+export interface BonusDiffWarning {
+  kind: "duplicate" | "partial" | "unknown" | "unmarked";
+  id: string;
+  round: number;
+  num: number;
+  mods: string[];
+  answers: string[];
+  heard: number;
+  convPct: (number | null)[];
+  reason: string;
+  // The marks that conversion says this bonus really has — easiest part easy,
+  // hardest part hard — offered as a one-click fix. Null when the bonus wasn't
+  // heard often enough for that to mean anything.
+  suggested: string[] | null;
+}
+
+const DIFF_WORD: Record<string, string> = { e: "easy", m: "medium", h: "hard" };
+const COUNT_WORD = ["no", "one", "two", "three", "four"];
+const countWord = (n: number) => COUNT_WORD[n] ?? String(n);
+// Below this a bonus's part conversion is noise, and a suggestion built on it
+// would be a guess wearing a number.
+const SUGGEST_MIN_HEARD = 10;
+
+// The marks conversion implies: rank the parts easiest-first and hand out one
+// easy, one medium and one hard. Only for the standard three parts, and only when
+// the bonus was heard enough for the ranking to be real.
+function suggestMarks(heard: number, conv: (number | null)[]): string[] | null {
+  if (conv.length !== 3 || heard < SUGGEST_MIN_HEARD) return null;
+  if (conv.some((c) => c === null)) return null;
+  const v = conv as number[];
+  if (Math.max(...v) === Math.min(...v)) return null; // nothing to rank
+  const rank = v.map((c, i) => ({ c, i })).sort((a, b) => b.c - a.c || a.i - b.i);
+  const out = ["", "", ""];
+  "emh".split("").forEach((d, k) => { out[rank[k].i] = d; });
+  return out;
+}
+
+export function scanBonusDifficulty(rows: BonusDiffInput[]): BonusDiffWarning[] {
+  const anyMarked = rows.some((b) => b.mods.some((m) => m));
+  if (!anyMarked) return []; // the set doesn't mark difficulties at all
+  // A packet that tags nothing leaves the field off entirely rather than sending
+  // blanks, so a bonus's part count has to come from its answers when its marks
+  // are missing outright — otherwise the one untagged bonus in a tagged set is
+  // the one case that can't be seen or fixed.
+  const marksOf = (b: BonusDiffInput) => (b.mods.length ? b.mods : b.answers.map(() => ""));
+  // A set where most bonuses carry no marks isn't one broken bonus at a time —
+  // it's a source that only sometimes tags them, and listing every one of them
+  // would bury the bonuses that really are mistyped.
+  const bare = rows.filter((b) => !b.mods.some((m) => m)).length;
+  const reportBare = bare * 2 < rows.length;
+
+  const out: BonusDiffWarning[] = [];
+  for (const b of rows) {
+    const mods = marksOf(b);
+    const n = mods.length;
+    if (!n) continue; // a bonus with no parts has nothing to mark
+    const conv = mods.map((_, i) => (b.heard ? pct(b.got[i] || 0, b.heard) : null));
+    const base = { id: b.id, round: b.round, num: b.num, mods, answers: b.answers, heard: b.heard, convPct: conv };
+    const unknown = [...new Set(mods.filter((m) => m && !DIFF_WORD[m]))];
+    const blank = mods.filter((m) => !m).length;
+    const counts: Record<string, number> = { e: 0, m: 0, h: 0 };
+    for (const m of mods) if (DIFF_WORD[m]) counts[m]++;
+
+    if (unknown.length) {
+      out.push({ ...base, kind: "unknown", suggested: suggestMarks(b.heard, conv),
+        reason: `marked ${unknown.map((u) => `"${u}"`).join(", ")}, which isn't easy, medium or hard` });
+      continue;
+    }
+    if (blank === n) {
+      if (reportBare)
+        out.push({ ...base, kind: "unmarked", suggested: suggestMarks(b.heard, conv),
+          reason: "carries no difficulty marks, so it's left out of every easy/medium/hard breakdown" });
+      continue;
+    }
+    if (blank) {
+      out.push({ ...base, kind: "partial", suggested: suggestMarks(b.heard, conv),
+        reason: `${blank} of its ${n} parts carry no difficulty mark` });
+      continue;
+    }
+    // Every part marked: the marks should be one of each difficulty. Only the
+    // standard three-part bonus is held to "one easy, one medium, one hard" —
+    // a two-part bonus just needs its two marks to differ, and a longer one is
+    // some format we shouldn't be second-guessing.
+    if (n > 3) continue;
+    const dupes = ["e", "m", "h"].filter((d) => counts[d] > 1);
+    const missing = n === 3 ? ["e", "m", "h"].filter((d) => !counts[d]) : [];
+    if (!dupes.length && !missing.length) continue;
+    const bits = dupes.map((d) => `${countWord(counts[d])} ${DIFF_WORD[d]} parts`);
+    if (missing.length) bits.push(`no ${missing.map((d) => DIFF_WORD[d]).join(" or ")} part`);
+    out.push({ ...base, kind: "duplicate", suggested: suggestMarks(b.heard, conv), reason: bits.join(" and ") });
+  }
+  const sev = { duplicate: 0, unknown: 1, partial: 2, unmarked: 3 };
+  out.sort((a, z) => sev[a.kind] - sev[z.kind] || a.round - z.round || a.num - z.num);
+  // Long enough to fix a tournament by hand, short enough not to become the
+  // meta file. A set with more than this is broken wholesale, not bonus by bonus.
+  return out.slice(0, 300);
+}
+
 /* generic 3-level category tree (main -> subcategory -> sub-subcategory) */
 type TreeNode = Record<string, unknown> & { category: string; heard: number; subs: SubNode[] };
 type SubNode = Record<string, unknown> & { subcategory: string; subLabel: string; leaves?: SubNode[] };
@@ -591,6 +729,9 @@ const ordFin = (a: OrdAcc, order: string) => ({
   easyPct: a.diff.has("e") ? pct(a.diff.get("e")![0], a.diff.get("e")![1]) : null,
   medPct: a.diff.has("m") ? pct(a.diff.get("m")![0], a.diff.get("m")![1]) : null,
   hardPct: a.diff.has("h") ? pct(a.diff.get("h")![0], a.diff.get("h")![1]) : null,
+  // Parts the packet never marked. Absent from older builds of this file, which
+  // the client reads as "there were none".
+  unmarkedPct: a.diff.has("?") ? pct(a.diff.get("?")![0], a.diff.get("?")![1]) : null,
   parts: [...order].map((c, i) => ({
     idx: i, difficulty: c === "?" ? "" : c, difficultyName: diffLabel(c === "?" ? "" : c),
     convPct: a.part[i] ? pct(a.part[i][0], a.part[i][1]) : null,
@@ -655,7 +796,7 @@ const bnNew = (): CatBnAcc => ({ main: "", heard: 0, pts: 0, parts: new Map() })
 
 /* ----------------------------- accumulators ----------------------------- */
 interface TUStat { round: number; num: number; questionHtml: string; answer: string; category: string; subcategory: string; categoryMid: string; tags: string[]; words: string[]; wordCount: number; powerIndex: number | null; }
-interface BNStat { round: number; num: number; leadin: string; parts: string[]; answers: string[]; difficultyModifiers: string[]; category: string; subcategory: string; tags: string[]; }
+interface BNStat { round: number; num: number; leadin: string; parts: string[]; answers: string[]; difficultyModifiers: string[]; category: string; subcategory: string; tags: string[]; stats?: { heard: number; got: number[]; points: number }; }
 type Buzz = { player: string | null; team: string | null; value: number; wordIndex: number | null; opponent?: string | null; origPlayer?: string | null; origWordIndex?: number | null; origTeam?: string | null; firstInRoom?: boolean; editionId?: string | null; };
 // `unread` is the BPA numerator: the fraction of each question left unread,
 // summed over reliably-placed correct buzzes. `tuh` is its denominator, filled
@@ -726,6 +867,7 @@ export function aggregate(
   const tossups = new Map<string, TUStat>();
   const bonuses = new Map<string, BNStat>();
   let bonusTagCount = 0;
+  let bonusDiffWarnings: BonusDiffWarning[] = [];
   // A set nobody has mapped yet, whose metadata carries more than one field, is
   // being categorized on a guess about field order — the guess that files a set
   // under its writers' initials. Worth telling the owner about.
@@ -752,8 +894,10 @@ export function aggregate(
         const rmb = resolveMeta(b.metadata, cfg.metaMap ?? null);
         bonuses.set(`${r}-${num}`, {
           round: r, num, leadin: b.leadin || "", parts: b.parts || [], answers: b.answers || [],
-          difficultyModifiers: b.difficultyModifiers || [], category: rmb.main, subcategory: rmb.full,
+          difficultyModifiers: applyDiffFix(b.difficultyModifiers || [], b.answers || [], cfg.bonusDiffs?.[`${r}-${num}`]?.mods),
+          category: rmb.main, subcategory: rmb.full,
           tags: applyTagEdits(rmb.tags, cfg.tagEdits?.bonuses?.[`${r}-${num}`]),
+          stats: b.stats,
         });
       });
   }
@@ -1147,6 +1291,8 @@ export function aggregate(
     const bnDetail: Record<string, unknown> = {};
     const catBnSub = new Map<string, CatBnAcc>();
     const orderRows: BonusOrderInput[] = [];
+    // Every bonus's marks, checked afterwards for the ones a packet mistyped.
+    const diffRows: BonusDiffInput[] = [];
     // The same bonus numbers grouped by tag rather than by category.
     const tagBnAcc = new Map<string, CatBnAcc>();
     for (const [id, b] of [...bonuses.entries()].sort()) {
@@ -1171,6 +1317,15 @@ export function aggregate(
         category: b.category, subcategory: b.subcategory, mods: b.parts.map((_, i) => diffAt(b.difficultyModifiers, i)),
         heard, points: totalPts,
         got: b.parts.map((_, i) => results.filter((r) => (r.partPts[i] || 0) > 0 || (r.bbPts[i] || 0) > 0).length),
+      });
+      // Imports carry conversion in aggregate rather than per game, so a scraped
+      // set's mis-tagged bonus can still be ranked by how its parts actually played.
+      diffRows.push({
+        id, round: b.round, num: b.num, mods: b.difficultyModifiers, answers: b.answers,
+        heard: heard || b.stats?.heard || 0,
+        got: heard
+          ? b.difficultyModifiers.map((_, i) => results.filter((r) => (r.partPts[i] || 0) > 0 || (r.bbPts[i] || 0) > 0).length)
+          : b.stats?.got || [],
       });
       for (const tag of b.tags) {
         let ta = tagBnAcc.get(tag);
@@ -1219,6 +1374,7 @@ export function aggregate(
       }))
       .sort((a, b) => a.dim.localeCompare(b.dim));
     bonusTagCount = tagBnAcc.size;
+    bonusDiffWarnings = scanBonusDifficulty(diffRows);
   }
 
   /* ----------------------------- players (list + detail) ----------------------------- */
@@ -1539,6 +1695,10 @@ export function aggregate(
     // played in (so their questions can never accumulate buzzes). Owners get a
     // banner and a renumbering tool in Settings.
     roundWarnings: scanRoundAlignment(packets, games),
+    // Advisory: bonuses whose difficulty marks can't be right ("medium, easy,
+    // easy"), which quietly corrupt every easy/medium/hard figure built on them.
+    // Owners get a banner and a per-bonus fixer in Settings.
+    bonusDiffWarnings,
     generatedAt: new Date().toISOString(),
   };
 

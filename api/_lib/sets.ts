@@ -2,7 +2,7 @@
 // re-aggregation helper used by ingest and the edit endpoints.
 import { put, del } from "@vercel/blob";
 import { readBlobJson } from "./blob.js";
-import { aggregate, bonusFilesFromImported, ImportedBonus, PacketFile, GameFile, Correction, BonusCorrection, bnCorrKeyOf, VirtualCategory, Rename, renameKind, MetaMap, TagEdits, AggregateConfig } from "./aggregate.js";
+import { aggregate, bonusFilesFromImported, ImportedBonus, PacketFile, GameFile, Correction, BonusCorrection, bnCorrKeyOf, VirtualCategory, Rename, renameKind, MetaMap, TagEdits, BonusDiffs, AggregateConfig } from "./aggregate.js";
 import { getScoring } from "./scoring.js";
 
 export interface Edition {
@@ -329,6 +329,13 @@ export const readTagEdits = (slug: string) =>
   readBlobJson<TagEdits>(`sets/${slug}/_tagedits.json`, false).then((t) => t || {});
 export const writeTagEdits = (slug: string, t: TagEdits) => writeJson(`sets/${slug}/_tagedits.json`, t);
 
+// Bonus difficulty marks the owner corrected by hand, keyed "<round>-<num>". Kept
+// beside the source rather than written into it, like every other repair here, so
+// re-uploading the packets doesn't quietly undo them.
+export const readBonusDiffs = (slug: string) =>
+  readBlobJson<BonusDiffs>(`sets/${slug}/_bonusdiffs.json`, false).then((d) => d || {});
+export const writeBonusDiffs = (slug: string, d: BonusDiffs) => writeJson(`sets/${slug}/_bonusdiffs.json`, d);
+
 // Owner-assigned round tags ("phases"): a map of round number -> tag names. Used
 // to write per-tag scoped stat files so viewers can filter every page to a phase.
 // Rounds are the CANONICAL numbering (canonicalizeEditions has already aligned
@@ -446,16 +453,23 @@ function combinedPackets(editions: Edition[]): PacketFile[] {
 // the given scope (all rounds, or a filtered subset for a phase tag). Returns []
 // for tournaments whose bonuses came from per-game QBJ data (those keep the
 // game-derived bonus files from aggregate()).
-function collectImportedBonuses(editions: Edition[], roundFilter?: Set<number>): ImportedBonus[] {
+function collectImportedBonuses(editions: Edition[], bonusDiffs: BonusDiffs, roundFilter?: Set<number>): ImportedBonus[] {
   const out: ImportedBonus[] = [];
   for (const e of editions)
     for (const p of e.packets || []) {
       if (roundFilter && !roundFilter.has(p.round)) continue;
       (p.bonuses || []).forEach((b: any, i) => {
         if (!b || !b.stats) return;
+        // The owner's difficulty fixes have to reach this path too — an imported
+        // set's bonus files are rebuilt from these stats, not from aggregate().
+        const answers: string[] = b.answers || [];
+        const fix = bonusDiffs[`${p.round}-${i + 1}`]?.mods;
+        const mods: string[] = b.difficultyModifiers || [];
         out.push({
           round: p.round, num: i + 1, category: b.metadata || "",
-          parts: b.parts || [], answers: b.answers || [], difficultyModifiers: b.difficultyModifiers || [],
+          parts: b.parts || [], answers, difficultyModifiers: fix && fix.length
+            ? Array.from({ length: Math.max(mods.length, answers.length) || fix.length }, (_, k) => (k < fix.length ? fix[k] || "" : mods[k] || ""))
+            : mods,
           heard: b.stats.heard || 0, got: b.stats.got || [], points: b.stats.points || 0,
         });
       });
@@ -680,19 +694,21 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   const bonusCorrections = await readBonusCorrections(slug);
   const metaMap = await readMetaMap(slug);
   const tagEdits = await readTagEdits(slug);
+  const bonusDiffs = await readBonusDiffs(slug);
   cfg.metaMap = metaMap;
   cfg.tagEdits = tagEdits;
+  cfg.bonusDiffs = bonusDiffs;
 
   // Bonuses imported as aggregate-only stats: rebuild the bonus files from those
   // stats when there's no per-game bonus data. If per-team results WERE scraped
   // (games carry bonus results), aggregate() already produced full per-team
   // bonus files, so we keep those. A no-op for uploaded tournaments.
-  const hasImportedBonuses = collectImportedBonuses(editions).length > 0;
+  const hasImportedBonuses = collectImportedBonuses(editions, bonusDiffs).length > 0;
   const overrideBonuses = (out: Record<string, unknown>, eds: Edition[], roundFilter?: Set<number>) => {
     if (!hasImportedBonuses) return;
     const b = out["bonuses.json"] as { heard?: number }[] | undefined;
     if (b && b.some((r) => (r.heard || 0) > 0)) return; // real per-game bonus data present; keep it
-    Object.assign(out, bonusFilesFromImported(collectImportedBonuses(eds, roundFilter), virtualCats, metaMap));
+    Object.assign(out, bonusFilesFromImported(collectImportedBonuses(eds, bonusDiffs, roundFilter), virtualCats, metaMap));
   };
 
   const editionSummaries: EditionSummary[] = [];

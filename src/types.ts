@@ -150,6 +150,10 @@ export interface Meta {
   // Packet rounds that don't line up with the rounds games were played in, so
   // their questions can never pick up buzzes. Owner-facing; absent on older sets.
   roundWarnings?: RoundWarning[];
+  // Bonuses whose difficulty marks can't be right ("medium, easy, easy"), which
+  // corrupt every easy/medium/hard figure built on them. Owner-facing; absent on
+  // sets that haven't been rebuilt since this check was added.
+  bonusDiffWarnings?: BonusDiffWarning[];
   generatedAt: string;
 }
 
@@ -161,6 +165,26 @@ export interface RoundWarning {
   files: number;
   suggested: number | null;
 }
+
+// One bonus whose difficulty marks don't describe a bonus anyone could write.
+// See scanBonusDifficulty in api/_lib/aggregate.ts.
+export interface BonusDiffWarning {
+  kind: "duplicate" | "partial" | "unknown" | "unmarked";
+  id: string;      // "<round>-<num>"
+  round: number;
+  num: number;
+  mods: string[];  // the marks as tagged, "" for an unmarked part
+  answers: string[];
+  heard: number;
+  convPct: (number | null)[];
+  reason: string;
+  // What conversion says the marks really are, or null when the bonus wasn't
+  // heard often enough for that to mean anything.
+  suggested: string[] | null;
+}
+
+// One bonus's corrected marks as stored, with what the packet said before.
+export interface BonusDiffFix { mods: string[]; from?: string[]; by?: string; at?: string }
 
 export interface TossupRow {
   id: string;
@@ -301,6 +325,8 @@ export interface BonusOrderStats {
   easyPct: number | null;
   medPct: number | null;
   hardPct: number | null;
+  // Parts the packet never marked. Absent on sets built before this was added.
+  unmarkedPct?: number | null;
   // One per position, in the order's own sequence.
   parts: { idx: number; difficulty: string; difficultyName: string; convPct: number | null }[];
 }

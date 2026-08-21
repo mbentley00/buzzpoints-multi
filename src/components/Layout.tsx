@@ -159,6 +159,23 @@ export function SetLayout() {
             </div>
           </div>
         )}
+        {isOwner && (meta?.bonusDiffWarnings?.length ?? 0) > 0 && (
+          <div className="cat-warn bndiff-warn" role="status">
+            <strong>
+              {meta!.bonusDiffWarnings!.length === 1
+                ? "One bonus's difficulty marks can't be right."
+                : `${meta!.bonusDiffWarnings!.length} bonuses have difficulty marks that can't be right.`}
+            </strong>
+            <p className="muted">
+              A three-part bonus is written easy, medium and hard. Where a packet tagged one "medium, easy, easy" its
+              real hard part is being counted as an easy one, and every easy/medium/hard figure built on it — including{" "}
+              <Link to={`${base}/bonus-order`} className="link">Difficulty order</Link> — is off by that part.
+            </p>
+            <div className="cat-warn-actions">
+              <Link className="btn-primary" to={`${base}/settings#bonusdiff`}>Fix difficulty marks</Link>
+            </div>
+          </div>
+        )}
         {redactedForAdmin && (
           <div className="caveat admin-reveal">
             <span><strong>Admin view.</strong> Question content is hidden for this {entry?.visibility} tournament. Stats are shown; answers and question text are masked.</span>

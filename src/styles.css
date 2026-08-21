@@ -594,6 +594,26 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
 /* Round-alignment variant: the message is a sentence per row, not a chip grid. */
 .round-warn .cat-warn-list li { display: list-item; list-style: disc; margin-left: 18px; }
 
+/* Owner repair for bonuses whose difficulty marks can't be right (Settings). */
+.bndiff-table { max-width: 900px; }
+.bndiff-table td, .bndiff-table th { vertical-align: top; }
+.bndiff-actions { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+.bndiff-kind { display: block; font-weight: 600; font-size: 13px; }
+.bndiff-reason { display: block; font-size: 12px; }
+/* One line per part: what it answers, how it actually converted, and the mark
+   it should carry — the three things the decision is made on, side by side. */
+.bndiff-parts { list-style: decimal; margin: 0; padding-left: 20px; font-size: 13px; }
+.bndiff-parts li { display: list-item; margin: 3px 0; }
+.bndiff-answer { display: inline-block; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+.bndiff-conv { display: inline-block; min-width: 56px; text-align: right; margin: 0 8px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.bndiff-select { font-size: 12px; padding: 2px 4px; vertical-align: middle; }
+.bndiff-hint { margin-left: 8px; font-size: 12px; }
+.bndiff-row-actions { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
+.bndiff-applied { list-style: none; margin: 10px 0 0; padding: 0; font-size: 13px; }
+.bndiff-applied li { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; padding: 5px 0; border-top: 1px solid var(--line); }
+.bndiff-applied li:first-child { border-top: none; }
+.bndiff-was { text-decoration: line-through; }
+
 .settings-sub { font-size: 13px; color: var(--muted); margin: 18px 0 6px; font-weight: 600; }
 
 /* Owner repair tools for the uploaded packets/games (Settings) */
