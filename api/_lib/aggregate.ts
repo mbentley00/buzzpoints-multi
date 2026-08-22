@@ -816,7 +816,13 @@ export function aggregate(
   corrections: Correction[] = [],
   virtualCats: VirtualCategory[] = [],
   renames: Rename[] = [],
-  bonusCorrections: BonusCorrection[] = []
+  bonusCorrections: BonusCorrection[] = [],
+  // Each mirror's own packets, keyed by edition id. A buzz's word index is
+  // relative to the wording that player actually heard, so when the combined
+  // view scores buzzes from several mirrors against one canonical text (which
+  // may have been reworded between mirrors), every buzz's position geometry —
+  // question length and power mark — comes from its own edition here instead.
+  editionPackets?: Map<string, PacketFile[]>
 ): Record<string, unknown> {
   const scoring = cfg.scoring;
   const hasPower = scoring.hasPower;
@@ -959,6 +965,23 @@ export function aggregate(
   // See https://www.qbwiki.com/wiki/BPA.
   const unreadOf = (widx: number | null, wordCount: number) =>
     widx === null || wordCount <= 0 ? 0 : Math.max(0, 1 - widx / wordCount);
+  // Per-edition question geometry (see `editionPackets`): edition id → "round-num"
+  // → length and power mark of THAT mirror's wording.
+  type Geom = { wordCount: number; powerIndex: number | null };
+  const edGeom = new Map<string, Map<string, Geom>>();
+  for (const [edId, pks] of editionPackets ?? []) {
+    const m = new Map<string, Geom>();
+    for (const p of pks) (p.tossups || []).forEach((t, i) => {
+      if (!t) return;
+      const tok = tokenize(t.question);
+      m.set(`${p.round}-${i + 1}`, { wordCount: tok.words.length, powerIndex: tok.powerIndex });
+    });
+    edGeom.set(edId, m);
+  }
+  // The geometry a buzz in game `g` on tossup `key` should be scored against:
+  // its own mirror's wording when known, else the packet this aggregation shows.
+  const geomOf = (g: GameFile, key: string, tq: Geom): Geom =>
+    (g.editionId && edGeom.get(g.editionId)?.get(key)) || tq;
   const bpaOf = (unread: number, tuh: number) => (tuh > 0 ? round1((100 * unread) / tuh) : null);
 
   // Games always carry their edition (phase membership is decided per edition),
@@ -1052,6 +1075,9 @@ export function aggregate(
         // own wording, so this is a no-op there.
         // One past the last word is the ■END■ slot — nobody buzzed before the
         // question ran out — and that's as far as an index can legitimately go.
+        // `geo` is the wording this buzz was actually made against (its own
+        // mirror's, when the set has several), for every position test below.
+        const geo = tq ? geomOf(g, key!, tq) : undefined;
         if (tq && widx !== null && widx > tq.wordCount) widx = tq.wordCount;
         ordered.push({ value, pname, bteam, widx });
         if (tq) {
@@ -1067,9 +1093,9 @@ export function aggregate(
           const pv = plOf(pname, bteam || "");
           if (isPower(value)) pv.powers++; else if (isGet(value)) pv.gets++; else if (countsNeg(value)) pv.incorrect++;
           pv.pts += value;
-          if (tq) {
-            const prec = isCorrect(value) && !imprecise(value, widx, tq.powerIndex);
-            const unread = prec ? unreadOf(widx, tq.wordCount) : 0;
+          if (tq && geo) {
+            const prec = isCorrect(value) && !imprecise(value, widx, geo.powerIndex);
+            const unread = prec ? unreadOf(widx, geo.wordCount) : 0;
             pv.unread += unread;
             addCat(nestCat(plCat, plKey(pname, bteam || ""), tq.categoryMid, newCatAcc), value, widx, prec, unread);
             addCat(nestCat(plFullCat, plKey(pname, bteam || ""), tq.subcategory, newCatAcc), value, widx, prec, unread);
@@ -1080,9 +1106,9 @@ export function aggregate(
           if (isPower(value)) t.powers++; else if (isGet(value)) t.gets++; else if (countsNeg(value)) t.incorrect++;
           t.tuPts += value;
           addGamePts(bteam, value);
-          if (tq) {
-            const prec = isCorrect(value) && !imprecise(value, widx, tq.powerIndex);
-            const unread = prec ? unreadOf(widx, tq.wordCount) : 0;
+          if (tq && geo) {
+            const prec = isCorrect(value) && !imprecise(value, widx, geo.powerIndex);
+            const unread = prec ? unreadOf(widx, geo.wordCount) : 0;
             t.unread += unread;
             const tc = nestCat<TuCat>(tmTuCat, bteam, tq.subcategory, () => ({ ...newCatAcc(), main: tq.category }));
             tc.main = tq.category;

@@ -736,7 +736,10 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   // than one mirror, so single-edition output is unchanged.
   const combinedGames = editions.flatMap((e) => (e.games || []).map((g) => ({ ...g, editionId: e.id })));
   const combined = combinedPackets(editions);
-  const out = aggregate(combined, combinedGames, cfg, corrections, virtualCats, renames, bonusCorrections);
+  // The canonical text is what the combined view SHOWS; each buzz is still
+  // scored (BPA, imprecision) against the wording of the mirror it was made in.
+  const editionPackets = multi ? new Map(editions.map((e) => [e.id, e.packets || []])) : undefined;
+  const out = aggregate(combined, combinedGames, cfg, corrections, virtualCats, renames, bonusCorrections, editionPackets);
   overrideBonuses(out, editions);
   (out["meta.json"] as any).editions = editionSummaries;
   if (multi) {
@@ -788,7 +791,7 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
     // GAMES — which carry every stat — stay correctly split by edition.
     const roundsSet = new Set<number>([...byEd.values()].flatMap((s) => [...s]));
     const pk = combined.filter((p) => roundsSet.has(p.round));
-    const tout = aggregate(pk, gm, cfg, corrections, virtualCats, renames, bonusCorrections);
+    const tout = aggregate(pk, gm, cfg, corrections, virtualCats, renames, bonusCorrections, editionPackets);
     overrideBonuses(tout, editions, roundsSet);
     const slugT = tagSlug(name);
     await writeFiles(`sets/${slug}/tags/${slugT}/`, tout);
