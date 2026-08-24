@@ -178,6 +178,11 @@ export function CreateSet() {
         return;
       }
       refreshIndex();
+      // Uploading straight to Public queues a moderator request instead (fresh
+      // uploads need approval) — say so, or the owner would just see "listed"
+      // and wonder where their choice went.
+      if (json.publicPending)
+        window.alert("Your tournament was created. Making a newly uploaded tournament public needs a moderator's approval — your request has been sent, and you'll get an email when it's decided. Until then the tournament is listed (shown in the list, invited viewers only).");
       // If the category heuristic flagged likely-mislabeled categories, the
       // packets' rounds don't line up with the games', or a bonus carries
       // difficulty marks that can't be right, pause on a review screen so the

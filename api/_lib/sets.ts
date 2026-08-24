@@ -44,6 +44,15 @@ export interface SetEntry {
   // every editing power the creator has EXCEPT changing this list and deleting
   // the set — see isSetOwner(). Absent on sets created before co-owners existed.
   coOwners?: string[];
+  // How the set got here: "upload" = packets + MODAQ/QBJ game files posted by a
+  // user; "import" = rebuilt from another Buzzpoints site (URL scrape or local
+  // export folder). Absent on sets predating the field — treated as "upload",
+  // the cautious reading, since the distinction gates public-viewing approval.
+  origin?: "upload" | "import";
+  // A pending request to make this set public, awaiting a moderator (uploads
+  // younger than three months need one — see needsPublishApproval). Cleared on
+  // approval, rejection, or the owner changing visibility again.
+  publicPending?: { by: string; at: string };
   // A tournament may have multiple editions (mirrors). Top-level counts are the
   // COMBINED totals; per-edition summaries live here. Absent => single edition.
   editions?: EditionSummary[];
@@ -88,6 +97,17 @@ export function isSetOwner(e: SetEntry, user: string | null): boolean {
 export function isPrimaryOwner(e: SetEntry, user: string | null): boolean {
   return !!user && user === e.owner;
 }
+// Does making this set public need a moderator's approval? Only fresh uploads:
+// a set imported from another Buzzpoints site was already published there, and
+// after three months a tournament's questions are no longer sensitive. (Mods and
+// admins bypass this at the call site — they ARE the approvers.)
+const PUBLISH_APPROVAL_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+export function needsPublishApproval(e: SetEntry): boolean {
+  if (e.origin === "import") return false;
+  const created = Date.parse(e.createdAt);
+  return Number.isFinite(created) && Date.now() - created < PUBLISH_APPROVAL_WINDOW_MS;
+}
+
 // May non-owners propose corrections? Absent means yes — every set predating the
 // setting keeps its open request queue.
 export const requestsAllowed = (e: SetEntry): boolean => e.allowRequests !== false;
@@ -159,7 +179,8 @@ export function redactContent(file: string, data: any): any {
 // or public) without exposing who else is invited.
 export function sanitizeEntry(e: SetEntry, user: string | null) {
   const owns = isSetOwner(e, user);
-  const { invites, coOwners, ...rest } = e;
+  // `publicPending` names who asked, so it stays owner-only like the invite list.
+  const { invites, coOwners, publicPending, ...rest } = e;
   return {
     ...rest, visibility: effectiveVisibility(e), inviteCount: (invites || []).length,
     hasAccess: canViewContent(e, user),
@@ -167,7 +188,7 @@ export function sanitizeEntry(e: SetEntry, user: string | null) {
     allowRequests: requestsAllowed(e),
     // Owners (creator and co-owners alike) see the management lists; everyone
     // else sees neither who's invited nor who else can edit.
-    ...(owns ? { invites, coOwners: coOwners || [] } : {}),
+    ...(owns ? { invites, coOwners: coOwners || [], publicPending: !!publicPending } : {}),
   };
 }
 // A proposed edit awaiting the owner. Exactly one of `correction` (one buzz) or

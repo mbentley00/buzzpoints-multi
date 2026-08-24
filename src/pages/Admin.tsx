@@ -16,6 +16,7 @@ interface AdminSet {
   numGames: number; numTeams: number; numPlayers: number; numTossups: number; rounds: number; createdAt: string;
 }
 interface PendingSub { id: string; by: string; byName: string; name: string; scoring: string; at: string; visibility: Visibility; }
+interface PublishReq { slug: string; name: string; by: string; at: string; createdAt: string; visibility: Visibility; }
 interface UserRow { email: string; name: string; institution: string | null; createdAt: string; role: Role; }
 
 async function postJson(url: string, body: unknown) {
@@ -37,6 +38,7 @@ export function Admin() {
   const { user, isAdmin, isModerator, loading: authLoading } = useAuth();
   const [sets, setSets] = useState<AdminSet[] | null>(null);
   const [pending, setPending] = useState<PendingSub[]>([]);
+  const [publishReqs, setPublishReqs] = useState<PublishReq[]>([]);
   const [users, setUsers] = useState<UserRow[] | null>(null);
   const [blocklist, setBlocklist] = useState<string>("");
   const [blocklistDirty, setBlocklistDirty] = useState(false);
@@ -54,6 +56,7 @@ export function Admin() {
       if (a.error) throw new Error(a.error);
       setSets(a.sets as AdminSet[]);
       setPending((m.pending as PendingSub[]) ?? []);
+      setPublishReqs((m.publishRequests as PublishReq[]) ?? []);
       if (m.users) setUsers(m.users as UserRow[]);
       if (m.blocklist && !blocklistDirty) setBlocklist((m.blocklist as string[]).join("\n"));
     } catch (e) { setErr(String((e as Error).message || e)); }
@@ -95,6 +98,14 @@ export function Admin() {
     const reason = window.prompt(`Reject "${p.name}" by ${p.by}? Optional reason (emailed to them):`, "");
     if (reason === null) return; // cancelled
     run(`p:${p.id}`, async () => { await postJson("/api/moderate", { op: "reject-submission", id: p.id, reason }); await load(); });
+  };
+
+  const approvePublish = (q: PublishReq) =>
+    run(`q:${q.slug}`, async () => { await postJson("/api/moderate", { op: "approve-publish", slug: q.slug }); refreshIndex(); await load(); });
+  const rejectPublish = (q: PublishReq) => {
+    const reason = window.prompt(`Decline making "${q.name}" public? Optional reason (emailed to ${q.by}):`, "");
+    if (reason === null) return; // cancelled
+    run(`q:${q.slug}`, async () => { await postJson("/api/moderate", { op: "reject-publish", slug: q.slug, reason }); await load(); });
   };
 
   const changeRole = (u: UserRow, role: Role) =>
@@ -150,6 +161,34 @@ export function Admin() {
                         <td className="admin-actions">
                           <button className="btn-link" disabled={busy === `p:${p.id}`} onClick={() => approve(p)}>Approve</button>
                           <button className="btn-link danger" disabled={busy === `p:${p.id}`} onClick={() => reject(p)}>Reject</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* ---- pending public-viewing requests ---- */}
+            <h2>Public requests {publishReqs.length > 0 && <span className="edition-count">{publishReqs.length}</span>}</h2>
+            <p className="muted">Owners of tournaments uploaded less than three months ago asking to make them public. Approving opens the set to everyone; declining leaves it as it is.</p>
+            {publishReqs.length === 0 ? (
+              <p className="muted">Nothing awaiting review.</p>
+            ) : (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead><tr><th>Tournament</th><th>Requested by</th><th>Currently</th><th>Uploaded</th><th>Requested</th><th>Actions</th></tr></thead>
+                  <tbody>
+                    {publishReqs.map((q) => (
+                      <tr key={q.slug}>
+                        <td><Link to={`/set/${q.slug}`}>{q.name}</Link></td>
+                        <td className="mono" style={{ fontSize: 12 }}>{q.by}</td>
+                        <td title={VIS_DESC[q.visibility]}>{q.visibility}</td>
+                        <td className="muted">{formatDate(q.createdAt)}</td>
+                        <td className="muted">{formatDate(q.at)}</td>
+                        <td className="admin-actions">
+                          <button className="btn-link" disabled={busy === `q:${q.slug}`} onClick={() => approvePublish(q)}>Approve</button>
+                          <button className="btn-link danger" disabled={busy === `q:${q.slug}`} onClick={() => rejectPublish(q)}>Decline</button>
                         </td>
                       </tr>
                     ))}

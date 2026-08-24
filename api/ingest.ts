@@ -299,7 +299,7 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
 
   return res.status(400).json({ error: "Unknown import op." });
 }
-import { sendEmail, appUrl, submissionPendingBody } from "./_lib/email.js";
+import { sendEmail, appUrl, submissionPendingBody, publishRequestBody } from "./_lib/email.js";
 
 interface Body {
   name?: string; scoring?: string; hasBonuses?: boolean; packets?: FileRef[]; games?: FileRef[];
@@ -522,9 +522,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(202).json({ pending: true, message: "Your first tournament was submitted for review. You'll get an email when it's approved." });
     }
 
+    // Uploading straight to Public is the same act as flipping a fresh upload
+    // public, so it takes the same moderator approval: create the set Listed
+    // with the request queued, rather than public and unreviewed. (Moderators
+    // and admins publish directly — they're the approvers. URL imports aren't
+    // gated either, but those go through createFromSource, not here.)
+    const wantsPublic = normVisibility(body.visibility) === "public" && !privileged;
+    if (wantsPublic) body.visibility = "listed";
     const { slug, categoryWarnings, roundWarnings, bonusDiffWarnings } = await createTournament(body, owner);
+    let publicPending = false;
+    if (wantsPublic) {
+      const idx = await readIndex();
+      const entry = idx.sets.find((e) => e.slug === slug);
+      if (entry) {
+        entry.publicPending = { by: owner, at: new Date().toISOString() };
+        await writeIndex(idx);
+        publicPending = true;
+        const uploaded = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+        for (const to of await moderatorEmails())
+          await sendEmail({ to, subject: `Approve public viewing — ${entry.name}`, html: publishRequestBody(owner, entry.name, uploaded, `${appUrl()}/admin`) });
+      }
+    }
     await cleanupTemp(tempPaths);
-    return res.status(200).json({ slug, categoryWarnings, roundWarnings, bonusDiffWarnings });
+    return res.status(200).json({ slug, categoryWarnings, roundWarnings, bonusDiffWarnings, ...(publicPending ? { publicPending: true } : {}) });
   } catch (e) {
     await cleanupTemp(tempPaths);
     if (e instanceof CreateError) return res.status(e.status).json({ error: e.message });

@@ -139,6 +139,20 @@ export const submissionPendingBody = (submitter: string, setName: string, review
 export const submissionApprovedBody = (setName: string, url: string) =>
   wrap(`<p>Your tournament <strong>${esc(setName)}</strong> has been approved and is now live on Buzzpoints.</p><p>Future tournaments you post will publish immediately.</p>${btn(url, "Open tournament")}`);
 
+// Sent to moderators/admins when the owner of a fresh upload asks to make it
+// public (uploads younger than three months need approval; imports don't).
+export const publishRequestBody = (requester: string, setName: string, uploaded: string, reviewUrl: string) =>
+  wrap(`<p><strong>${esc(requester)}</strong> wants to make <strong>${esc(setName)}</strong> public.</p><p>The tournament was uploaded ${esc(uploaded)} — less than three months ago, so going public needs a moderator's approval. Until someone approves it, it stays as it is.</p>${btn(reviewUrl, "Review in the dashboard")}`);
+
+// Sent to the owners once a moderator approves the request.
+export const publishApprovedBody = (setName: string, url: string) =>
+  wrap(`<p>Your request to make <strong>${esc(setName)}</strong> public has been approved. It's now open to everyone.</p>${btn(url, "Open tournament")}`);
+
+// Sent to the requester when a moderator declines the request. The set itself
+// is untouched — only the switch to public didn't happen.
+export const publishRejectedBody = (setName: string, reason: string) =>
+  wrap(`<p>Your request to make <strong>${esc(setName)}</strong> public wasn't approved.</p>${reason ? `<p><strong>Reason:</strong> ${esc(reason)}</p>` : ""}<p>The tournament itself is unchanged — its visibility stays as it was. You can ask again once it's three months old, or reply to the moderators if you think this was a mistake.</p>`);
+
 // A feature request / site bug report from the "Feature Requests" button. The
 // message is user-written, so it's escaped and only newlines become markup.
 export const feedbackBody = (from: string, page: string, message: string) =>

@@ -52,6 +52,10 @@ export function Settings() {
   const [resolved, setResolved] = useState<{ email: string; name: string; status: string; via?: string; resolvedAt?: string }[]>([]);
   const [links, setLinks] = useState<{ id: string; label: string; at: string; revoked?: boolean; uses: number }[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  // A queued request to make this set public, awaiting a moderator (fresh
+  // uploads need approval), and whether picking Public would queue one.
+  const [publicPending, setPublicPending] = useState(false);
+  const [publicNeedsApproval, setPublicNeedsApproval] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -75,6 +79,8 @@ export function Settings() {
         setHasYf(!!d.hasYf);
         setLevel(d.level || "");
         setTdLink(d.tdLink || "");
+        setPublicPending(!!d.publicPending);
+        setPublicNeedsApproval(!!d.publicNeedsApproval);
         setAccessRequests(d.accessRequests || []);
         setResolved(d.resolvedRequests || []);
         setLinks(d.links || []);
@@ -97,9 +103,18 @@ export function Settings() {
     setErr(null); setMsg(null); setBusy(true);
     try {
       const autoPublicAt = visibility === "public" ? null : autoPublish ? new Date(date).toISOString() : null;
-      await postJson("/api/manage", { slug, op: "settings", visibility, autoPublicAt, allowRequests });
+      const d = await postJson("/api/manage", { slug, op: "settings", visibility, autoPublicAt, allowRequests });
       refreshIndex();
-      setMsg("Settings saved.");
+      if (d.publicPending) {
+        // The switch to public wasn't applied — it's queued for a moderator.
+        setPublicPending(true);
+        setVisibility(d.visibility);
+        setAutoPublish(!!d.autoPublicAt);
+        setMsg("Settings saved. Making a newly uploaded tournament public needs a moderator's approval — your request has been sent, and you'll get an email when it's decided.");
+      } else {
+        setPublicPending(false);
+        setMsg("Settings saved.");
+      }
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally { setBusy(false); }
@@ -283,6 +298,11 @@ export function Settings() {
             {VIS_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
           </select>
           <small className="muted">{visDesc}</small>
+          {publicPending ? (
+            <small className="muted">Your request to make this tournament public is awaiting a moderator's approval. Until then it stays {visibility}.</small>
+          ) : publicNeedsApproval && visibility !== "public" ? (
+            <small className="muted">This tournament was uploaded less than three months ago, so making it public needs a moderator's approval — selecting Public sends them a request.</small>
+          ) : null}
         </label>
 
         {visibility !== "public" && (

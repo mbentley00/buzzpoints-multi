@@ -8,11 +8,12 @@ import {
   currentUser, getRole, roleOf, normEmail, isAdminEmail, loadUsers, saveUsers, readPurpose, Role,
 } from "./_lib/auth.js";
 import { createTournament, normVisibility, CreateError } from "./_lib/publish.js";
+import { readIndex, writeIndex, ownerEmails } from "./_lib/sets.js";
 import {
   readPending, writePending, readPendingPayload, delPendingPayload,
   readModConfig, writeModConfig, PendingSubmission,
 } from "./_lib/moderation.js";
-import { sendEmail, appUrl, submissionApprovedBody, submissionRejectedBody } from "./_lib/email.js";
+import { sendEmail, appUrl, submissionApprovedBody, submissionRejectedBody, publishApprovedBody, publishRejectedBody } from "./_lib/email.js";
 
 // A minimal HTML response for the email-link approval flow (clicked in a browser).
 function page(res: VercelResponse, status: number, title: string, body: string) {
@@ -98,9 +99,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === "GET") {
       const users = await loadUsers();
       const pending = await readPending();
+      // Existing sets whose owners asked to go public (fresh uploads need a
+      // moderator's approval for that) — small enough to scan off the index.
+      const publishRequests = (await readIndex()).sets
+        .filter((e) => e.publicPending)
+        .map((e) => ({ slug: e.slug, name: e.name, by: e.publicPending!.by, at: e.publicPending!.at, createdAt: e.createdAt, visibility: e.visibility }))
+        .sort((a, b) => (a.at < b.at ? -1 : 1));
       const out: any = {
         role,
         pending: await Promise.all(pending.map(async (p) => ({ ...p, visibility: await visibilityOf(p) }))),
+        publishRequests,
       };
       if (isAdmin) {
         out.blocklist = (await readModConfig()).blocklist;
@@ -138,6 +146,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await delPendingPayload(id);
       await sendEmail({ to: rec.by, subject: `Submission not approved — ${rec.name}`, html: submissionRejectedBody(rec.name, reason) });
       return res.status(200).json({ ok: true, pending: pending.filter((p) => p.id !== id) });
+    }
+
+    // -------- public-viewing requests on existing sets (mod/admin) --------
+    if (op === "approve-publish" || op === "reject-publish") {
+      const slug = String(body.slug || "");
+      const index = await readIndex();
+      const entry = index.sets.find((e) => e.slug === slug);
+      if (!entry || !entry.publicPending) return res.status(404).json({ error: "No pending public request for that set." });
+      const requester = entry.publicPending.by;
+      delete entry.publicPending;
+      if (op === "approve-publish") {
+        entry.visibility = "public";
+        entry.autoPublicAt = null; // public now; a scheduled auto-publish is moot
+        await writeIndex(index);
+        for (const to of new Set([requester, ...ownerEmails(entry)]))
+          await sendEmail({ to, subject: `Now public — ${entry.name}`, html: publishApprovedBody(entry.name, `${appUrl()}/set/${slug}`) });
+        return res.status(200).json({ ok: true });
+      }
+      // reject: the set keeps its current visibility, only the request is closed
+      await writeIndex(index);
+      const reason = String(body.reason || "").slice(0, 300);
+      await sendEmail({ to: requester, subject: `Public request declined — ${entry.name}`, html: publishRejectedBody(entry.name, reason) });
+      return res.status(200).json({ ok: true });
     }
 
     // -------- delete an account (mod/admin, with guards) --------

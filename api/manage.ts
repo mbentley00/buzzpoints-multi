@@ -7,18 +7,18 @@
 import crypto from "node:crypto";
 import { list, del } from "@vercel/blob";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { currentUser, normEmail, canModerate, getRole, loadUsers } from "./_lib/auth.js";
+import { currentUser, normEmail, canModerate, getRole, loadUsers, moderatorEmails } from "./_lib/auth.js";
 import {
   readIndex, writeIndex, readSource, writeSource, readCorrections, writeCorrections, corrKey, aggregateAndWrite,
   readAccess, writeAccess, readLinks, writeLinks, canViewContent, effectiveVisibility, InviteLink, Visibility, AccessRole,
   writeVirtualCats, readRoundTags, writeRoundTags, DEFAULT_ROUND_TAGS, RoundTags, RoundTagsDoc, TOURNAMENT_LEVELS,
   editionsOf, canonicalizeEditions, Edition, SetSource, AccessRequest, readRenames, writeRenames, renameKey,
   readMetaMap, writeMetaMap, readTagEdits, writeTagEdits, readBonusDiffs, writeBonusDiffs,
-  isSetOwner, isPrimaryOwner, ownerEmails, requestsAllowed,
+  isSetOwner, isPrimaryOwner, ownerEmails, requestsAllowed, needsPublishApproval,
 } from "./_lib/sets.js";
 import { VirtualCategory, scanRoundAlignment, metaFields, MetaMap, MetaField, BonusDiffs } from "./_lib/aggregate.js";
 import { LETTER_ROUND_BASE } from "./_lib/publish.js";
-import { sendEmail, appUrl, accessRequestBody, accessGrantedBody, coOwnerBody } from "./_lib/email.js";
+import { sendEmail, appUrl, accessRequestBody, accessGrantedBody, coOwnerBody, publishRequestBody } from "./_lib/email.js";
 
 const VIS = new Set<Visibility>(["public", "listed", "private"]);
 const ROLES = new Set<string>(["player", "staff", "coach"]);
@@ -280,6 +280,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({
         visibility: entry.visibility ?? "listed",
         autoPublicAt: entry.autoPublicAt ?? null,
+        publicPending: !!entry.publicPending,
+        // Whether flipping this set public would queue an approval rather than
+        // apply, so Settings can say so up front.
+        publicNeedsApproval: needsPublishApproval(entry) && !(await canModerate(user)),
         allowRequests: requestsAllowed(entry),
         invites: entry.invites ?? [],
         owner: entry.owner,
@@ -302,16 +306,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const op = body.op as string;
     if (op === "settings") {
       const v = body.visibility;
-      if (v !== undefined) { if (!VIS.has(v)) return res.status(400).json({ error: "Invalid visibility." }); entry.visibility = v; }
+      if (v !== undefined && !VIS.has(v)) return res.status(400).json({ error: "Invalid visibility." });
+      // Making a fresh upload public needs a moderator's approval (imports and
+      // sets over three months old don't; moderators approve, so they bypass).
+      // The request is queued on the entry instead of applied; everything else
+      // in this save still goes through, except the auto-publish date — the
+      // client nulls it when the owner picks Public, and losing the date on a
+      // request that wasn't granted would silently cancel their auto-publish.
+      const gated = v === "public" && entry.visibility !== "public" && needsPublishApproval(entry) && !(await canModerate(user));
+      if (gated) {
+        if (!entry.publicPending) {
+          entry.publicPending = { by: user!, at: new Date().toISOString() };
+          const uploaded = new Date(Date.parse(entry.createdAt)).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+          for (const to of await moderatorEmails())
+            await sendEmail({ to, subject: `Approve public viewing — ${entry.name}`, html: publishRequestBody(user!, entry.name, uploaded, `${appUrl()}/admin`) });
+        }
+      } else if (v !== undefined) {
+        entry.visibility = v;
+        // The question is settled (a moderator flipped it public, or the owner
+        // walked it back) — drop any pending request.
+        delete entry.publicPending;
+      }
       const a = body.autoPublicAt;
-      if (a !== undefined) {
+      if (a !== undefined && !gated) {
         if (a === null) entry.autoPublicAt = null;
-        else if (typeof a === "string" && !Number.isNaN(Date.parse(a))) entry.autoPublicAt = new Date(a).toISOString();
+        else if (typeof a === "string" && !Number.isNaN(Date.parse(a))) {
+          const when = new Date(a);
+          // An auto-publish date inside the approval window would make the set
+          // public without anyone approving it — the same gate, through a timer.
+          if (needsPublishApproval(entry) && entry.visibility !== "public" && !(await canModerate(user)) &&
+              when.getTime() < Date.parse(entry.createdAt) + 90 * 24 * 60 * 60 * 1000)
+            return res.status(400).json({ error: "New uploads need a moderator's approval to go public, so the auto-publish date must be at least three months after the upload. To go public sooner, select Public to request approval." });
+          entry.autoPublicAt = when.toISOString();
+        }
         else return res.status(400).json({ error: "Invalid date." });
       }
       if (entry.visibility === "public") entry.autoPublicAt = null;
       // Whether viewers may propose buzz corrections and renames.
       if (body.allowRequests !== undefined) entry.allowRequests = !!body.allowRequests;
+      if (gated) {
+        await writeIndex(index);
+        return res.status(200).json({ ok: true, publicPending: true, visibility: entry.visibility, autoPublicAt: entry.autoPublicAt ?? null, allowRequests: requestsAllowed(entry), invites: entry.invites ?? [] });
+      }
     } else if (op === "reaggregate") {
       const source = await readSource(slug);
       if (!source) return res.status(500).json({ error: "Source data not found (set predates source storage; re-create it)." });

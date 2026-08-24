@@ -111,7 +111,7 @@ export async function createTournament(body: CreateBody, owner: string): Promise
   const { meta, editions } = await aggregateAndWrite(slug, source, []);
 
   const entry: SetEntry = {
-    slug, name, scoring: body.scoring!, hasBonuses, owner, editions,
+    slug, name, scoring: body.scoring!, hasBonuses, owner, editions, origin: "upload",
     visibility, invites: [], autoPublicAt, ...(hasYf ? { hasYf } : {}), level, ...(tdLink ? { tdLink } : {}),
     numGames: meta.numGames, numTeams: meta.numTeams, numPlayers: meta.numPlayers,
     numTossups: meta.numTossups, rounds: meta.rounds.length, createdAt,
@@ -188,7 +188,7 @@ export async function createFromSource(
   const { meta, editions } = await aggregateAndWrite(slug, source, []);
 
   const entry: SetEntry = {
-    slug, name, scoring: source.scoring, hasBonuses: source.hasBonuses, owner, editions,
+    slug, name, scoring: source.scoring, hasBonuses: source.hasBonuses, owner, editions, origin: "import",
     visibility, invites: [], autoPublicAt, level, ...(tdLink ? { tdLink } : {}),
     numGames: meta.numGames, numTeams: meta.numTeams, numPlayers: meta.numPlayers,
     numTossups: meta.numTossups, rounds: meta.rounds.length, createdAt,
