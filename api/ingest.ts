@@ -195,7 +195,17 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     try {
       const t = parseTarget(String(body.importUrl || ""));
       base = t.base;
-      if (t.kind === "tournament") eds = [{ slug: t.slug!, name: slugToName(t.slug!) }];
+      // An explicit edition list wins over discovery: the caller has already said
+      // which mirrors belong to this set. Names come from the site's own
+      // tournament index where it lists them, so editions stay properly labelled.
+      const explicit: string[] = (body.editionSlugs || []).map((x: unknown) => String(x ?? "").trim()).filter(Boolean);
+      if (explicit.length) {
+        if (explicit.length > 60) return res.status(400).json({ error: "Too many editions in one import." });
+        if (explicit.some((x: string) => !/^[A-Za-z0-9_-]+$/.test(x))) return res.status(400).json({ error: "Invalid tournament slug in editionSlugs." });
+        const known = new Map((await listEditions(base, "/tournament").catch(() => [])).map((e) => [e.slug, e.name]));
+        eds = explicit.map((slug: string) => ({ slug, name: known.get(slug) || slugToName(slug) }));
+      }
+      else if (t.kind === "tournament") eds = [{ slug: t.slug!, name: slugToName(t.slug!) }];
       else if (t.kind === "set") eds = await setEditions(base, t.slug!);
       else eds = await listEditions(base, "/tournament");
     } catch (e) { return res.status(400).json({ error: (e as Error).message }); }
@@ -309,6 +319,11 @@ interface Body {
   yf?: any; // optional companion YellowFruit (.yft) JSON for corrected re-export
   level?: string; tdLink?: string; // tournament type + optional Tournament Database link
   importUrl?: string; // import-start: the Buzzpoints site to import
+  // import-start: import exactly these tournament slugs as the set's editions,
+  // instead of the ones discovered from importUrl. For sites whose mirrors don't
+  // share the set's slug (film-sets names "2024 Untitled Film Set" mirrors
+  // "2024-ufs-*"), which no prefix rule can match.
+  editionSlugs?: string[];
   op?: string; jobId?: string; index?: number; // async import: import-start | import-edition | import-finish
   refreshSlug?: string; // import-finish: refresh this existing set in place instead of creating one
 }
