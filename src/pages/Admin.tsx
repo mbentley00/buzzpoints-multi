@@ -9,6 +9,7 @@ import { LocalImport } from "../components/LocalImport";
 import { BonusTextRepair } from "../components/BonusTextRepair";
 import { BackupPanel } from "../components/BackupPanel";
 import { formatDate } from "../util";
+import { buildModaqExport, SetSourceLike } from "../modaqExport";
 
 interface AdminSet {
   slug: string; name: string; owner: string | null; scoring: string; hasBonuses: boolean;
@@ -99,6 +100,25 @@ export function Admin() {
     if (reason === null) return; // cancelled
     run(`p:${p.id}`, async () => { await postJson("/api/moderate", { op: "reject-submission", id: p.id, reason }); await load(); });
   };
+
+  // Rebuild a set's uploadable files (packet JSONs, game QBJs, MODAQ roster)
+  // from its stored source and hand them over as one zip. The source rides in
+  // on the admin backup endpoint, so this needs no server changes — and stays
+  // admin-only for the same reason.
+  const exportModaq = (s: AdminSet) =>
+    run(s.slug, async () => {
+      const r = await fetch(`/api/admin?op=backup&slug=${encodeURIComponent(s.slug)}`);
+      const b = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((b as any).error || `Failed (${r.status})`);
+      const source = (b as any).files?.["_source.json"] as SetSourceLike | undefined;
+      if (!source) throw new Error("This set has no stored source (it predates source storage).");
+      const zip = await buildModaqExport(source, s.slug);
+      const href = URL.createObjectURL(zip);
+      const a = document.createElement("a");
+      a.href = href; a.download = `${s.slug}-modaq-export.zip`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 4000);
+    });
 
   const approvePublish = (q: PublishReq) =>
     run(`q:${q.slug}`, async () => { await postJson("/api/moderate", { op: "approve-publish", slug: q.slug }); refreshIndex(); await load(); });
@@ -237,6 +257,7 @@ export function Admin() {
                         <td className="right mono">{s.numPlayers}</td>
                         <td className="admin-actions">
                           <Link className="link" to={`/set/${s.slug}`}>View</Link>
+                          {isAdmin && <button className="btn-link" disabled={busy === s.slug} title="Download the packet JSONs, game QBJs, and a MODAQ-loadable roster QBJ, rebuilt from the stored upload" onClick={() => exportModaq(s)}>Export</button>}
                           <button className="btn-link" disabled={busy === s.slug} onClick={() => rebuild(s)}>Rebuild</button>
                           <button className="btn-link danger" disabled={busy === s.slug} onClick={() => del(s)}>Delete</button>
                         </td>
