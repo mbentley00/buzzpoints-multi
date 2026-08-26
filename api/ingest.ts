@@ -18,6 +18,7 @@ import {
 import { createTournament, createFromSource, updateFromSource, parseFiles, validLevel, cleanTdLink, normVisibility, CreateError, FileRef } from "./_lib/publish.js";
 import { parseYellowFruit } from "./_lib/yellowfruit.js";
 import { scrapeEdition, scrapeBonusResults, applyBonusResults, applyBonusText, listEditions, listSets, setEditions, parseTarget, slugToName, scoringFor, setNameFrom } from "./_lib/importBuzzpoints.js";
+import { detectStaticSite, scrapeStaticEdition } from "./_lib/importStatic.js";
 import {
   readModConfig, findBlocked, readPending, writePending, writePendingPayload, PendingSubmission,
 } from "./_lib/moderation.js";
@@ -26,7 +27,10 @@ import {
 export const config = { maxDuration: 60 };
 
 // ---- async import job state (driven across many requests by the browser) ----
-interface ImportJob { base: string; by: string; editions: { slug: string; name: string }[]; imported: number[]; values: number[]; hasBonuses: boolean; createdAt: string; }
+// `flavor` is which kind of Buzzpoints site the job is reading: "rsc" for the
+// server-rendered Next.js ones scraped page by page, "static" for the newer
+// prebuilt-JSON SPAs. Older jobs have no flavor and are "rsc".
+interface ImportJob { base: string; by: string; editions: { slug: string; name: string }[]; imported: number[]; values: number[]; hasBonuses: boolean; createdAt: string; flavor?: "rsc" | "static"; }
 const jobPath = (id: string) => `imports/${id}.json`;
 const edPath = (id: string, i: number) => `imports/${id}-e${i}.json`;
 const writeJson = (path: string, obj: unknown) => put(path, JSON.stringify(obj), { access: "private", contentType: "application/json", addRandomSuffix: false, allowOverwrite: true });
@@ -43,6 +47,11 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     try {
       const t = parseTarget(String(body.importUrl || ""));
       base = t.base;
+      // The newer static-JSON sites have no /set or /tournament index to read —
+      // every route serves the same empty shell — so ask them directly. One such
+      // site is exactly one tournament.
+      const stat = await detectStaticSite(base);
+      if (stat) return res.status(200).json({ base, sets: [{ slug: stat.setSlug, name: stat.setName, kind: "set" }] });
       // The display name lives on the listing page. It's a nicety, not the
       // point, so fall back to the slug rather than failing the discovery.
       if (t.kind === "set") {
@@ -192,26 +201,34 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
 
   if (body.op === "import-start") {
     let base: string, eds: { slug: string; name: string }[];
+    let flavor: "rsc" | "static" = "rsc";
     try {
       const t = parseTarget(String(body.importUrl || ""));
       base = t.base;
-      // An explicit edition list wins over discovery: the caller has already said
-      // which mirrors belong to this set. Names come from the site's own
-      // tournament index where it lists them, so editions stay properly labelled.
-      const explicit: string[] = (body.editionSlugs || []).map((x: unknown) => String(x ?? "").trim()).filter(Boolean);
-      if (explicit.length) {
-        if (explicit.length > 60) return res.status(400).json({ error: "Too many editions in one import." });
-        if (explicit.some((x: string) => !/^[A-Za-z0-9_-]+$/.test(x))) return res.status(400).json({ error: "Invalid tournament slug in editionSlugs." });
-        const known = new Map((await listEditions(base, "/tournament").catch(() => [])).map((e) => [e.slug, e.name]));
-        eds = explicit.map((slug: string) => ({ slug, name: known.get(slug) || slugToName(slug) }));
+      // A static-JSON site is one tournament with no edition index to discover,
+      // so it short-circuits all of the mirror-finding below.
+      const stat = await detectStaticSite(base);
+      if (stat) { flavor = "static"; eds = [{ slug: stat.setSlug, name: stat.setName }]; }
+      else {
+        // An explicit edition list wins over discovery: the caller has already
+        // said which mirrors belong to this set. Names come from the site's own
+        // tournament index where it lists them, so editions stay properly
+        // labelled.
+        const explicit: string[] = (body.editionSlugs || []).map((x: unknown) => String(x ?? "").trim()).filter(Boolean);
+        if (explicit.length) {
+          if (explicit.length > 60) return res.status(400).json({ error: "Too many editions in one import." });
+          if (explicit.some((x: string) => !/^[A-Za-z0-9_-]+$/.test(x))) return res.status(400).json({ error: "Invalid tournament slug in editionSlugs." });
+          const known = new Map((await listEditions(base, "/tournament").catch(() => [])).map((e) => [e.slug, e.name]));
+          eds = explicit.map((slug: string) => ({ slug, name: known.get(slug) || slugToName(slug) }));
+        }
+        else if (t.kind === "tournament") eds = [{ slug: t.slug!, name: slugToName(t.slug!) }];
+        else if (t.kind === "set") eds = await setEditions(base, t.slug!);
+        else eds = await listEditions(base, "/tournament");
       }
-      else if (t.kind === "tournament") eds = [{ slug: t.slug!, name: slugToName(t.slug!) }];
-      else if (t.kind === "set") eds = await setEditions(base, t.slug!);
-      else eds = await listEditions(base, "/tournament");
     } catch (e) { return res.status(400).json({ error: (e as Error).message }); }
     if (!eds.length) return res.status(400).json({ error: "No tournaments found at that URL. Make sure it's a Buzzpoints link." });
     const jobId = crypto.randomBytes(9).toString("base64url");
-    const job: ImportJob = { base, by: owner, editions: eds, imported: [], values: [], hasBonuses: false, createdAt: new Date().toISOString() };
+    const job: ImportJob = { base, by: owner, editions: eds, imported: [], values: [], hasBonuses: false, createdAt: new Date().toISOString(), flavor };
     await writeJson(jobPath(jobId), job);
     return res.status(200).json({ jobId, editions: eds.map((e) => ({ name: e.name })), total: eds.length });
   }
@@ -226,7 +243,7 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     const i = Number(body.index);
     if (!Number.isInteger(i) || i < 0 || i >= job.editions.length) return res.status(400).json({ error: "Invalid edition index." });
     let scraped;
-    try { scraped = await scrapeEdition(job.base, job.editions[i].slug); }
+    try { scraped = job.flavor === "static" ? await scrapeStaticEdition(job.base) : await scrapeEdition(job.base, job.editions[i].slug); }
     catch (e) { return res.status(400).json({ error: (e as Error).message }); }
     // Stash the bonus (round,num) pairs + a cursor so per-team bonus results can
     // be scraped later in browser-driven chunks (import-bonus-chunk).
