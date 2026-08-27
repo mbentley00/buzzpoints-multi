@@ -7,7 +7,8 @@ import { useSetCtx } from "../components/Layout";
 import { PageHeader, Loading, ErrorBox } from "../components/Common";
 import { uploadFiles } from "../upload";
 import { FileDrop } from "../components/FileDrop";
-import { roundLabel, roundFromFileName } from "../util";
+import { AddFilesForm } from "../components/AddFiles";
+import { roundLabel } from "../util";
 
 type Seg = { op: "eq" | "del" | "add"; text: string };
 // Word-level LCS diff producing a unified inline change (A → B).
@@ -86,49 +87,6 @@ export function Editions() {
   const [addStatus, setAddStatus] = useState<string | null>(null);
   const [addErr, setAddErr] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
-
-  // add-files-to-existing-edition form
-  const [intoId, setIntoId] = useState(editions[0]?.id ?? "");
-  const [intoPackets, setIntoPackets] = useState<File[]>([]);
-  const [intoGames, setIntoGames] = useState<File[]>([]);
-  const [intoStatus, setIntoStatus] = useState<string | null>(null);
-  const [intoErr, setIntoErr] = useState<string | null>(null);
-  const [intoBusy, setIntoBusy] = useState(false);
-  const [intoReplace, setIntoReplace] = useState(false);
-
-  // Which rounds the chosen filenames cover — what "replace" would overwrite.
-  const intoRounds = useMemo(() => {
-    const rs = new Set<number>();
-    for (const f of [...intoPackets, ...intoGames]) {
-      const r = roundFromFileName(f.name);
-      if (r !== null) rs.add(r);
-    }
-    return [...rs].sort((a, b) => a - b);
-  }, [intoPackets, intoGames]);
-  const unnamedRound = [...intoPackets, ...intoGames].some((f) => roundFromFileName(f.name) === null);
-
-  async function addFiles(e: React.FormEvent) {
-    e.preventDefault();
-    setIntoErr(null);
-    if (!intoId) { setIntoErr("Pick an edition."); return; }
-    if (!intoPackets?.length && !intoGames?.length) { setIntoErr("Choose packet and/or game files to add."); return; }
-    setIntoBusy(true);
-    try {
-      const packetRefs = intoPackets.length ? await uploadFiles(intoPackets, (d, t) => setIntoStatus(`Uploading packets… ${d}/${t}`)) : [];
-      const gameRefs = intoGames.length ? await uploadFiles(intoGames, (d, t) => setIntoStatus(`Uploading games… ${d}/${t}`)) : [];
-      setIntoStatus("Aggregating…");
-      const r = await fetch("/api/ingest", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ editionOf: slug, editionId: intoId, packets: packetRefs, games: gameRefs, replaceRound: intoReplace }),
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || `Failed (${r.status})`);
-      refreshIndex();
-      window.location.reload();
-    } catch (e) {
-      setIntoErr(String((e as Error).message || e)); setIntoBusy(false); setIntoStatus(null);
-    }
-  }
 
   async function compare() {
     if (!a || !b || a === b) { setErr("Pick two different editions."); return; }
@@ -217,50 +175,13 @@ export function Editions() {
 
       {isOwner && editions.length > 0 && (
         <>
-          <h2 style={{ marginTop: 28 }}>Add or replace files in an edition</h2>
+          <h2 id="addfiles" style={{ marginTop: 28 }}>Add rounds, or replace a round</h2>
           <p className="muted">
-            Add more packets and/or games (e.g. additional rounds) to an edition that's already here, or replace a round
-            you need to fix — upload the corrected file and tick the box below. Its stats are recomputed either way.
+            A tournament that runs over several days or weeks doesn't have to be uploaded in one go — add each new
+            round's packets and games as they're played and the stats catch up. The same form fixes a round you got
+            wrong: upload the corrected files and tick the box below.
           </p>
-          <form className="create-form" onSubmit={addFiles} style={{ maxWidth: 520 }}>
-            <label className="field">
-              <span>Edition</span>
-              <select value={intoId} onChange={(e) => setIntoId(e.target.value)}>
-                {editions.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
-              </select>
-            </label>
-            <div className="field">
-              <span>Packet files <span className="muted">(optional)</span></span>
-              <FileDrop accept=".json" value={intoPackets} onChange={setIntoPackets} hint="One JSON per round" />
-            </div>
-            <div className="field">
-              <span>Game files (QBJ) <span className="muted">(optional)</span></span>
-              <FileDrop accept=".json,.qbj" value={intoGames} onChange={setIntoGames} hint="QBJ match files" />
-            </div>
-            <label className="field-inline" style={{ alignItems: "flex-start" }}>
-              <input type="checkbox" checked={intoReplace} onChange={(e) => setIntoReplace(e.target.checked)} />
-              <span style={{ fontWeight: 400 }}>
-                Replace the rounds these files cover
-                {intoRounds.length > 0 && (
-                  <> — <strong>round {intoRounds.map(roundLabel).join(", ")}</strong></>
-                )}
-                <span className="muted">
-                  {" "}Anything already filed under {intoRounds.length === 1 ? "that round" : "those rounds"} in this
-                  edition is dropped first, so a re-upload fixes the round instead of stacking a second copy.
-                </span>
-              </span>
-            </label>
-            {intoReplace && unnamedRound && (
-              <span className="error-inline">
-                Every file has to say which round it is — name them like “Round_09.json” (or “Round A.json”).
-              </span>
-            )}
-            {intoErr && <div className="error-box">{intoErr}</div>}
-            {intoStatus && <div className="caveat">{intoStatus}</div>}
-            <button className="btn-primary" type="submit" disabled={intoBusy || (intoReplace && unnamedRound)}>
-              {intoBusy ? "Working…" : intoReplace ? "Replace files" : "Add files"}
-            </button>
-          </form>
+          <AddFilesForm slug={slug} editions={editions} />
         </>
       )}
 

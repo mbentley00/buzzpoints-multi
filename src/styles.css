@@ -1249,3 +1249,30 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
 .ord-parts { display: inline-flex; gap: 10px; align-items: center; flex-wrap: wrap; font-weight: 400; font-size: 13px; }
 .ord-part { display: inline-flex; gap: 4px; align-items: center; }
 .ord-part-pct { font-variant-numeric: tabular-nums; color: var(--ink-soft); }
+
+/* ---- Standard (YellowFruit-style) stats ---- */
+.std-nav { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 18px; border-bottom: 2px solid var(--line-strong); }
+.std-nav-link {
+  padding: 7px 14px; font-size: 13px; font-weight: 600; color: var(--ink-soft);
+  text-decoration: none; border: 1px solid transparent; border-bottom: none;
+  border-radius: 6px 6px 0 0; margin-bottom: -2px;
+}
+.std-nav-link:hover { color: var(--link); background: var(--bg-soft); }
+.std-nav-link.active { color: var(--ink); background: var(--bg); border-color: var(--line-strong); border-bottom: 2px solid var(--bg); }
+/* These reports are read column-by-column, so keep the numbers tight and the
+   figures aligned rather than letting a wide table breathe. */
+.std-table { font-variant-numeric: tabular-nums; }
+.std-table th, .std-table td { padding-left: 9px; padding-right: 9px; }
+.std-round { margin-bottom: 30px; }
+.std-round-head { font-size: 17px; margin: 0 0 10px; padding-bottom: 5px; border-bottom: 1px solid var(--line-strong); }
+.std-game { margin: 0 0 20px; }
+.std-game-head { font-size: 14px; font-weight: 600; margin: 0 0 6px; }
+.std-vs { color: var(--ink-soft); font-weight: 400; margin: 0 8px; }
+.std-box tbody + tbody tr:first-child td { border-top: 2px solid var(--line-strong); }
+.std-box-team td { font-weight: 600; }
+.std-box-player td:first-child { padding-left: 22px; }
+.std-box-bonus td { color: var(--ink-soft); font-size: 12px; }
+.std-detail-block { margin-bottom: 30px; }
+.std-detail-head { font-size: 16px; margin: 0 0 8px; padding-bottom: 5px; border-bottom: 1px solid var(--line-strong); }
+.std-detail-sub { font-weight: 400; font-size: 13px; color: var(--ink-soft); margin-left: 10px; }
+.std-total td { border-top: 2px solid var(--line-strong); font-weight: 600; }

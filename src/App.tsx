@@ -16,6 +16,7 @@ import { Packets } from "./pages/Packets";
 import { Players } from "./pages/Players";
 import { PlayerDetailPage } from "./pages/PlayerDetail";
 import { Teams } from "./pages/Teams";
+import { StandardStats } from "./pages/StandardStats";
 import { TeamDetailPage } from "./pages/TeamDetail";
 import { CategoriesTossup } from "./pages/CategoriesTossup";
 import { CategoryPlayersPage } from "./pages/CategoryPlayers";
@@ -56,6 +57,8 @@ export default function App() {
         <Route path="player/:id" element={<PlayerDetailPage />} />
         <Route path="team" element={<Teams />} />
         <Route path="team/:id" element={<TeamDetailPage />} />
+        <Route path="standard" element={<StandardStats />} />
+        <Route path="standard/:view" element={<StandardStats />} />
         <Route path="category/tossup" element={<CategoriesTossup />} />
         <Route path="category/tossup/:cid/players" element={<CategoryPlayersPage />} />
         <Route path="category/bonus" element={<CategoriesBonus />} />

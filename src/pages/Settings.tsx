@@ -8,6 +8,7 @@ import { RoundTagsEditor } from "../components/RoundTagsEditor";
 import { RoundAlignEditor, GameFilesEditor, UploadCleanup, RenamesEditor } from "../components/SourceFiles";
 import { MetaMapEditor } from "../components/MetaMapEditor";
 import { BonusDifficultyEditor } from "../components/BonusDifficulty";
+import { AddFilesForm } from "../components/AddFiles";
 
 const VIS_OPTIONS: { id: Visibility; label: string; desc: string }[] = [
   { id: "listed", label: "Listed (login + invite)", desc: "Shown in the list; only invited, logged-in people can view." },
@@ -25,7 +26,7 @@ const toDateInput = (iso: string | null) => (iso ? new Date(iso).toISOString().s
 
 export function Settings() {
   const { slug = "" } = useParams();
-  const { isOwner, meta, user } = useSetCtx();
+  const { isOwner, meta, user, editions } = useSetCtx();
   const loc = useLocation();
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -391,6 +392,17 @@ export function Settings() {
             player and team stats still look normal. Fix it by setting the right round below.
           </p>
           <RoundAlignEditor slug={slug} />
+
+          <h2 id="addrounds" style={{ marginTop: 28 }}>Add rounds or games</h2>
+          <p className="muted">
+            A tournament that runs over several days or weeks doesn't have to arrive in one upload — add each round's
+            packets and games as they're played and every figure here catches up. The same form replaces a round you
+            need to redo: upload the corrected files and tick the replace box, so the fix lands instead of stacking a
+            second copy alongside the first.
+          </p>
+          {/* A set uploaded before editions existed has no summary row; it still has
+              the one edition every set has. */}
+          <AddFilesForm slug={slug} editions={editions.length ? editions : [{ id: "e0", label: "Original" }]} />
 
           <h2 id="uploads" style={{ marginTop: 28 }}>Remove uploaded rounds</h2>
           <p className="muted">

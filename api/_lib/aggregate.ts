@@ -990,6 +990,16 @@ export function aggregate(
   // same on every buzz and would just bloat the output.
   const multiEdition = new Set(games.map((g) => g.editionId).filter(Boolean)).size > 1;
 
+  // One row per game, kept so the standard reports can show a scoreboard and a
+  // game-by-game line for each team and player. Everything here is already being
+  // counted for the season totals below; it was simply thrown away at the end of
+  // each iteration, and nothing downstream could reconstruct it (a tossup nobody
+  // buzzed leaves no trace, and bonus hearings record no opponent).
+  type GTeam = { name: string; tuPts: number; bonusPts: number; bonusesHeard: number; powers: number; gets: number; incorrect: number };
+  type GPlayer = { name: string; team: string; tuh: number; powers: number; gets: number; incorrect: number; pts: number };
+  type GTeamRow = GTeam & { score: number };
+  const gameRecs: { round: number; editionId?: string; tuh: number; teams: GTeam[]; players: GPlayer[] }[] = [];
+
   for (const g of games) {
     const r = g.round;
     // Carried onto each buzz and bonus hearing so the detail views can name the
@@ -1007,6 +1017,19 @@ export function aggregate(
     const gameTuh = (g.match_questions || []).length;
     const gamePts = new Map<string, number>();
     const addGamePts = (t: string, v: number) => gamePts.set(t, (gamePts.get(t) || 0) + v);
+    const gTeams = new Map<string, GTeam>();
+    const gPlayers = new Map<string, GPlayer>();
+    const gtOf = (t: string): GTeam => {
+      let v = gTeams.get(t);
+      if (!v) { v = { name: t, tuPts: 0, bonusPts: 0, bonusesHeard: 0, powers: 0, gets: 0, incorrect: 0 }; gTeams.set(t, v); }
+      return v;
+    };
+    const gpOf = (p: string, t: string): GPlayer => {
+      const k = plKey(p, t);
+      let v = gPlayers.get(k);
+      if (!v) { v = { name: p, team: t, tuh: 0, powers: 0, gets: 0, incorrect: 0, pts: 0 }; gPlayers.set(k, v); }
+      return v;
+    };
 
     for (const mt of g.match_teams || []) {
       const tname = mt.team?.name ? teamNamed(mt.team.name) : null;
@@ -1016,6 +1039,7 @@ export function aggregate(
       t.fullTuh += gameTuh;
       t.bonusPts += mt.bonus_points || 0;
       addGamePts(tname, mt.bonus_points || 0);
+      gtOf(tname).bonusPts += mt.bonus_points || 0;
       let rs = rosters.get(tname);
       if (!rs) { rs = new Set(); rosters.set(tname, rs); }
       for (const p of mt.team?.players || []) if (p?.name) rs.add(renamed(p.name, tname));
@@ -1027,6 +1051,7 @@ export function aggregate(
         pv.games.add(gameId);
         pv.tuh += mp.tossups_heard || 0;
         t.tuh += mp.tossups_heard || 0;
+        gpOf(pname, tname).tuh += mp.tossups_heard || 0;
       }
     }
 
@@ -1093,6 +1118,9 @@ export function aggregate(
           const pv = plOf(pname, bteam || "");
           if (isPower(value)) pv.powers++; else if (isGet(value)) pv.gets++; else if (countsNeg(value)) pv.incorrect++;
           pv.pts += value;
+          const gp = gpOf(pname, bteam || "");
+          if (isPower(value)) gp.powers++; else if (isGet(value)) gp.gets++; else if (countsNeg(value)) gp.incorrect++;
+          gp.pts += value;
           if (tq && geo) {
             const prec = isCorrect(value) && !imprecise(value, widx, geo.powerIndex);
             const unread = prec ? unreadOf(widx, geo.wordCount) : 0;
@@ -1106,6 +1134,9 @@ export function aggregate(
           if (isPower(value)) t.powers++; else if (isGet(value)) t.gets++; else if (countsNeg(value)) t.incorrect++;
           t.tuPts += value;
           addGamePts(bteam, value);
+          const gt = gtOf(bteam);
+          if (isPower(value)) gt.powers++; else if (isGet(value)) gt.gets++; else if (countsNeg(value)) gt.incorrect++;
+          gt.tuPts += value;
           if (tq && geo) {
             const prec = isCorrect(value) && !imprecise(value, widx, geo.powerIndex);
             const unread = prec ? unreadOf(widx, geo.wordCount) : 0;
@@ -1159,7 +1190,7 @@ export function aggregate(
           if (bc && controlling) {
             const origTotal = origPartPts.reduce((a, b) => a + b, 0) + origBbPts.reduce((a, b) => a + b, 0);
             const delta = total - origTotal;
-            if (delta) { tmOf(controlling).bonusPts += delta; addGamePts(controlling, delta); }
+            if (delta) { tmOf(controlling).bonusPts += delta; addGamePts(controlling, delta); gtOf(controlling).bonusPts += delta; }
           }
           let arr = bnResults.get(bkey); if (!arr) { arr = []; bnResults.set(bkey, arr); }
           arr.push({
@@ -1173,6 +1204,7 @@ export function aggregate(
           });
           if (controlling) {
             tmOf(controlling).bonusesHeard += 1;
+            gtOf(controlling).bonusesHeard += 1;
             const tbc = nestCat<BnCat>(tmBonusCat, controlling, bdef.subcategory, () => ({ heard: 0, pts: 0, main: bdef.category, parts: new Map() }));
             tbc.main = bdef.category; tbc.heard++; tbc.pts += total;
             for (let i = 0; i < parts.length; i++) {
@@ -1194,6 +1226,11 @@ export function aggregate(
       else if (pb > pa) { tmOf(b).wins++; tmOf(a).losses++; }
       else { tmOf(a).ties++; tmOf(b).ties++; }
     }
+
+    gameRecs.push({
+      round: r, ...(g.editionId ? { editionId: g.editionId } : {}), tuh: gameTuh,
+      teams: [...gTeams.values()], players: [...gPlayers.values()],
+    });
   }
 
   /* ----------------------------- ids ----------------------------- */
@@ -1698,6 +1735,49 @@ export function aggregate(
 
   /* ----------------------------- rosters + meta ----------------------------- */
   files["rosters.json"] = Object.fromEntries([...rosters.entries()].map(([t, s]) => [t, [...s].sort()]));
+
+  /* ----------------------------- games (box scores) ----------------------------- */
+  // The standard reports read this: a scoreboard, and the game-by-game line
+  // behind every team's and player's season totals. Rows carry names as well as
+  // ids so a reader doesn't have to join against two other files to render one.
+  files["games.json"] = gameRecs
+    .map((rec) => {
+      const scoreOf = (t: GTeamRow) => t.tuPts + t.bonusPts;
+      const teams = rec.teams.map((t) => ({ ...t, score: t.tuPts + t.bonusPts }));
+      const top = Math.max(...teams.map(scoreOf));
+      const decided = teams.length === 2;
+      return {
+        round: rec.round,
+        ...(rec.editionId ? { editionId: rec.editionId } : {}),
+        // Tossups read in the room, which is what every team in it heard.
+        tuh: rec.tuh,
+        teams: teams.map((t) => ({
+          id: teamId.get(t.name) ?? null,
+          name: t.name,
+          score: t.score,
+          tuPts: t.tuPts,
+          bonusPts: t.bonusPts,
+          bonusesHeard: t.bonusesHeard,
+          ppb: t.bonusesHeard ? Math.round((100 * t.bonusPts) / t.bonusesHeard) / 100 : 0,
+          powers: t.powers, gets: t.gets, incorrect: t.incorrect,
+          // Only a two-team game has a result to report; anything else is a
+          // malformed or one-sided file and is left blank rather than guessed at.
+          result: !decided ? null : t.score === top && teams.every((o) => o.score === top) ? "T" : t.score === top ? "W" : "L",
+          players: rec.players
+            .filter((p) => p.team === t.name)
+            .sort((a, b) => b.pts - a.pts || a.name.localeCompare(b.name))
+            .map((p) => ({
+              id: playerId.get(plKey(p.name, p.team)) ?? null,
+              name: p.name,
+              // Sources often list only the players who buzzed, so a blank here
+              // means the file didn't say — not that they heard nothing.
+              tuh: p.tuh,
+              powers: p.powers, gets: p.gets, incorrect: p.incorrect, pts: p.pts,
+            })),
+        })),
+      };
+    })
+    .sort((a, b) => a.round - b.round || (a.teams[0]?.name || "").localeCompare(b.teams[0]?.name || ""));
   files["meta.json"] = {
     setName: cfg.name, setSlug: cfg.slug, scoring: scoring.id, scoringLabel: scoring.label,
     hasPower: scoring.hasPower, hasNeg: scoring.hasNeg, hasBonuses: cfg.hasBonuses,

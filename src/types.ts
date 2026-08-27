@@ -125,6 +125,43 @@ export interface IndexData {
   needsSetup?: boolean;
 }
 
+// One game's box score, from games.json. The standard (YellowFruit-style)
+// reports are built on these: a season total is just the sum of a team's or a
+// player's lines here.
+export interface GamePlayerLine {
+  id: string | null;
+  name: string;
+  // What the source said this player heard. 0 means the file didn't say, which
+  // is common — many sources list only the players who buzzed.
+  tuh: number;
+  powers: number;
+  gets: number;
+  incorrect: number;
+  pts: number;
+}
+export interface GameTeamLine {
+  id: string | null;
+  name: string;
+  score: number;
+  tuPts: number;
+  bonusPts: number;
+  bonusesHeard: number;
+  ppb: number;
+  powers: number;
+  gets: number;
+  incorrect: number;
+  // Null when the file didn't describe a two-team game, so nothing is guessed.
+  result: "W" | "L" | "T" | null;
+  players: GamePlayerLine[];
+}
+export interface GameRow {
+  round: number;
+  editionId?: string;
+  // Tossups read in the room, which every team in it heard.
+  tuh: number;
+  teams: GameTeamLine[];
+}
+
 export interface Meta {
   setName: string;
   setSlug: string;
