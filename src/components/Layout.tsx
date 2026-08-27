@@ -53,6 +53,15 @@ export function SetLayout() {
   // which means it was never closed.
   const allowRequests = entry?.allowRequests !== false;
   const ctx: SetCtx = { meta: meta as Meta, slug, scope, editions, owner, isOwner, user, allowRequests, level: entry?.level, tdLink: entry?.tdLink };
+  // A player's or a team's id is assigned per aggregation scope: ids are handed
+  // out in name order over whoever appears in THAT scope, so p25 in the combined
+  // file and p25 in one edition's file are simply different people (checked on a
+  // real set: of one edition's 22 team ids, not one referred to the same team as
+  // the combined file, and the team being viewed wasn't in that edition at all).
+  // Switching scope on one of these pages therefore can't filter it — it silently
+  // swaps in somebody else, or 404s. So don't offer it: the page keeps whichever
+  // scope it was opened from, and names the editions involved on the page itself.
+  const idScopedPage = /\/(player|team)\/[^/]+$/.test(loc.pathname);
   const denied = !!error && /\b(401|403)\b/.test(error);
   const [reqState, setReqState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [reqMsg, setReqMsg] = useState("");
@@ -131,7 +140,7 @@ export function SetLayout() {
           </nav>
         </div>
       </header>
-      {hasScopes && (
+      {hasScopes && !idScopedPage && (
         <div className="editions-bar">
           <span className="muted">Showing</span>
           <select value={scope} onChange={(e) => setScope(e.target.value)}>
