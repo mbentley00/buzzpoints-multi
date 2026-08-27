@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { clearSetCache, refreshIndex } from "../data";
 import { RoundWarning, Rename, renameKind } from "../types";
-import { roundLabel, parseRoundInput } from "../util";
+import { roundLabel, parseRoundInput, byLabel } from "../util";
 
 // Owner-only repair tools for a tournament's uploaded files.
 //
@@ -109,7 +109,7 @@ export function RoundAlignEditor({ slug }: { slug: string }) {
   return (
     <div className="srcfiles">
       {err && <div className="error-box">{err}</div>}
-      {editions.map((ed) => {
+      {byLabel(editions).map((ed) => {
         const suggestable = ed.warnings.some((w) => w.kind === "packet-unplayed" && w.suggested !== null);
         const changed = Object.keys(changesFor(ed)).length;
         return (
@@ -297,7 +297,7 @@ export function UploadCleanup({ slug }: { slug: string }) {
   return (
     <div className="srcfiles">
       {err && <div className="error-box">{err}</div>}
-      {editions.map((ed) => {
+      {byLabel(editions).map((ed) => {
         const rows = roundsOf(ed);
         const sel = pickedIn(ed);
         const teams = teamsOf(ed.id);
@@ -518,7 +518,7 @@ export function GameFilesEditor({ slug }: { slug: string }) {
           </div>
         </div>
       )}
-      {editions.map((ed) => {
+      {byLabel(editions).map((ed) => {
         const sel = pickedIn(ed);
         const dupes = ed.games.filter((g) => g.copy > 1).length;
         return (

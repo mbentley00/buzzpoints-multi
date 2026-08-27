@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { refreshIndex } from "../data";
+import { byLabel } from "../util";
 
 // Mirrors DEFAULT_ROUND_TAGS on the server.
 const DEFAULTS = ["Prelims", "Playoffs", "Finals", "Superplayoffs", "Tiebreakers"];
@@ -143,7 +144,7 @@ export function RoundTagsEditor({ slug, rounds }: { slug: string; rounds: number
             <span>Phase schedule for</span>
             <select value={target} onChange={(e) => setTarget(e.target.value)}>
               <option value={SHARED}>All editions (shared)</option>
-              {editions.map((e) => (
+              {byLabel(editions).map((e) => (
                 <option key={e.id} value={e.id}>
                   {e.label}{doc.editions?.[e.id] ? " — own schedule" : ""}
                 </option>

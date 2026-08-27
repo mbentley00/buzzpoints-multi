@@ -5,6 +5,7 @@ import { Meta, SetCtx } from "../types";
 import { useAuth } from "../auth";
 import { Loading, ErrorBox, AuthNav } from "./Common";
 import { warningText } from "./SourceFiles";
+import { byLabel } from "../util";
 
 // Child pages read the set context (meta + ownership + scope) through this hook.
 export function useSetCtx(): SetCtx {
@@ -137,7 +138,7 @@ export function SetLayout() {
             <option value="all">{hasEditions ? "All editions (combined)" : "All rounds"}</option>
             {hasEditions && (
               <optgroup label="Editions">
-                {editions.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
+                {byLabel(editions).map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
               </optgroup>
             )}
             {tags.length > 0 && (

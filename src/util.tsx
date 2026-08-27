@@ -67,6 +67,14 @@ export function primaryAnswer(html: string): string {
 
 // Does a full subcategory path belong to a category filter value? Matches the
 // value itself or any descendant ("Science" matches "Science - Biology - …").
+// Editions are stored in the order they were uploaded, which means nothing to a
+// reader: a set with twenty mirrors is only findable by name. Sort a copy for
+// display — numeric-aware, so a label ending "Round 2" precedes "Round 10"
+// rather than sorting between "Round 1" and "Round 20".
+export function byLabel<T extends { label: string }>(list: T[]): T[] {
+  return [...list].sort((a, b) => (a.label || "").localeCompare(b.label || "", undefined, { numeric: true, sensitivity: "base" }));
+}
+
 export function catMatches(fullSub: string, value: string): boolean {
   return fullSub === value || fullSub.startsWith(value + " - ");
 }

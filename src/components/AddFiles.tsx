@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { refreshIndex } from "../data";
 import { uploadFiles } from "../upload";
 import { FileDrop } from "./FileDrop";
-import { roundLabel, roundFromFileName } from "../util";
+import { roundLabel, roundFromFileName, byLabel } from "../util";
 
 // Add rounds to a tournament that already exists — a league playing a round a
 // week, a tournament finishing on a second day, a round that has to be redone.
@@ -13,7 +13,8 @@ import { roundLabel, roundFromFileName } from "../util";
 // which is a hard place to find when what you have is one tournament and one
 // more week of it.
 export function AddFilesForm({ slug, editions }: { slug: string; editions: { id: string; label: string }[] }) {
-  const [intoId, setIntoId] = useState(editions[0]?.id ?? "");
+  const sorted = useMemo(() => byLabel(editions), [editions]);
+  const [intoId, setIntoId] = useState(sorted[0]?.id ?? "");
   const [packets, setPackets] = useState<File[]>([]);
   const [games, setGames] = useState<File[]>([]);
   const [status, setStatus] = useState<string | null>(null);
@@ -61,7 +62,7 @@ export function AddFilesForm({ slug, editions }: { slug: string; editions: { id:
         <label className="field">
           <span>Edition</span>
           <select value={intoId} onChange={(e) => setIntoId(e.target.value)}>
-            {editions.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
+            {sorted.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
           </select>
         </label>
       )}

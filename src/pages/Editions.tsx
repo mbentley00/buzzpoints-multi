@@ -8,7 +8,7 @@ import { PageHeader, Loading, ErrorBox } from "../components/Common";
 import { uploadFiles } from "../upload";
 import { FileDrop } from "../components/FileDrop";
 import { AddFilesForm } from "../components/AddFiles";
-import { roundLabel } from "../util";
+import { roundLabel, byLabel } from "../util";
 
 type Seg = { op: "eq" | "del" | "add"; text: string };
 // Word-level LCS diff producing a unified inline change (A → B).
@@ -132,7 +132,7 @@ export function Editions() {
         <table className="data-table">
           <thead><tr><th>Edition</th><th className="right">Games</th><th className="right">Teams</th><th className="right">Players</th><th className="right">Rounds</th></tr></thead>
           <tbody>
-            {editions.map((e) => (
+            {byLabel(editions).map((e) => (
               <tr key={e.id}><td>{e.label}</td><td className="right mono">{e.numGames}</td><td className="right mono">{e.numTeams}</td><td className="right mono">{e.numPlayers}</td><td className="right mono">{e.rounds}</td></tr>
             ))}
             {editions.length === 0 && <tr><td colSpan={5} className="muted">Single edition.</td></tr>}
@@ -145,9 +145,9 @@ export function Editions() {
         <>
           <h2 style={{ marginTop: 28 }}>Compare question sets</h2>
           <div className="cat-toolbar">
-            <select value={a} onChange={(e) => setA(e.target.value)}>{editions.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}</select>
+            <select value={a} onChange={(e) => setA(e.target.value)}>{byLabel(editions).map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}</select>
             <span>vs</span>
-            <select value={b} onChange={(e) => setB(e.target.value)}>{editions.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}</select>
+            <select value={b} onChange={(e) => setB(e.target.value)}>{byLabel(editions).map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}</select>
             <button className="btn-primary btn-sm" disabled={busy} onClick={compare}>{busy ? "Comparing…" : "Compare"}</button>
           </div>
           {err && <ErrorBox error={err} />}
