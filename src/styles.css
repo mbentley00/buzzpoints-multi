@@ -1276,3 +1276,7 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
 .std-detail-head { font-size: 16px; margin: 0 0 8px; padding-bottom: 5px; border-bottom: 1px solid var(--line-strong); }
 .std-detail-sub { font-weight: 400; font-size: 13px; color: var(--ink-soft); margin-left: 10px; }
 .std-total td { border-top: 2px solid var(--line-strong); font-weight: 600; }
+
+/* Advisory note under a form field — the set-name house style, say. */
+.name-hint { display: block; margin-top: 6px; font-size: 12.5px; line-height: 1.5; }
+.name-hint .btn-link { font-size: inherit; font-weight: 600; }

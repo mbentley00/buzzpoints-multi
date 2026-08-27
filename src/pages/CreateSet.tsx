@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { refreshIndex } from "../data";
 import { useAuth } from "../auth";
@@ -8,6 +8,7 @@ import { uploadFiles } from "../upload";
 import { FileDrop } from "../components/FileDrop";
 import { Visibility, TOURNAMENT_LEVELS, RoundWarning, BonusDiffWarning } from "../types";
 import { warningText } from "../components/SourceFiles";
+import { hasYearFirst, yearFirstSuggestion } from "../util";
 
 interface CategoryWarning { category: string; count: number; reason: string; examples: string[] }
 
@@ -51,6 +52,7 @@ export function CreateSet() {
   const [importUrl, setImportUrl] = useState("");
   const [importBonuses, setImportBonuses] = useState(false);
   const [name, setName] = useState("");
+  const nameSuggestion = useMemo(() => yearFirstSuggestion(name), [name]);
   const [level, setLevel] = useState("");
   const [tdLink, setTdLink] = useState("");
   const [scoring, setScoring] = useState("mACF");
@@ -345,8 +347,24 @@ export function CreateSet() {
 
           <label className="field">
             <span>Tournament name{mode === "import" ? " (optional)" : ""}</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={mode === "import" ? "defaults to the imported name" : "e.g. Spring Open 2026"} />
+            {/* The placeholder showed "Spring Open 2026" — the very shape the
+                note below asks people not to use. */}
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={mode === "import" ? "defaults to the imported name" : "e.g. 2026 PACE NSC"} />
           </label>
+          {/* Outside the label: a click on a control nested in one is forwarded to
+              the label's input as well, so the "did you mean" button would fight
+              the field it is trying to fill.
+              Advisory, never blocking — an unusual name is the owner's call, and
+              a set that doesn't fit the house style is still worth having. */}
+          {!!name.trim() && !hasYearFirst(name) && (
+            <p className="caveat name-hint">
+              Tournaments here are named <strong>year first</strong> — “2026 PACE NSC”, not “PACE NSC 2026” — so the
+              list reads chronologically and one tournament's years sit together.{" "}
+              {nameSuggestion
+                ? <>Did you mean <button type="button" className="btn-link" onClick={() => setName(nameSuggestion)}>{nameSuggestion}</button>?</>
+                : <>You can still use this name.</>}
+            </p>
+          )}
 
           <label className="field">
             <span>Tournament type</span>

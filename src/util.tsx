@@ -67,6 +67,22 @@ export function primaryAnswer(html: string): string {
 
 // Does a full subcategory path belong to a category filter value? Matches the
 // value itself or any descendant ("Science" matches "Science - Biology - …").
+// Tournaments are named year first — "2026 PACE NSC" — so a list of them reads
+// and sorts chronologically, and so the same tournament's editions across years
+// sit together. A season spanning two years ("2025-26 …") counts as well.
+const YEAR_FIRST = /^(19|20)\d{2}(-(\d{2}|\d{4}))?\s+\S/;
+export const hasYearFirst = (name: string) => YEAR_FIRST.test((name || "").trim());
+
+// A name with its year on the END ("Spring Open 2026") is the common near-miss,
+// and it can be fixed without the writer retyping anything, so offer the swap.
+// Returns null when there's no trailing year to move.
+export function yearFirstSuggestion(name: string): string | null {
+  const m = (name || "").trim().match(/^(.*[^\s,\-])[\s,\-]+((?:19|20)\d{2})$/);
+  if (!m) return null;
+  const fixed = `${m[2]} ${m[1]}`.replace(/\s{2,}/g, " ").trim();
+  return hasYearFirst(fixed) ? fixed : null;
+}
+
 // Editions are stored in the order they were uploaded, which means nothing to a
 // reader: a set with twenty mirrors is only findable by name. Sort a copy for
 // display — numeric-aware, so a label ending "Round 2" precedes "Round 10"
