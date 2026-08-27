@@ -89,6 +89,20 @@ export function Settings() {
       .finally(() => setLoading(false));
   }, [slug, isOwner]);
 
+  // A client-side navigation doesn't do what the browser does with a #hash, and
+  // the section it names isn't on the page until the settings have loaded — so
+  // the warning banners' "Fix …" buttons, which promise to take the owner to
+  // one particular repair, were landing them at the top of a long page with it
+  // somewhere below. Go to it once it's actually there.
+  useEffect(() => {
+    if (loading || !loc.hash) return;
+    const el = document.getElementById(loc.hash.slice(1));
+    if (!el) return;
+    // A frame's grace so the section has laid out before we measure it.
+    const t = setTimeout(() => el.scrollIntoView({ block: "start", behavior: "smooth" }), 0);
+    return () => clearTimeout(t);
+  }, [loading, loc.hash]);
+
   if (!user)
     return (
       <p className="caveat">

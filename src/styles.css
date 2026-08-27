@@ -595,19 +595,42 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
 .round-warn .cat-warn-list li { display: list-item; list-style: disc; margin-left: 18px; }
 
 /* Owner repair for bonuses whose difficulty marks can't be right (Settings). */
-.bndiff-table { max-width: 900px; }
+.bndiff-table { max-width: 1080px; }
 .bndiff-table td, .bndiff-table th { vertical-align: top; }
+/* Fixed widths for the three narrow columns so the part rows get the space they
+   need, and so "Round 9, bonus 19" stops wrapping one word per line. */
+.bndiff-table th:nth-child(1), .bndiff-table td:nth-child(1) { width: 10.5rem; white-space: nowrap; }
+.bndiff-table th:nth-child(2), .bndiff-table td:nth-child(2) { width: 12rem; }
+.bndiff-table th:nth-child(3), .bndiff-table td:nth-child(3) { width: 4.5rem; }
+.bndiff-table tbody td { padding-top: 12px; padding-bottom: 12px; }
 .bndiff-actions { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
 .bndiff-kind { display: block; font-weight: 600; font-size: 13px; }
 .bndiff-reason { display: block; font-size: 12px; }
 /* One line per part: what it answers, how it actually converted, and the mark
    it should carry — the three things the decision is made on, side by side. */
-.bndiff-parts { list-style: decimal; margin: 0; padding-left: 20px; font-size: 13px; }
-.bndiff-parts li { display: list-item; margin: 3px 0; }
-.bndiff-answer { display: inline-block; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
-.bndiff-conv { display: inline-block; min-width: 56px; text-align: right; margin: 0 8px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
-.bndiff-select { font-size: 12px; padding: 2px 4px; vertical-align: middle; }
-.bndiff-hint { margin-left: 8px; font-size: 12px; }
+/* The three parts read as a table of their own: answer, what conversion says,
+   and the mark to give it. A grid (rather than inline flow) keeps those three
+   aligned down the rows, so the marks can be compared at a glance instead of
+   landing wherever the answer above them happened to end. The list number comes
+   from a counter because a grid item can't also be a list-item marker. */
+.bndiff-parts { list-style: none; counter-reset: bndiff-part; margin: 0; padding-left: 0; font-size: 13px; }
+.bndiff-parts li {
+  counter-increment: bndiff-part;
+  display: grid;
+  grid-template-columns: 1.4rem minmax(0, 1fr) 4.2rem 9.5rem;
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 2px;
+  padding: 4px 0;
+}
+.bndiff-parts li + li { border-top: 1px solid var(--line); }
+.bndiff-parts li::before { content: counter(bndiff-part) "."; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.bndiff-answer { min-width: 0; overflow-wrap: anywhere; }
+.bndiff-conv { text-align: right; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.bndiff-select { font-size: 12px; padding: 2px 4px; width: 100%; }
+/* Under the conversion and the picker it refers to, not trailing off the end of
+   the answer where it used to wrap onto its own ragged line. */
+.bndiff-hint { grid-column: 3 / -1; font-size: 12px; margin: 0; }
 .bndiff-row-actions { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
 .bndiff-applied { list-style: none; margin: 10px 0 0; padding: 0; font-size: 13px; }
 .bndiff-applied li { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; padding: 5px 0; border-top: 1px solid var(--line); }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { IndexData } from "./types";
 
 let indexPromise: Promise<IndexData> | null = null;
@@ -59,10 +59,27 @@ export function loadSetJson<T>(slug: string, file: string, bust = 0): Promise<T>
   return cache.get(key) as Promise<T>;
 }
 
+// Bumped whenever a set's cached JSON is dropped. Dropping the cache is not
+// enough on its own: a component that already holds the old data — the set
+// layout above every page, most of all — has no reason to ask again, so an
+// owner's repair left its own warning banner on screen until a full reload.
+// Anything that should follow a repair reads this and refetches.
+let cacheEpoch = 0;
+const epochSubs = new Set<() => void>();
+export function useSetEpoch(): number {
+  return useSyncExternalStore(
+    (cb) => { epochSubs.add(cb); return () => { epochSubs.delete(cb); }; },
+    () => cacheEpoch,
+    () => cacheEpoch
+  );
+}
+
 export function clearSetCache(slug: string) {
   for (const k of [...cache.keys()]) if (k.startsWith(`${slug}/`)) cache.delete(k);
   // Access may be exactly what changed, so the old answer can't be carried over.
   redacted.delete(slug);
+  cacheEpoch++;
+  for (const f of [...epochSubs]) f();
 }
 
 function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) {

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { clearSetCache } from "../data";
 import { BonusDiffWarning, BonusDiffFix } from "../types";
-import { primaryAnswer, roundLabel, pct } from "../util";
+import { primaryAnswer, roundLabel, pct, Html } from "../util";
 
 // Owner-only repair for a bonus whose difficulty marks can't be right.
 //
@@ -177,23 +177,33 @@ export function BonusDifficultyEditor({ slug, warnings }: { slug: string; warnin
                       <td className="right mono">{w.heard}</td>
                       <td>
                         <ol className="bndiff-parts">
-                          {mods.map((m, i) => (
-                            <li key={i}>
-                              <span className="bndiff-answer">{primaryAnswer(w.answers[i] || "") || <em className="muted">(no answer line)</em>}</span>
-                              <span className="bndiff-conv mono">{w.convPct[i] === null ? "—" : pct(w.convPct[i])}</span>
-                              <select
-                                className="bndiff-select"
-                                value={m}
-                                disabled={busy}
-                                onChange={(e) => setMark(w.id, i, e.target.value, w.mods)}
-                              >
-                                {MARKS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                              </select>
-                              {w.suggested && w.suggested[i] !== m && (
-                                <small className="muted bndiff-hint">conversion says {markWord(w.suggested[i])}</small>
-                              )}
-                            </li>
-                          ))}
+                          {mods.map((m, i) => {
+                            // The answer line is the same trusted markup the rest
+                            // of the app renders — bold and underline mark what a
+                            // reader has to say, so an escaped "<b><u>" here made
+                            // the one thing this table is for hard to read.
+                            const ans = primaryAnswer(w.answers[i] || "");
+                            return (
+                              <li key={i}>
+                                {ans
+                                  ? <Html className="bndiff-answer" html={ans} />
+                                  : <em className="bndiff-answer muted">(no answer line)</em>}
+                                <span className="bndiff-conv mono">{w.convPct[i] === null ? "—" : pct(w.convPct[i])}</span>
+                                <select
+                                  className="bndiff-select"
+                                  value={m}
+                                  disabled={busy}
+                                  aria-label={`Difficulty mark for part ${i + 1}`}
+                                  onChange={(e) => setMark(w.id, i, e.target.value, w.mods)}
+                                >
+                                  {MARKS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                </select>
+                                {w.suggested && w.suggested[i] !== m && (
+                                  <small className="muted bndiff-hint">conversion says {markWord(w.suggested[i])}</small>
+                                )}
+                              </li>
+                            );
+                          })}
                         </ol>
                         {dirty && (
                           <div className="bndiff-row-actions">

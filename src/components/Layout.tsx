@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, Link, Outlet, useParams, useLocation, useOutletContext } from "react-router-dom";
-import { useSetJson, useIndex, isRevealed, setRevealed, clearSetCache, isContentRedacted } from "../data";
+import { useSetJson, useIndex, isRevealed, setRevealed, clearSetCache, isContentRedacted, useSetEpoch } from "../data";
 import { Meta, SetCtx } from "../types";
 import { useAuth } from "../auth";
 import { Loading, ErrorBox, AuthNav } from "./Common";
@@ -33,7 +33,12 @@ export function SetLayout() {
 
   const entry = index?.sets.find((s) => s.slug === slug);
   const [scope, setScope] = useState("all");
-  const { data: meta, error, loading } = useSetJson<Meta>(slug, scopedPath(scope, "meta.json"));
+  // Refetch after a repair. The warning banners below are read from this meta,
+  // and this layout outlives every page under it, so without following the
+  // cache epoch an owner who had just fixed the thing a banner was complaining
+  // about went on being told to fix it until they reloaded the page.
+  const epoch = useSetEpoch();
+  const { data: meta, error, loading } = useSetJson<Meta>(slug, scopedPath(scope, "meta.json"), epoch);
 
   const owner = entry?.owner ?? null;
   // Co-owners manage the set alongside its creator, so every owner-gated tab and
