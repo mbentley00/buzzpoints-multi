@@ -8,6 +8,7 @@ import { RoundTagsEditor } from "../components/RoundTagsEditor";
 import { RoundAlignEditor, GameFilesEditor, UploadCleanup, RenamesEditor } from "../components/SourceFiles";
 import { MetaMapEditor } from "../components/MetaMapEditor";
 import { BonusDifficultyEditor } from "../components/BonusDifficulty";
+import { byLabel, hasYearFirst, yearFirstSuggestion } from "../util";
 import { AddFilesForm } from "../components/AddFiles";
 
 const VIS_OPTIONS: { id: Visibility; label: string; desc: string }[] = [
@@ -63,6 +64,15 @@ export function Settings() {
   // Deleting is irreversible and takes the uploaded files with it, so the name
   // has to be typed out — a stray click can't do it.
   const [confirmDelete, setConfirmDelete] = useState("");
+  // Renaming. Seeded from what's published rather than fetched: the set's name
+  // and its edition labels are already in this page's context.
+  const [nameDraft, setNameDraft] = useState(meta?.setName ?? "");
+  const [edLabels, setEdLabels] = useState<Record<string, string>>({});
+  useEffect(() => setNameDraft(meta?.setName ?? ""), [meta?.setName]);
+  useEffect(() => setEdLabels(Object.fromEntries(editions.map((e) => [e.id, e.label]))), [editions]);
+  const renameDirty =
+    nameDraft.trim() !== (meta?.setName ?? "") ||
+    editions.some((e) => (edLabels[e.id] ?? e.label).trim() !== e.label);
 
   useEffect(() => {
     if (!isOwner) { setLoading(false); return; }
@@ -142,6 +152,28 @@ export function Settings() {
       await postJson("/api/manage", { slug, op: "details", level, tdLink: tdLink.trim() });
       refreshIndex();
       setMsg("Tournament details saved.");
+    } catch (e) {
+      setErr(String((e as Error).message || e));
+    } finally { setBusy(false); }
+  }
+
+  async function saveNames() {
+    setErr(null); setMsg(null); setBusy(true);
+    try {
+      const changedEds = Object.fromEntries(
+        editions.filter((e) => (edLabels[e.id] ?? e.label).trim() !== e.label).map((e) => [e.id, (edLabels[e.id] ?? e.label).trim()])
+      );
+      const nameChanged = nameDraft.trim() !== (meta?.setName ?? "");
+      const d = await postJson("/api/manage", {
+        slug, op: "rename",
+        ...(nameChanged ? { name: nameDraft.trim() } : {}),
+        ...(Object.keys(changedEds).length ? { editions: changedEds } : {}),
+      });
+      refreshIndex();
+      // The name is baked into every published file, so what's on screen is now
+      // out of date everywhere, not just here.
+      clearSetCache(slug);
+      setMsg(`Renamed to “${(d as any).name}”. The address of this tournament hasn't changed, so existing links still work.`);
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally { setBusy(false); }
@@ -287,7 +319,44 @@ export function Settings() {
         <div className="caveat" style={{ marginBottom: 28 }}>{accessSection}</div>
       )}
 
-      <h2>Tournament details</h2>
+      <h2 id="rename">Name</h2>
+      <p className="muted">
+        Renaming changes what this tournament is called everywhere its stats are published. Its web address stays as
+        it is, so links people have already shared keep working.
+      </p>
+      <div className="create-form" style={{ maxWidth: 520 }}>
+        <label className="field">
+          <span>Tournament name</span>
+          <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} placeholder="e.g. 2026 PACE NSC" />
+        </label>
+        {!!nameDraft.trim() && !hasYearFirst(nameDraft) && (
+          <p className="caveat name-hint">
+            Tournaments here are named <strong>year first</strong> — “2026 PACE NSC”, not “PACE NSC 2026”.{" "}
+            {yearFirstSuggestion(nameDraft)
+              ? <>Did you mean <button type="button" className="btn-link" onClick={() => setNameDraft(yearFirstSuggestion(nameDraft)!)}>{yearFirstSuggestion(nameDraft)}</button>?</>
+              : <>You can still use this name.</>}
+          </p>
+        )}
+        {editions.length > 0 && (
+          <>
+            <span className="field-label">Edition names</span>
+            {byLabel(editions).map((e) => (
+              <label className="field" key={e.id}>
+                <input
+                  value={edLabels[e.id] ?? e.label}
+                  aria-label={`Name for edition ${e.label}`}
+                  onChange={(ev) => setEdLabels((m) => ({ ...m, [e.id]: ev.target.value }))}
+                />
+              </label>
+            ))}
+          </>
+        )}
+        <button className="btn-primary" disabled={busy || !nameDraft.trim() || !renameDirty} onClick={saveNames}>
+          {busy ? "Saving…" : "Save names & rebuild"}
+        </button>
+      </div>
+
+      <h2 style={{ marginTop: 28 }}>Tournament details</h2>
       <div className="create-form" style={{ maxWidth: 520 }}>
         <label className="field">
           <span>Tournament type</span>

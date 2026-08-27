@@ -1280,3 +1280,6 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
 /* Advisory note under a form field — the set-name house style, say. */
 .name-hint { display: block; margin-top: 6px; font-size: 12.5px; line-height: 1.5; }
 .name-hint .btn-link { font-size: inherit; font-weight: 600; }
+
+/* A heading over a group of fields that aren't each separately labelled. */
+.field-label { font-weight: 600; font-size: 13.5px; margin-top: 6px; }

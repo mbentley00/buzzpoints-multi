@@ -2,7 +2,7 @@
 //   GET  /api/manage?slug=...  (owner) -> { visibility, autoPublicAt, invites, accessRequests, links }
 //   POST { slug, op } where op is one of:
 //     open (any logged-in user):  request-access | join(key)
-//     owner: settings | reaggregate | invite | uninvite |
+//     owner: settings | rename | reaggregate | invite | uninvite |
 //            approve-access(email) | deny-access(email) | create-link(label?) | revoke-link(id)
 import crypto from "node:crypto";
 import { list, del } from "@vercel/blob";
@@ -19,6 +19,7 @@ import {
 import { VirtualCategory, scanRoundAlignment, metaFields, MetaMap, MetaField, BonusDiffs } from "./_lib/aggregate.js";
 import { LETTER_ROUND_BASE } from "./_lib/publish.js";
 import { sendEmail, appUrl, accessRequestBody, accessGrantedBody, coOwnerBody, publishRequestBody } from "./_lib/email.js";
+import { readModConfig, findBlocked } from "./_lib/moderation.js";
 
 const VIS = new Set<Visibility>(["public", "listed", "private"]);
 const ROLES = new Set<string>(["player", "staff", "coach"]);
@@ -759,6 +760,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (blobs.length) await del(blobs.map((b) => b.url));
       await writeIndex({ sets: index.sets.filter((s) => s.slug !== slug) });
       return res.status(200).json({ deleted: slug, removedBlobs: blobs.length });
+    } else if (op === "rename") {
+      // Rename the tournament and/or its editions. The SLUG never moves: it is
+      // this set's address, and it is also the prefix of every blob written for
+      // it (stats, source, corrections, invite links), so changing it would
+      // break every link anyone has kept and orphan the data behind it. A name
+      // is a label; the address it was first filed under stays put.
+      const nameRaw = body.name === undefined ? null : String(body.name).trim();
+      const labels = body.editions;
+      if (labels !== undefined && labels !== null && (typeof labels !== "object" || Array.isArray(labels)))
+        return res.status(400).json({ error: "Invalid edition names." });
+      if (nameRaw === null && !labels) return res.status(400).json({ error: "Nothing to rename." });
+
+      if (nameRaw !== null) {
+        if (!nameRaw) return res.status(400).json({ error: "The tournament needs a name." });
+        if (nameRaw.length > 120) return res.status(400).json({ error: "That name is too long (120 characters max)." });
+        // Same gate a new tournament passes; renaming must not be a way around it.
+        const { blocklist } = await readModConfig();
+        const blocked = findBlocked(nameRaw, blocklist);
+        if (blocked) return res.status(400).json({ error: `Tournament name contains a disallowed word: "${blocked}".` });
+      }
+
+      const source = await readSource(slug);
+      if (!source) return res.status(500).json({ error: "Source data not found (set predates source storage; re-create it)." });
+      let eds = editionsOf(source);
+      if (labels) {
+        const known = new Set(eds.map((e) => e.id));
+        for (const [id, v] of Object.entries(labels as Record<string, unknown>)) {
+          if (!known.has(id)) return res.status(404).json({ error: "Edition not found." });
+          const label = String(v ?? "").trim();
+          if (!label) return res.status(400).json({ error: "An edition needs a name." });
+          if (label.length > 120) return res.status(400).json({ error: "That edition name is too long (120 characters max)." });
+        }
+        eds = eds.map((e) => {
+          const v = (labels as Record<string, unknown>)[e.id];
+          return v === undefined ? e : { ...e, label: String(v).trim() };
+        });
+      }
+
+      const nextName = nameRaw === null ? (entry.name || source.name) : nameRaw;
+      const nextSource: SetSource = { ...withEditions(source, eds), name: nextName };
+      await writeSource(slug, nextSource);
+      entry.name = nextName;
+      // The name is baked into the published meta.json and the edition labels
+      // into every scoped file, so a rename is only real once the stats have
+      // been rewritten.
+      const { editions, tags } = await aggregateAndWrite(slug, nextSource, await readCorrections(slug));
+      Object.assign(entry, { editions, tags });
+      await writeIndex(index);
+      return res.status(200).json({ ok: true, name: entry.name, editions });
     } else if (op === "details") {
       const lvl = String(body.level || "");
       if (!(TOURNAMENT_LEVELS as readonly string[]).includes(lvl))
