@@ -513,7 +513,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       entry.tags = tags;
       await writeIndex(index);
       return res.status(200).json({ ok: true, roundTags: next, tags });
-    } else if (op === "remap-rounds" || op === "remove-files" || op === "remove-uploads") {
+    } else if (op === "remap-rounds" || op === "remap-games" || op === "remove-files" || op === "remove-uploads") {
       if (entry.kind === "results") return res.status(400).json({ error: "This applies to buzz tournaments only." });
       const source = await readSource(slug);
       if (!source) return res.status(500).json({ error: "Source data not found (set predates source storage; re-create it)." });
@@ -604,6 +604,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (n > 1 && n > (before.get(round) || 0))
             return res.status(400).json({ error: `That would put ${n} packets on round ${round} — their questions would overwrite each other.` });
         next = { ...ed, packets };
+      } else if (op === "remap-games") {
+        // body.games: { "<game index>": <new round> }. A game filed under the
+        // wrong round is worse than a mis-filed packet: its buzzes never meet
+        // the questions that were actually read, so the packet shows 0 heard
+        // while the teams' totals look perfectly normal. Only the round moves;
+        // the game keeps its position and its contents.
+        const moves = body.games;
+        if (!moves || typeof moves !== "object" || Array.isArray(moves)) return res.status(400).json({ error: "Invalid round mapping." });
+        const games = [...(ed.games || [])];
+        const entries = Object.entries(moves as Record<string, unknown>);
+        if (!entries.length) return res.status(400).json({ error: "No round changes to apply." });
+        for (const [k, v] of entries) {
+          const i = Number(k), round = Number(v);
+          if (!Number.isInteger(i) || i < 0 || i >= games.length) return res.status(400).json({ error: "Unknown game." });
+          const lettered = round > LETTER_ROUND_BASE && round <= LETTER_ROUND_BASE + 26;
+          if (!Number.isInteger(round) || round < 0 || (round > 999 && !lettered))
+            return res.status(400).json({ error: "Rounds must be whole numbers from 0 to 999, or a single letter." });
+          // `_round` is the round the uploaded QBJ itself declared, and it wins
+          // when the file is re-read (on a MODAQ re-export, say). Leaving it
+          // behind would quietly undo this the next time the set was rebuilt
+          // from an export, so move both.
+          games[i] = { ...games[i], round, ...((games[i] as any)._round !== undefined ? { _round: round } : {}) };
+        }
+        // Unlike packets, two games in one round are entirely normal — that's
+        // just two rooms — so there is no collision to refuse here.
+        next = { ...ed, games };
       } else {
         // body.packets / body.games: source-array indexes to drop. Used to undo an
         // accidental re-upload (files are APPENDED to an edition, never replaced).

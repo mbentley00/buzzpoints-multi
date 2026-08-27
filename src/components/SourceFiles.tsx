@@ -12,7 +12,12 @@ import { roundLabel, parseRoundInput } from "../util";
 //
 //   GameFilesEditor — uploads APPEND to an edition, so re-uploading the same
 //   files makes every team look like it played the same games twice. This lists
-//   the stored games and removes the ones the owner picks.
+//   the stored games, renumbers the ones filed under the wrong round, and
+//   removes the ones the owner picks. A game's round comes from the QBJ's own
+//   `_round` or else its filename, both of which are easy to get wrong; a game
+//   on the wrong round takes its buzzes away from the questions that were
+//   actually read, so the packet reads 0 heard while the teams' totals look
+//   perfectly normal.
 
 interface PacketRow { index: number; round: number; tossups: number; bonuses: number; sample: string }
 interface EditionRounds { id: string; label: string; packets: PacketRow[]; gameRounds: { round: number; count: number }[]; warnings: RoundWarning[] }
@@ -432,6 +437,8 @@ export function UploadCleanup({ slug }: { slug: string }) {
 export function GameFilesEditor({ slug }: { slug: string }) {
   const [editions, setEditions] = useState<EditionGames[] | null>(null);
   const [picked, setPicked] = useState<Record<string, boolean>>({}); // `${editionId}:${index}`
+  // The round the owner has typed for a game, keyed the same way.
+  const [edits, setEdits] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -451,6 +458,31 @@ export function GameFilesEditor({ slug }: { slug: string }) {
     setPicked((p) => ({ ...p, [`${edId}:${index}`]: !p[`${edId}:${index}`] }));
   const setMany = (rows: { edId: string; index: number }[], on: boolean) =>
     setPicked((p) => { const n = { ...p }; for (const r of rows) n[`${r.edId}:${r.index}`] = on; return n; });
+
+  const roundOf = (edId: string, g: GameRow) => {
+    const v = edits[`${edId}:${g.index}`];
+    return v === undefined ? roundLabel(g.round) : v;
+  };
+  const roundChanges = (ed: EditionGames) => {
+    const out: Record<number, number> = {};
+    for (const g of ed.games) {
+      const r = parseRoundInput(roundOf(ed.id, g));
+      if (r !== null && r !== g.round) out[g.index] = r;
+    }
+    return out;
+  };
+  const badRound = (ed: EditionGames) => ed.games.some((g) => parseRoundInput(roundOf(ed.id, g)) === null);
+
+  async function saveRounds(ed: EditionGames) {
+    const games = roundChanges(ed);
+    const n = Object.keys(games).length;
+    if (!n) return;
+    setBusy(true); setErr("");
+    try {
+      await post({ slug, op: "remap-games", editionId: ed.id, games });
+      applied(slug);
+    } catch (e) { setErr(String((e as Error).message || e)); setBusy(false); }
+  }
 
   async function remove(ed: EditionGames) {
     const games = pickedIn(ed).map((g) => g.index);
@@ -513,17 +545,30 @@ export function GameFilesEditor({ slug }: { slug: string }) {
                     <tr><th className="srcfiles-check"></th><th className="right">Round</th><th>Teams</th><th className="right">TUH</th><th>Copy</th></tr>
                   </thead>
                   <tbody>
-                    {ed.games.map((g) => (
-                      <tr key={g.index} className={g.copy > 1 ? "srcfiles-dupe" : undefined}>
-                        <td className="srcfiles-check">
-                          <input type="checkbox" checked={!!picked[`${ed.id}:${g.index}`]} onChange={() => toggle(ed.id, g.index)} />
-                        </td>
-                        <td className="right mono">{roundLabel(g.round)}</td>
-                        <td>{g.teams.join(" vs ") || <span className="muted">—</span>}</td>
-                        <td className="right mono">{g.tossups}</td>
-                        <td className="mono">{g.copies > 1 ? `${g.copy} of ${g.copies}` : ""}</td>
-                      </tr>
-                    ))}
+                    {ed.games.map((g) => {
+                      const cur = roundOf(ed.id, g);
+                      const parsed = parseRoundInput(cur);
+                      const moved = parsed !== null && parsed !== g.round;
+                      return (
+                        <tr key={g.index} className={moved ? "srcfiles-dirty" : g.copy > 1 ? "srcfiles-dupe" : undefined}>
+                          <td className="srcfiles-check">
+                            <input type="checkbox" checked={!!picked[`${ed.id}:${g.index}`]} onChange={() => toggle(ed.id, g.index)} />
+                          </td>
+                          <td className="right">
+                            {/* Text, not number: a lettered round ("A") is valid here too. */}
+                            <input
+                              className="num-input" type="text" value={cur} style={{ width: 62 }}
+                              aria-label={`Round for ${g.teams.join(" vs ") || "this game"}`}
+                              onChange={(e) => setEdits((s) => ({ ...s, [`${ed.id}:${g.index}`]: e.target.value }))}
+                            />
+                            {parsed === null && <span className="error-inline"> ?</span>}
+                          </td>
+                          <td>{g.teams.join(" vs ") || <span className="muted">—</span>}</td>
+                          <td className="right mono">{g.tossups}</td>
+                          <td className="mono">{g.copies > 1 ? `${g.copy} of ${g.copies}` : ""}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
                 </div>
@@ -533,6 +578,14 @@ export function GameFilesEditor({ slug }: { slug: string }) {
                   <button className="btn-primary btn-sm danger-btn" disabled={busy || !sel.length} onClick={() => remove(ed)}>
                     {busy ? "Removing…" : sel.length ? `Remove ${sel.length} game${sel.length === 1 ? "" : "s"} & rebuild` : "Remove selected"}
                   </button>
+                  {(() => {
+                    const n = Object.keys(roundChanges(ed)).length;
+                    return (
+                      <button className="btn-primary btn-sm" disabled={busy || !n || badRound(ed)} onClick={() => saveRounds(ed)}>
+                        {busy ? "Saving…" : n ? `Move ${n} game${n === 1 ? "" : "s"} & rebuild` : "Save rounds"}
+                      </button>
+                    );
+                  })()}
                 </div>
               </details>
             )}

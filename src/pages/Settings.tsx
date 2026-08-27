@@ -416,6 +416,9 @@ export function Settings() {
           <h2 id="games" style={{ marginTop: 28 }}>Individual games</h2>
           <p className="muted">
             For a single stray game rather than a whole round — a duplicate matchup, or one file that shouldn't be here.
+            You can also correct a game filed under the wrong round: type the right one and save. A game's round comes
+            from the QBJ's own round field or else its filename, and when that's wrong its buzzes never reach the
+            questions that were read, so the packet shows 0 heard while the teams' totals still look normal.
           </p>
           <GameFilesEditor slug={slug} />
 
