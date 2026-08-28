@@ -213,10 +213,11 @@ export function Search() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={typeSel === "players" ? "Player or team name…" : field === "text" ? "Words from the question…" : field === "answer" ? "Answer line…" : "Answer, question text or category…"}
+            placeholder={typeSel === "players" ? "Player or team name…" : field === "text" ? "Words from the question…" : field === "answer" ? "Answer line…" : "Answer or question text…"}
             autoFocus
           />
           <button className="btn-primary" type="submit">Search</button>
+          <span className="muted search-hint">Quote a term for whole words only: <code>"art"</code></span>
         </form>
         <div className="search-filters">
           {/* Anonymous viewers can only ever see public sets, so the choice is
@@ -257,7 +258,7 @@ export function Search() {
               <label className="filter">
                 Search in{" "}
                 <select value={field} onChange={(e) => setFilter({ field: e.target.value as QField })}>
-                  <option value="all">Answers, text and category</option>
+                  <option value="all">Answers and question text</option>
                   <option value="answer">Answer lines only</option>
                   <option value="text">Question text only</option>
                 </select>

@@ -12,9 +12,9 @@ const MAX_SETS = 80;   // cap how many accessible sets a single query scans
 const MAX_RESULTS = 200;
 
 // What a question search looks at. "answer" = answer lines only; "text" = the
-// question text (a tossup's body, a bonus's lead-in and parts); "all" = both,
-// plus the category, which is how the search always worked before there was a
-// choice.
+// question text (a tossup's body, a bonus's lead-in and parts); "all" = both.
+// Never the category name — that's what the category filter is for, and a
+// query like "history" matching every history question by its label was noise.
 export type QField = "all" | "answer" | "text";
 export type QKind = "all" | "tossup" | "bonus";
 export interface SearchOpts {
@@ -31,13 +31,27 @@ export interface SearchOpts {
   scope?: "public" | "all";
 }
 
+// How a query matches: a bare query matches anywhere in the text ("nabok"
+// finds Nabokov); one in quotes matches only as whole words ("art" no longer
+// finds Bartók or Descartes). Either way it's a phrase — the words must appear
+// together, in order. Returns the match position, or -1.
+type Matcher = { find: (plain: string) => number; len: number };
+function matcherFor(q: string): Matcher {
+  const quoted = /^"(.+)"$/.exec(q.trim());
+  const needle = (quoted ? quoted[1] : q).trim().toLowerCase();
+  if (!quoted) return { find: (s) => (s || "").indexOf(needle), len: needle.length };
+  // Whole words: no letter or digit may touch either end of the phrase.
+  const re = new RegExp(`(^|[^\\p{L}\\p{N}])${needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "u");
+  return { find: (s) => { const m = re.exec(s || ""); return m ? m.index + m[1].length : -1; }, len: needle.length };
+}
+
 // A short window of (already plain, lowercase) text around the first match, so
 // a text hit shows WHY it matched instead of just an answer line that doesn't
 // contain the query.
-function snippet(plain: string, needle: string, width = 70): string | null {
-  const i = plain.indexOf(needle);
+function snippet(plain: string, m: Matcher, width = 70): string | null {
+  const i = m.find(plain);
   if (i < 0) return null;
-  const from = Math.max(0, i - width), to = Math.min(plain.length, i + needle.length + width);
+  const from = Math.max(0, i - width), to = Math.min(plain.length, i + m.len + width);
   return `${from > 0 ? "…" : ""}${plain.slice(from, to)}${to < plain.length ? "…" : ""}`;
 }
 
@@ -54,7 +68,8 @@ const setFacts = (s: SetEntry) => ({
 // (public, owned, or invited), reading each set's prebuilt search document
 // (see _lib/searchIndex.ts).
 async function search(user: string | null, q: string, type: "players" | "questions", opts: SearchOpts, res: VercelResponse) {
-  const needle = q.toLowerCase();
+  const m = matcherFor(q);
+  if (!m.len) return res.status(200).json({ results: [], total: 0, type });
   const idx = await readBlobJson<{ sets: SetEntry[] }>("sets/index.json", false);
   // canViewContent is the same test /api/data applies before serving question
   // content unredacted — the search must never show a question, a snippet or
@@ -70,8 +85,7 @@ async function search(user: string | null, q: string, type: "players" | "questio
   const field = opts.field ?? "all";
   const inAnswer = field !== "text";
   const inText = field !== "answer";
-  const inCategory = field === "all";
-  const hit = (s: string) => (s || "").includes(needle);
+  const hit = (s: string) => m.find(s) >= 0;
   const wantCats = opts.cats?.length ? new Set<string>(opts.cats) : null;
   const inCats = (buckets: string[]) => !wantCats || buckets.some((b) => wantCats.has(b));
 
@@ -89,9 +103,8 @@ async function search(user: string | null, q: string, type: "players" | "questio
       if (kind !== "bonus")
         for (const r of doc.tossups) {
           const byAnswer = inAnswer && hit(r.a);
-          const byText = inText && !byAnswer ? snippet(r.t, needle) : null;
-          const byCat = inCategory && (hit(r.category.toLowerCase()) || hit(r.subcategory.toLowerCase()));
-          if (!byAnswer && !byText && !byCat) continue;
+          const byText = inText && !byAnswer ? snippet(r.t, m) : null;
+          if (!byAnswer && !byText) continue;
           if (!inCats(r.buckets)) continue;
           results.push({
             ...setFacts(s), kind: "tossup", id: r.id, round: r.round, num: r.num, answer: r.answer, category: r.category,
@@ -102,9 +115,8 @@ async function search(user: string | null, q: string, type: "players" | "questio
       if (kind !== "tossup")
         for (const r of doc.bonuses) {
           const ai = inAnswer ? r.a.findIndex(hit) : -1;
-          const byText = inText && ai < 0 ? snippet(r.t, needle) : null;
-          const byCat = inCategory && (hit(r.category.toLowerCase()) || hit(r.subcategory.toLowerCase()));
-          if (ai < 0 && !byText && !byCat) continue;
+          const byText = inText && ai < 0 ? snippet(r.t, m) : null;
+          if (ai < 0 && !byText) continue;
           if (!inCats(r.buckets)) continue;
           results.push({
             ...setFacts(s), kind: "bonus", id: r.id, round: r.round, num: r.num,
