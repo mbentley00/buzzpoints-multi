@@ -20,6 +20,9 @@ interface QuestionHit extends SetFacts {
   parts?: { answer: string; difficulty: string; convPct: number | null }[]; matchedPart?: number | null;
   // A window of question text around the match, when that's what matched.
   snippet?: string;
+  // A window of the answer line around the match, when that's what matched —
+  // shown only if the answer as displayed doesn't already contain it.
+  answerSnippet?: string;
   // Tossups: how buzzable it was — every placed buzz as [word, value], the
   // question's length, and the headline rates.
   heard?: number; convPct?: number | null; avgBuzzPct?: number | null; wordCount?: number | null; buzzes?: [number, number][];
@@ -88,6 +91,18 @@ function BuzzChart({ q }: { q: QuestionHit }) {
 }
 
 const yearOf = (iso: string | null) => (iso ? iso.slice(0, 4) : "");
+const plain = (html: string) => html.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").toLowerCase();
+
+// What to show as the matched text: the question snippet if the text matched;
+// else the answer-line window, but only when the match sits in a part of the
+// answer line the row doesn't display — an "accept" or "prompt" clause — since
+// repeating the visible answer says nothing.
+function matchedText(r: QuestionHit, bare: string): string | null {
+  if (r.snippet) return r.snippet;
+  if (!r.answerSnippet) return null;
+  const shown = r.kind === "bonus" && r.parts && r.matchedPart != null ? r.parts[r.matchedPart]?.answer ?? "" : r.answer;
+  return plain(primaryAnswer(shown)).includes(bare) ? null : r.answerSnippet;
+}
 
 export function Search() {
   const [params, setParams] = useSearchParams();
@@ -102,6 +117,8 @@ export function Search() {
   // and private ones they've been let into. The server enforces access either way.
   const scope: "public" | "all" = params.get("scope") === "all" ? "all" : "public";
   const { user } = useAuth();
+  // The query without its quotes, for checking whether a match is visible.
+  const bare = q.replace(/^"(.*)"$/, "$1").trim().toLowerCase();
 
   const [input, setInput] = useState(q);
   const [typeSel, setTypeSel] = useState<SearchType>(type);
@@ -185,7 +202,7 @@ export function Search() {
         <Link className="link" to={`/set/${r.slug}/tossup/${r.id}`}><Html html={primaryAnswer(r.answer)} /></Link>
       )
     ) },
-    { key: "match", label: "Matched text", sortVal: (r) => (r.snippet ? 1 : 0), render: (r) => (r.snippet ? <span className="search-snippet">{r.snippet}</span> : <span className="muted">—</span>) },
+    { key: "match", label: "Matched text", sortVal: (r) => (matchedText(r, bare) ? 1 : 0), render: (r) => { const t = matchedText(r, bare); return t ? <span className="search-snippet">{t}</span> : <span className="muted">—</span>; } },
     ...(kind !== "bonus" ? [
       { key: "buzz", label: "Buzzes", sortVal: (r: QuestionHit) => r.avgBuzzPct ?? 999, render: (r: QuestionHit) => (r.kind === "tossup" ? <BuzzChart q={r} /> : <span className="muted">—</span>),
         title: "Cumulative buzzes as the question is read: grey is every buzz, green the correct ones; the dashed line is the average correct buzz." },

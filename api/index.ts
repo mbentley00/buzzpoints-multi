@@ -105,11 +105,14 @@ async function search(user: string | null, q: string, type: "players" | "questio
           const byAnswer = inAnswer && hit(r.a);
           const byText = inText && !byAnswer ? snippet(r.t, m) : null;
           if (!byAnswer && !byText) continue;
+          // Where in the answer line it matched — an "accept"/"prompt" clause
+          // the result's answer doesn't show, as often as not.
+          const aSnip = byAnswer ? snippet(r.a, m, 40) : null;
           if (!inCats(r.buckets)) continue;
           results.push({
             ...setFacts(s), kind: "tossup", id: r.id, round: r.round, num: r.num, answer: r.answer, category: r.category,
             heard: r.heard, convPct: r.convPct, avgBuzzPct: r.avgBuzzPct, wordCount: r.wordCount, buzzes: r.buzzes,
-            ...(byText ? { snippet: byText } : {}),
+            ...(byText ? { snippet: byText } : {}), ...(aSnip ? { answerSnippet: aSnip } : {}),
           });
         }
       if (kind !== "tossup")
@@ -117,12 +120,13 @@ async function search(user: string | null, q: string, type: "players" | "questio
           const ai = inAnswer ? r.a.findIndex(hit) : -1;
           const byText = inText && ai < 0 ? snippet(r.t, m) : null;
           if (ai < 0 && !byText) continue;
+          const aSnip = ai >= 0 ? snippet(r.a[ai], m, 40) : null;
           if (!inCats(r.buckets)) continue;
           results.push({
             ...setFacts(s), kind: "bonus", id: r.id, round: r.round, num: r.num,
             answer: ai >= 0 ? r.answers[ai] : r.answers[0] ?? "", matchedPart: ai >= 0 ? ai : null,
             parts: r.answers.map((a, i) => ({ answer: a, difficulty: r.parts[i]?.difficulty ?? "", convPct: r.parts[i]?.convPct ?? null })),
-            category: r.category, ...(byText ? { snippet: byText } : {}),
+            category: r.category, ...(byText ? { snippet: byText } : {}), ...(aSnip ? { answerSnippet: aSnip } : {}),
           });
         }
     })
