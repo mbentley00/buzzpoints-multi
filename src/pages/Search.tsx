@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AuthNav, Loading, ErrorBox } from "../components/Common";
 import { Html, CategoryTag, num, roundLabel, primaryAnswer } from "../util";
-import { TOURNAMENT_LEVELS, Visibility, levelLabel, difficultyLabel } from "../types";
+import { TOURNAMENT_LEVELS, CATEGORY_BUCKETS, Visibility, levelLabel, difficultyLabel } from "../types";
 
 type SearchType = "players" | "questions";
 type QKind = "all" | "tossup" | "bonus";
@@ -18,6 +18,34 @@ interface QuestionHit extends SetFacts {
   parts?: { answer: string; difficulty: string; convPct: number | null }[]; matchedPart?: number | null;
   // A window of question text around the match, when that's what matched.
   snippet?: string;
+  // Tossups: how buzzable it was — every placed buzz as [word, value], the
+  // question's length, and the headline rates.
+  heard?: number; convPct?: number | null; avgBuzzPct?: number | null; wordCount?: number | null; buzzes?: [number, number][];
+}
+
+// A tossup's buzzes on one strip, start of the question to the end: a tick per
+// buzz, coloured power / get / neg, with the average buzz marked. Enough to see
+// at a glance whether a question was answered early, late, or mostly negged.
+function BuzzStrip({ q }: { q: QuestionHit }) {
+  const n = q.wordCount || 0;
+  const buzzes = q.buzzes ?? [];
+  if (!n || !q.heard) return null;
+  const W = 160, H = 14;
+  const x = (w: number) => Math.min(W, Math.max(0, (w / n) * W));
+  const cls = (v: number) => (v > 10 ? "bs-pwr" : v > 0 ? "bs-get" : "bs-neg");
+  return (
+    <span className="buzz-strip" title={`${q.heard} heard · ${buzzes.length} buzzes · ${q.convPct ?? 0}% converted${q.avgBuzzPct != null ? ` · average correct buzz ${q.avgBuzzPct}% through` : ""}`}>
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden="true">
+        <line x1={0} y1={H / 2} x2={W} y2={H / 2} className="bs-base" />
+        {buzzes.map(([w, v], i) => <line key={i} x1={x(w)} x2={x(w)} y1={2} y2={H - 2} className={cls(v)} />)}
+        {q.avgBuzzPct != null && <polygon points={`${(q.avgBuzzPct / 100) * W - 3},${H} ${(q.avgBuzzPct / 100) * W + 3},${H} ${(q.avgBuzzPct / 100) * W},${H - 4}`} className="bs-avg" />}
+      </svg>
+      <span className="buzz-strip-text">
+        {q.avgBuzzPct != null ? <>avg buzz <b>{num(q.avgBuzzPct, 0)}%</b></> : <>no correct buzzes</>}
+        {" · "}<b>{num(q.convPct ?? 0, 0)}%</b> conv · {q.heard} heard
+      </span>
+    </span>
+  );
 }
 
 // A part's difficulty mark, as packets write it ("easy", "e", "hard"), in one letter.
@@ -67,6 +95,7 @@ export function Search() {
   const level = params.get("level") || "";
   const kind: QKind = (["tossup", "bonus"].includes(params.get("kind") || "") ? params.get("kind") : "all") as QKind;
   const field: QField = (["answer", "text"].includes(params.get("field") || "") ? params.get("field") : "all") as QField;
+  const cat = CATEGORY_BUCKETS.some((b) => b.id === params.get("cat")) ? params.get("cat")! : "";
 
   const [input, setInput] = useState(q);
   const [typeSel, setTypeSel] = useState<SearchType>(type);
@@ -85,7 +114,7 @@ export function Search() {
     setLoading(true); setError("");
     const qs = new URLSearchParams({ q, type });
     if (level) qs.set("level", level);
-    if (type === "questions") { if (kind !== "all") qs.set("kind", kind); if (field !== "all") qs.set("field", field); }
+    if (type === "questions") { if (kind !== "all") qs.set("kind", kind); if (field !== "all") qs.set("field", field); if (cat) qs.set("cat", cat); }
     fetch(`/api/index?${qs}`)
       .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
       .then(({ ok, d }) => {
@@ -97,27 +126,28 @@ export function Search() {
       .catch((e) => { if (alive) setError(String(e.message || e)); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [q, type, level, kind, field]);
+  }, [q, type, level, kind, field, cat]);
 
-  const run = (nextQ: string, nextType: SearchType, more: { level?: string; kind?: QKind; field?: QField } = {}) => {
+  type Filters = { level?: string; kind?: QKind; field?: QField; cat?: string };
+  const run = (nextQ: string, nextType: SearchType, more: Filters = {}) => {
     const qq = nextQ.trim();
     if (!qq) { setParams({}); return; }
     const next: Record<string, string> = { q: qq, type: nextType };
-    const lv = more.level ?? level, kd = more.kind ?? kind, fd = more.field ?? field;
+    const lv = more.level ?? level, kd = more.kind ?? kind, fd = more.field ?? field, ct = more.cat ?? cat;
     if (lv) next.level = lv;
-    if (nextType === "questions") { if (kd !== "all") next.kind = kd; if (fd !== "all") next.field = fd; }
+    if (nextType === "questions") { if (kd !== "all") next.kind = kd; if (fd !== "all") next.field = fd; if (ct) next.cat = ct; }
     setParams(next);
   };
   const onSubmit = (e: React.FormEvent) => { e.preventDefault(); run(input, typeSel); };
   const onToggle = (t: SearchType) => { setTypeSel(t); if (q) run(q, t); };
   // A filter change re-runs the current query at once; with no query yet it
   // just waits in the URL for one.
-  const setFilter = (more: { level?: string; kind?: QKind; field?: QField }) => {
+  const setFilter = (more: Filters) => {
     if (q) run(q, typeSel, more);
     else {
       const next: Record<string, string> = {};
-      const lv = more.level ?? level, kd = more.kind ?? kind, fd = more.field ?? field;
-      if (lv) next.level = lv; if (kd !== "all") next.kind = kd; if (fd !== "all") next.field = fd;
+      const lv = more.level ?? level, kd = more.kind ?? kind, fd = more.field ?? field, ct = more.cat ?? cat;
+      if (lv) next.level = lv; if (kd !== "all") next.kind = kd; if (fd !== "all") next.field = fd; if (ct) next.cat = ct;
       setParams(next);
     }
   };
@@ -171,6 +201,13 @@ export function Search() {
                   <option value="all">Tossups and bonuses</option>
                   <option value="tossup">Tossups only</option>
                   <option value="bonus">Bonuses only</option>
+                </select>
+              </label>
+              <label className="filter" title="Subjects are matched across tournaments, whatever each one calls them">
+                Category{" "}
+                <select value={cat} onChange={(e) => setFilter({ cat: e.target.value })}>
+                  <option value="">All</option>
+                  {CATEGORY_BUCKETS.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
                 </select>
               </label>
               <label className="filter">
@@ -245,6 +282,7 @@ export function Search() {
                       <div className="search-result-main"><Html html={primaryAnswer(qr.answer)} /></div>
                     )}
                     {qr.snippet && <div className="search-snippet">{qr.snippet}</div>}
+                    {qr.kind === "tossup" && <BuzzStrip q={qr} />}
                     <div className="search-result-meta">
                       <span className="set-row-level">{qr.kind === "bonus" ? "Bonus" : "Tossup"}</span>
                       {qr.category && <CategoryTag cat={qr.category} />}

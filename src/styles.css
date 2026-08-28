@@ -401,6 +401,14 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
 .search-bonus-part.matched { font-weight: 600; }
 .search-part-diff, .search-part-conv { margin-left: 5px; font-size: 11px; color: var(--muted); background: var(--hover); border-radius: 4px; padding: 0 5px; font-variant-numeric: tabular-nums; }
 .search-result-meta .vis-badge { margin-left: 0; }
+.buzz-strip { display: inline-flex; align-items: center; gap: 10px; margin: 3px 0 4px; font-size: 12.5px; color: var(--muted); }
+.buzz-strip svg { flex: none; overflow: visible; }
+.buzz-strip .bs-base { stroke: var(--panel-line, #ccc); stroke-width: 1; }
+.buzz-strip .bs-pwr { stroke: var(--power); stroke-width: 2; }
+.buzz-strip .bs-get { stroke: var(--get); stroke-width: 2; }
+.buzz-strip .bs-neg { stroke: var(--neg); stroke-width: 2; opacity: 0.8; }
+.buzz-strip .bs-avg { fill: var(--ink); }
+.buzz-strip-text b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 .mini-btn.on { background: var(--nav); color: #fff; border-color: var(--nav); }
 .search-box {
   flex: 1; min-width: 240px; padding: 9px 12px; font-size: 15px;

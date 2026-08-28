@@ -28,6 +28,24 @@ const DOT_DIFFICULTIES = ["1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5", "5"].m
   id,
   label: `${dots(Number(id))} ${id}${DOT_NAMES[id] ? ` — ${DOT_NAMES[id]}` : ""}`,
 }));
+// Cross-tournament subject buckets for the search filter. Ids match the
+// server's CATEGORY_BUCKETS in api/_lib/categories.ts, which is what folds each
+// set's own category names onto these.
+export const CATEGORY_BUCKETS: { id: string; label: string }[] = [
+  { id: "lit", label: "Literature" },
+  { id: "hist", label: "History" },
+  { id: "sci", label: "Science" },
+  { id: "arts", label: "Fine Arts" },
+  { id: "rel", label: "Religion" },
+  { id: "myth", label: "Mythology" },
+  { id: "phil", label: "Philosophy" },
+  { id: "ss", label: "Social Science" },
+  { id: "geo", label: "Geography" },
+  { id: "ce", label: "Current Events" },
+  { id: "pop", label: "Pop Culture / Trash" },
+  { id: "other", label: "Other" },
+];
+
 export function difficultyOptions(level?: string): { id: string; label: string }[] {
   if (level === "hs") return HS_DIFFICULTIES;
   if (level === "college" || level === "open") return DOT_DIFFICULTIES;

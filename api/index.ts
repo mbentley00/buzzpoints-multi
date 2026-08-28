@@ -5,6 +5,7 @@ import { readBlobJson } from "./_lib/blob.js";
 import { currentUser, canModerate } from "./_lib/auth.js";
 import { SetEntry, canList, canViewContent, sanitizeEntry, effectiveVisibility, TOURNAMENT_LEVELS } from "./_lib/sets.js";
 import { sendEmail, emailEnabled, feedbackBody } from "./_lib/email.js";
+import { categoryBuckets, isCategoryBucket, CategoryBucket } from "./_lib/categories.js";
 
 const stripHtml = (s: string) =>
   (s || "").replace(/<[^>]+>/g, "").replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&").trim();
@@ -22,6 +23,10 @@ export interface SearchOpts {
   level?: string;   // only tournaments of this type (TOURNAMENT_LEVELS id)
   kind?: QKind;     // questions: tossups, bonuses or both
   field?: QField;   // questions: answer lines, question text or both
+  // Questions: only those in one of these subject buckets (see categories.ts),
+  // which is how a filter can span sets that each name their categories
+  // differently.
+  cats?: CategoryBucket[];
 }
 
 // A short window of plain text around the first match, so a text hit shows
@@ -60,6 +65,9 @@ async function search(user: string | null, q: string, type: "players" | "questio
   const inText = field !== "answer";
   const inCategory = field === "all";
   const hit = (s: string) => String(s || "").toLowerCase().includes(needle);
+  const wantCats = opts.cats?.length ? new Set(opts.cats) : null;
+  const inCats = (r: { category?: string; subcategory?: string }) =>
+    !wantCats || categoryBuckets(String(r.category || ""), String(r.subcategory || "")).some((b) => wantCats.has(b));
 
   const results: any[] = [];
   await Promise.all(
@@ -84,7 +92,17 @@ async function search(user: string | null, q: string, type: "players" | "questio
             const byText = inText && !byAnswer ? snippet(String(r.questionHtml || ""), needle) : null;
             const byCat = inCategory && (hit(r.category) || hit(r.subcategory));
             if (!byAnswer && !byText && !byCat) continue;
-            results.push({ ...setFacts(s), kind: "tossup", id: r.id, round: r.round, num: r.num, answer: r.answer, category: r.category, ...(byText ? { snippet: byText } : {}) });
+            if (!inCats(r)) continue;
+            // How buzzable it was: every placed buzz as [word, value] against the
+            // question's length, plus the headline rates, for an inline graph.
+            const buzzes = (Array.isArray(r.buzzes) ? r.buzzes : [])
+              .filter((b: any) => b && b.wordIndex !== null && b.wordIndex !== undefined)
+              .map((b: any) => [b.wordIndex, b.value]);
+            results.push({
+              ...setFacts(s), kind: "tossup", id: r.id, round: r.round, num: r.num, answer: r.answer, category: r.category,
+              heard: r.heard ?? 0, convPct: r.convPct ?? null, avgBuzzPct: r.avgBuzzPct ?? null, wordCount: r.wordCount ?? null, buzzes,
+              ...(byText ? { snippet: byText } : {}),
+            });
           }
         }));
       if (kind !== "tossup" && s.hasBonuses)
@@ -97,6 +115,7 @@ async function search(user: string | null, q: string, type: "players" | "questio
             const byText = inText && ai < 0 ? [String(r.leadin || ""), ...parts].map((t) => snippet(t, needle)).find(Boolean) ?? null : null;
             const byCat = inCategory && (hit(r.category) || hit(r.subcategory));
             if (ai < 0 && !byText && !byCat) continue;
+            if (!inCats(r)) continue;
             results.push({
               ...setFacts(s), kind: "bonus", id: r.id, round: r.round, num: r.num,
               // The matched part's answer leads; the others follow so the bonus is recognisable.
@@ -219,6 +238,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         level: (TOURNAMENT_LEVELS as readonly string[]).includes(level) ? level : undefined,
         kind: kindQ === "tossup" || kindQ === "bonus" ? kindQ : "all",
         field: fieldQ === "answer" || fieldQ === "text" ? fieldQ : "all",
+        cats: String(req.query.cat || "").split(",").map((c) => c.trim()).filter(isCategoryBucket),
       };
       return await search(user, q, type, opts, res);
     }
