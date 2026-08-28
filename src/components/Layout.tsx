@@ -26,6 +26,32 @@ export function useScopedJson<T>(file: string, nonce = 0) {
   return useSetJson<T>(slug, scopedPath(scope, file), nonce);
 }
 
+// The pages under a set, in header order. The set's landing page lists the
+// same ones as cards, so the two can't drift apart.
+export interface SetTab { to: string; label: string; desc: string }
+export function setTabs(meta: Meta, base: string, o: { hasEditions: boolean; isOwner: boolean }): SetTab[] {
+  const n = (k: number, one: string, many = one + "s") => `${k} ${k === 1 ? one : many}`;
+  return [
+    { to: `${base}/tossup`, label: "Tossups", desc: n(meta.numTossups, "question") },
+    ...(meta.hasBonuses ? [{ to: `${base}/bonus`, label: "Bonuses", desc: n(meta.numBonuses, "bonus", "bonuses") }] : []),
+    { to: `${base}/packet`, label: "Packets", desc: "Questions by round" },
+    { to: `${base}/buzzer-races`, label: "Buzzer Races", desc: "Tossups many rooms buzzed on at once" },
+    { to: `${base}/first-sentence`, label: "First Sentence", desc: "Buzzes on the opening clue" },
+    { to: `${base}/player`, label: "Players", desc: n(meta.numPlayers, "player") },
+    // A shootout's "teams" are its players — one page for them is enough.
+    ...(meta.individual ? [] : [{ to: `${base}/team`, label: "Teams", desc: n(meta.numTeams, "team") }]),
+    { to: `${base}/category/tossup`, label: "Categories (Tossup)", desc: "By subject" },
+    ...(meta.hasBonuses ? [{ to: `${base}/category/bonus`, label: "Categories (Bonus)", desc: "By subject" }] : []),
+    // Only worth a tab once the owner has marked a metadata field as a tag.
+    ...(meta.hasTags ? [{ to: `${base}/tags`, label: "Tags", desc: "By writer, era, or other tag" }] : []),
+    ...(o.hasEditions || o.isOwner ? [{ to: `${base}/editions`, label: "Editions", desc: o.hasEditions ? "Compare mirrors" : "Add a mirror" }] : []),
+    // The YellowFruit-style report — standings, individuals, scoreboard.
+    { to: `${base}/standard`, label: "YF Stats", desc: "Standings, individuals, scoreboard" },
+    ...(o.isOwner ? [{ to: `${base}/requests`, label: "Corrections", desc: "Review proposed fixes" }] : []),
+    ...(o.isOwner ? [{ to: `${base}/settings`, label: "Settings", desc: "Visibility, details, repairs" }] : []),
+  ];
+}
+
 export function SetLayout() {
   const { slug = "" } = useParams();
   const loc = useLocation();
@@ -98,24 +124,7 @@ export function SetLayout() {
   };
 
   const base = `/set/${slug}`;
-  const tabs = [
-    { to: `${base}/tossup`, label: "Tossups" },
-    ...(meta?.hasBonuses ? [{ to: `${base}/bonus`, label: "Bonuses" }] : []),
-    { to: `${base}/packet`, label: "Packets" },
-    { to: `${base}/buzzer-races`, label: "Buzzer Races" },
-    { to: `${base}/first-sentence`, label: "First Sentence" },
-    { to: `${base}/player`, label: "Players" },
-    // A shootout's "teams" are its players — one page for them is enough.
-    ...(meta?.individual ? [] : [{ to: `${base}/team`, label: "Teams" }]),
-    { to: `${base}/standard`, label: "Standard Stats" },
-    { to: `${base}/category/tossup`, label: "Categories (Tossup)" },
-    ...(meta?.hasBonuses ? [{ to: `${base}/category/bonus`, label: "Categories (Bonus)" }] : []),
-    // Only worth a tab once the owner has marked a metadata field as a tag.
-    ...(meta?.hasTags ? [{ to: `${base}/tags`, label: "Tags" }] : []),
-    ...(hasEditions || isOwner ? [{ to: `${base}/editions`, label: "Editions" }] : []),
-    ...(isOwner ? [{ to: `${base}/requests`, label: "Corrections" }] : []),
-    ...(isOwner ? [{ to: `${base}/settings`, label: "Settings" }] : []),
-  ];
+  const tabs = meta ? setTabs(meta, base, { hasEditions, isOwner }) : [];
 
   return (
     <div className="app">

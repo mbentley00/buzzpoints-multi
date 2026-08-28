@@ -135,7 +135,7 @@ export function StandardStats() {
 
   return (
     <div>
-      <PageHeader title="Standard stats" subtitle={individual ? "Room-by-room results for every player" : "The same reports a YellowFruit export publishes"} />
+      <PageHeader title="YF stats" subtitle={individual ? "Room-by-room results for every player" : "The same reports a YellowFruit export publishes"} />
       <nav className="std-nav">
         {views.map((v) => (
           <NavLink key={v.id} end to={v.path ? `${base}/${v.path}` : base} className={({ isActive }) => (isActive ? "std-nav-link active" : "std-nav-link")}>

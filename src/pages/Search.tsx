@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AuthNav, Loading, ErrorBox } from "../components/Common";
+import { DataTable, Column } from "../components/DataTable";
 import { Html, CategoryTag, num, roundLabel, primaryAnswer } from "../util";
-import { useAuth } from "../auth";
 import { TOURNAMENT_LEVELS, CATEGORY_BUCKETS, Visibility, levelLabel, difficultyLabel } from "../types";
+import { useAuth } from "../auth";
 
 type SearchType = "players" | "questions";
 type QKind = "all" | "tossup" | "bonus";
@@ -24,69 +25,54 @@ interface QuestionHit extends SetFacts {
   heard?: number; convPct?: number | null; avgBuzzPct?: number | null; wordCount?: number | null; buzzes?: [number, number][];
 }
 
+// A part's difficulty mark, as packets write it ("easy", "e", "hard"), in one letter.
+const diffShort = (d: string) => { const c = d.trim().charAt(0).toUpperCase(); return "EMH".includes(c) && c ? c : d; };
+
+// The tournament column: its name, and under it the tags that place it — type,
+// difficulty, format, and status (public is the norm, so only Listed / Private
+// get a tag).
+function SetCell({ s }: { s: SetFacts }) {
+  const diff = difficultyLabel(s.level ?? undefined, s.difficulty ?? undefined);
+  return (
+    <div className="search-setcell">
+      <Link className="link search-set" to={`/set/${s.slug}`}>{s.setName}</Link>
+      <div className="search-settags">
+        {s.visibility !== "public" && (
+          <span className={`vis-badge vis-${s.visibility}`} title={s.visibility === "private" ? "Private — invite-only and unlisted" : "Listed — viewing needs an invite"}>
+            {s.visibility === "private" ? "Private" : "Listed"}
+          </span>
+        )}
+        {s.level && <span className="set-row-level">{levelLabel(s.level)}</span>}
+        {diff && <span className="set-row-level" title="Question difficulty">{diff}</span>}
+        {s.individual && <span className="set-row-level" title="Individual shootout">Individual</span>}
+      </div>
+    </div>
+  );
+}
+
 // A tossup's buzzes on one strip, start of the question to the end: a tick per
-// buzz, coloured power / get / neg, with the average buzz marked. Enough to see
-// at a glance whether a question was answered early, late, or mostly negged.
+// buzz, coloured power / get / neg, with the average correct buzz marked. Enough
+// to see at a glance whether a question was answered early, late, or mostly negged.
 function BuzzStrip({ q }: { q: QuestionHit }) {
   const n = q.wordCount || 0;
   const buzzes = q.buzzes ?? [];
-  if (!n || !q.heard) return null;
-  const W = 160, H = 14;
+  if (!n || !q.heard) return <span className="muted">—</span>;
+  const W = 120, H = 14;
   const x = (w: number) => Math.min(W, Math.max(0, (w / n) * W));
   const cls = (v: number) => (v > 10 ? "bs-pwr" : v > 0 ? "bs-get" : "bs-neg");
+  const avgX = q.avgBuzzPct != null ? (q.avgBuzzPct / 100) * W : null;
   return (
-    <span className="buzz-strip" title={`${q.heard} heard · ${buzzes.length} buzzes · ${q.convPct ?? 0}% converted${q.avgBuzzPct != null ? ` · average correct buzz ${q.avgBuzzPct}% through` : ""}`}>
+    <span className="buzz-strip" title={`${q.heard} heard · ${buzzes.length} buzzes · ${q.convPct ?? 0}% converted${q.avgBuzzPct != null ? ` · average correct buzz ${q.avgBuzzPct}% of the way through` : ""}`}>
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden="true">
         <line x1={0} y1={H / 2} x2={W} y2={H / 2} className="bs-base" />
         {buzzes.map(([w, v], i) => <line key={i} x1={x(w)} x2={x(w)} y1={2} y2={H - 2} className={cls(v)} />)}
-        {q.avgBuzzPct != null && <polygon points={`${(q.avgBuzzPct / 100) * W - 3},${H} ${(q.avgBuzzPct / 100) * W + 3},${H} ${(q.avgBuzzPct / 100) * W},${H - 4}`} className="bs-avg" />}
+        {avgX != null && <polygon points={`${avgX - 3},${H} ${avgX + 3},${H} ${avgX},${H - 4}`} className="bs-avg" />}
       </svg>
-      <span className="buzz-strip-text">
-        {q.avgBuzzPct != null ? <>avg buzz <b>{num(q.avgBuzzPct, 0)}%</b></> : <>no correct buzzes</>}
-        {" · "}<b>{num(q.convPct ?? 0, 0)}%</b> conv · {q.heard} heard
-      </span>
     </span>
   );
 }
 
-// A part's difficulty mark, as packets write it ("easy", "e", "hard"), in one letter.
-const diffShort = (d: string) => { const c = d.trim().charAt(0).toUpperCase(); return "EMH".includes(c) && c ? c : d; };
-
-// The tournament's status and standing, as tags on a hit. Public sets are the
-// norm, so only the other two statuses get a tag; type and difficulty always do.
-function SetTags({ s }: { s: SetFacts }) {
-  const diff = difficultyLabel(s.level ?? undefined, s.difficulty ?? undefined);
-  return (
-    <>
-      {s.visibility !== "public" && (
-        <span className={`vis-badge vis-${s.visibility}`} title={s.visibility === "private" ? "Private — invite-only and unlisted" : "Listed — viewing needs an invite"}>
-          {s.visibility === "private" ? "Private" : "Listed"}
-        </span>
-      )}
-      {s.level && <span className="set-row-level">{levelLabel(s.level)}</span>}
-      {diff && <span className="set-row-level" title="Question difficulty">{diff}</span>}
-      {s.individual && <span className="set-row-level" title="Individual shootout">Individual</span>}
-    </>
-  );
-}
-
-type PlayerSort = "recent" | "ppg" | "points" | "name";
-const SORTS: { id: PlayerSort; label: string }[] = [
-  { id: "recent", label: "Most recent tournament" },
-  { id: "ppg", label: "Points per game" },
-  { id: "points", label: "Total points" },
-  { id: "name", label: "Name (A–Z)" },
-];
-function sortPlayers(rows: PlayerHit[], sort: PlayerSort): PlayerHit[] {
-  const by = [...rows];
-  const cmp: Record<PlayerSort, (a: PlayerHit, b: PlayerHit) => number> = {
-    recent: (a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")) || b.ppg - a.ppg,
-    ppg: (a, b) => b.ppg - a.ppg || b.pts - a.pts,
-    points: (a, b) => b.pts - a.pts || b.ppg - a.ppg,
-    name: (a, b) => a.name.localeCompare(b.name) || String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
-  };
-  return by.sort(cmp[sort]);
-}
+const yearOf = (iso: string | null) => (iso ? iso.slice(0, 4) : "");
 
 export function Search() {
   const [params, setParams] = useSearchParams();
@@ -104,7 +90,6 @@ export function Search() {
 
   const [input, setInput] = useState(q);
   const [typeSel, setTypeSel] = useState<SearchType>(type);
-  const [sort, setSort] = useState<PlayerSort>("recent");
   const [results, setResults] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -135,30 +120,70 @@ export function Search() {
   }, [q, type, level, kind, field, cat, scope]);
 
   type Filters = { level?: string; kind?: QKind; field?: QField; cat?: string; scope?: "public" | "all" };
-  const run = (nextQ: string, nextType: SearchType, more: Filters = {}) => {
-    const qq = nextQ.trim();
-    if (!qq) { setParams({}); return; }
-    const next: Record<string, string> = { q: qq, type: nextType };
+  const paramsFor = (qq: string, nextType: SearchType, more: Filters) => {
+    const next: Record<string, string> = {};
+    if (qq) { next.q = qq; next.type = nextType; }
     const lv = more.level ?? level, kd = more.kind ?? kind, fd = more.field ?? field, ct = more.cat ?? cat, sc = more.scope ?? scope;
     if (sc === "all") next.scope = "all";
     if (lv) next.level = lv;
     if (nextType === "questions") { if (kd !== "all") next.kind = kd; if (fd !== "all") next.field = fd; if (ct) next.cat = ct; }
-    setParams(next);
+    return next;
   };
+  const run = (nextQ: string, nextType: SearchType, more: Filters = {}) => setParams(paramsFor(nextQ.trim(), nextType, more));
   const onSubmit = (e: React.FormEvent) => { e.preventDefault(); run(input, typeSel); };
-  const onToggle = (t: SearchType) => { setTypeSel(t); if (q) run(q, t); };
+  const onToggle = (t: SearchType) => { setTypeSel(t); run(q, t); };
   // A filter change re-runs the current query at once; with no query yet it
   // just waits in the URL for one.
-  const setFilter = (more: Filters) => {
-    if (q) run(q, typeSel, more);
-    else {
-      const next: Record<string, string> = {};
-      const lv = more.level ?? level, kd = more.kind ?? kind, fd = more.field ?? field, ct = more.cat ?? cat, sc = more.scope ?? scope;
-      if (sc === "all") next.scope = "all";
-      if (lv) next.level = lv; if (kd !== "all") next.kind = kd; if (fd !== "all") next.field = fd; if (ct) next.cat = ct;
-      setParams(next);
-    }
-  };
+  const setFilter = (more: Filters) => run(q, typeSel, more);
+
+  const playerCols: Column<PlayerHit>[] = [
+    { key: "name", label: "Player", sortVal: (p) => p.name.toLowerCase(), render: (p) => <Link className="link" to={`/set/${p.slug}/player/${p.playerId}`}>{p.name}</Link> },
+    { key: "team", label: "Team", sortVal: (p) => p.team.toLowerCase(), render: (p) => (p.team && p.team !== p.name ? p.team : <span className="muted">—</span>) },
+    { key: "set", label: "Tournament", sortVal: (p) => p.setName.toLowerCase(), render: (p) => <SetCell s={p} /> },
+    { key: "year", label: "Added", align: "right", sortVal: (p) => p.createdAt || "", render: (p) => yearOf(p.createdAt) },
+    { key: "ppg", label: "PPG", align: "right", sortVal: (p) => p.ppg, render: (p) => num(p.ppg) },
+    { key: "games", label: "GP", align: "right", sortVal: (p) => p.games, render: (p) => p.games },
+    { key: "pts", label: "Pts", align: "right", sortVal: (p) => p.pts, render: (p) => p.pts },
+    { key: "cats", label: "Top categories", sortVal: (p) => p.topCats?.[0]?.points ?? 0, render: (p) => (
+      <span className="search-cats">{(p.topCats ?? []).map((c) => <span key={c.category} className="search-cat">{c.category}<b>{c.points}</b></span>)}</span>
+    ) },
+  ];
+
+  const questionCols: Column<QuestionHit>[] = [
+    { key: "kind", label: "Type", sortVal: (r) => r.kind, render: (r) => <span className="set-row-level">{r.kind === "bonus" ? "Bonus" : "Tossup"}</span> },
+    { key: "answer", label: "Answer", sortVal: (r) => primaryAnswer(r.answer).replace(/<[^>]+>/g, "").toLowerCase(), render: (r) => (
+      r.kind === "bonus" && r.parts?.length ? (
+        // Every part on its own line, in packet order, with its difficulty mark
+        // and how often the field converted it; the matched part is bold.
+        <div className="search-parts">
+          {r.parts.map((pt, i) => (
+            <div key={i} className={"search-part" + (i === r.matchedPart ? " matched" : "")}>
+              <Link className="link" to={`/set/${r.slug}/bonus/${r.id}`}><Html html={primaryAnswer(pt.answer)} /></Link>
+              <span className="search-part-stats">
+                {pt.difficulty && <span className="search-part-diff" title="Difficulty mark">{diffShort(pt.difficulty)}</span>}
+                {pt.convPct != null && <span className="search-part-conv" title="Conversion across the tournament">{num(pt.convPct, 0)}%</span>}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <Link className="link" to={`/set/${r.slug}/tossup/${r.id}`}><Html html={primaryAnswer(r.answer)} /></Link>
+      )
+    ) },
+    { key: "match", label: "Matched text", sortVal: (r) => (r.snippet ? 1 : 0), render: (r) => (r.snippet ? <span className="search-snippet">{r.snippet}</span> : <span className="muted">—</span>) },
+    ...(kind !== "bonus" ? [
+      { key: "buzz", label: "Buzzes", sortVal: (r: QuestionHit) => r.avgBuzzPct ?? 999, render: (r: QuestionHit) => (r.kind === "tossup" ? <BuzzStrip q={r} /> : <span className="muted">—</span>),
+        title: "Where each buzz fell along the question: blue power, green correct, red wrong. ▲ marks the average correct buzz." },
+      { key: "avg", label: "Avg buzz", align: "right" as const, sortVal: (r: QuestionHit) => r.avgBuzzPct ?? 999, render: (r: QuestionHit) => (r.kind === "tossup" && r.avgBuzzPct != null ? `${num(r.avgBuzzPct, 0)}%` : <span className="muted">—</span>),
+        title: "Average correct buzz, as a share of the way through the question. Lower is more buzzable." },
+      { key: "conv", label: "Conv", align: "right" as const, sortVal: (r: QuestionHit) => r.convPct ?? -1, render: (r: QuestionHit) => (r.kind === "tossup" && r.convPct != null ? `${num(r.convPct, 0)}%` : <span className="muted">—</span>),
+        title: "Share of rooms that answered it correctly" },
+      { key: "heard", label: "Heard", align: "right" as const, sortVal: (r: QuestionHit) => r.heard ?? -1, render: (r: QuestionHit) => (r.kind === "tossup" ? r.heard ?? 0 : <span className="muted">—</span>) },
+    ] : []),
+    { key: "cat", label: "Category", sortVal: (r) => r.category.toLowerCase(), render: (r) => (r.category ? <CategoryTag cat={r.category} /> : <span className="muted">—</span>) },
+    { key: "set", label: "Tournament", sortVal: (r) => r.setName.toLowerCase(), render: (r) => <SetCell s={r} /> },
+    { key: "rd", label: "Rd", align: "right", sortVal: (r) => r.round * 1000 + r.num, render: (r) => <span className="mono">{roundLabel(r.round)}-{r.num}</span> },
+  ];
 
   return (
     <div className="app">
@@ -174,7 +199,7 @@ export function Search() {
         </div>
       </header>
 
-      <main className="content">
+      <main className="content content-wide">
         <h1>Search</h1>
         <p className="subtitle">Find players or questions across public tournaments{user ? " — or every tournament you can view" : ""}.</p>
 
@@ -247,70 +272,14 @@ export function Search() {
         {!loading && !error && q.length >= 2 && (
           <div className="search-summary">
             <span className="subtitle">{total === 0 ? "No matches." : `${total}${total >= 200 ? "+" : ""} match${total === 1 ? "" : "es"}`}{total > results.length ? ` (showing first ${results.length})` : ""}</span>
-            {type === "players" && results.length > 1 && (
-              <label className="search-sort">
-                Sort by
-                <select value={sort} onChange={(e) => setSort(e.target.value as PlayerSort)}>
-                  {SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-                </select>
-              </label>
-            )}
           </div>
         )}
 
-        {!loading && !error && (
-          <div className="search-results">
+        {!loading && !error && results.length > 0 && (
+          <div className="search-table">
             {type === "players"
-              ? sortPlayers(results as PlayerHit[], sort).map((p) => (
-                  <Link key={`${p.slug}:${p.playerId}`} to={`/set/${p.slug}/player/${p.playerId}`} className="search-result player">
-                    <div className="search-result-row">
-                      <div className="search-result-main">{p.name}</div>
-                      <div className="search-result-meta">
-                        {p.team && p.team !== p.name && <span>{p.team}</span>}
-                        <span className="search-set">{p.setName}</span>
-                        <SetTags s={p} />
-                        <span className="search-stat">{num(p.ppg)} PPG · {p.games} G</span>
-                      </div>
-                    </div>
-                    {p.topCats && p.topCats.length > 0 && (
-                      <div className="search-cats">
-                        {p.topCats.map((c) => (
-                          <span key={c.category} className="search-cat">
-                            {c.category}<b>{c.points}</b>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </Link>
-                ))
-              : (results as QuestionHit[]).map((qr) => (
-                  <Link key={`${qr.slug}:${qr.kind}:${qr.id}`} to={`/set/${qr.slug}/${qr.kind === "bonus" ? "bonus" : "tossup"}/${qr.id}`} className="search-result">
-                    {qr.kind === "bonus" && qr.parts?.length ? (
-                      // Every part, matched one first — each with its difficulty
-                      // mark and how often the field converted it.
-                      <div className="search-result-main search-bonus-parts">
-                        {qr.parts.map((pt, i) => ({ pt, i })).sort((a, b) => (a.i === qr.matchedPart ? -1 : b.i === qr.matchedPart ? 1 : a.i - b.i)).map(({ pt, i }) => (
-                          <span key={i} className={"search-bonus-part" + (i === qr.matchedPart ? " matched" : "")}>
-                            <Html html={primaryAnswer(pt.answer)} />
-                            {pt.difficulty && <span className="search-part-diff" title="Difficulty mark">{diffShort(pt.difficulty)}</span>}
-                            {pt.convPct != null && <span className="search-part-conv" title="Conversion across the tournament">{num(pt.convPct, 0)}%</span>}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="search-result-main"><Html html={primaryAnswer(qr.answer)} /></div>
-                    )}
-                    {qr.snippet && <div className="search-snippet">{qr.snippet}</div>}
-                    {qr.kind === "tossup" && <BuzzStrip q={qr} />}
-                    <div className="search-result-meta">
-                      <span className="set-row-level">{qr.kind === "bonus" ? "Bonus" : "Tossup"}</span>
-                      {qr.category && <CategoryTag cat={qr.category} />}
-                      <span className="search-set">{qr.setName}</span>
-                      <SetTags s={qr} />
-                      <span>R{roundLabel(qr.round)}-{qr.num}</span>
-                    </div>
-                  </Link>
-                ))}
+              ? <DataTable rows={results as PlayerHit[]} columns={playerCols} initialSort="year" initialDir="desc" rowKey={(p) => `${p.slug}:${p.playerId}`} />
+              : <DataTable rows={results as QuestionHit[]} columns={questionCols} initialSort="set" initialDir="asc" rowKey={(r) => `${r.slug}:${r.kind}:${r.id}`} />}
           </div>
         )}
       </main>

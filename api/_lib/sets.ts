@@ -4,6 +4,7 @@ import { put, del } from "@vercel/blob";
 import { readBlobJson } from "./blob.js";
 import { aggregate, bonusFilesFromImported, ImportedBonus, PacketFile, GameFile, Correction, BonusCorrection, bnCorrKeyOf, VirtualCategory, Rename, renameKind, MetaMap, TagEdits, BonusDiffs, AggregateConfig } from "./aggregate.js";
 import { getScoring } from "./scoring.js";
+import { buildSearchDoc, invalidateSearchDoc, SEARCH_FILE } from "./searchIndex.js";
 
 export interface Edition {
   id: string;
@@ -805,6 +806,9 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
     const pd = out["players_detail.json"] as Record<string, any>;
     for (const id in pd) pd[id].editionIds = playerEds.get(playerKey(pd[id])) || [];
   }
+  // The cross-tournament search reads this one file instead of the detail files.
+  out[SEARCH_FILE] = buildSearchDoc(out);
+  invalidateSearchDoc(slug);
   await writeFiles(`sets/${slug}/`, out);
 
   // Per-phase (round-tag) scopes: re-aggregate the subset of rounds carrying each

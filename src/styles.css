@@ -395,13 +395,20 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
 .search-form { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 14px 0 6px; }
 .search-toggle { display: inline-flex; gap: 4px; }
 .search-filters { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin: 0 0 10px; font-size: 13px; color: var(--muted); }
-.search-snippet { color: var(--muted); font-size: 13px; margin: 2px 0 4px; }
-.search-bonus-parts { display: flex; flex-wrap: wrap; gap: 4px 14px; }
-.search-bonus-part { font-weight: 400; }
-.search-bonus-part.matched { font-weight: 600; }
-.search-part-diff, .search-part-conv { margin-left: 5px; font-size: 11px; color: var(--muted); background: var(--hover); border-radius: 4px; padding: 0 5px; font-variant-numeric: tabular-nums; }
+.search-snippet { color: var(--muted); font-size: 12.5px; display: block; max-width: 34em; }
+.search-table { margin-top: 8px; }
+.search-table td { vertical-align: top; }
+.search-setcell { display: flex; flex-direction: column; gap: 3px; }
+.search-settags { display: flex; flex-wrap: wrap; gap: 4px; }
+.search-settags .vis-badge { margin-left: 0; }
+.search-parts { display: flex; flex-direction: column; gap: 2px; }
+.search-part { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.search-part.matched .link { font-weight: 600; }
+.search-part-stats { display: inline-flex; gap: 3px; }
+.content-wide { max-width: 1500px; }
+.search-part-diff, .search-part-conv { font-size: 11px; color: var(--muted); background: var(--hover); border-radius: 4px; padding: 0 5px; font-variant-numeric: tabular-nums; }
 .search-result-meta .vis-badge { margin-left: 0; }
-.buzz-strip { display: inline-flex; align-items: center; gap: 10px; margin: 3px 0 4px; font-size: 12.5px; color: var(--muted); }
+.buzz-strip { display: inline-flex; align-items: center; }
 .buzz-strip svg { flex: none; overflow: visible; }
 .buzz-strip .bs-base { stroke: var(--panel-line, #ccc); stroke-width: 1; }
 .buzz-strip .bs-pwr { stroke: var(--power); stroke-width: 2; }

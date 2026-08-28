@@ -5,10 +5,8 @@ import { readBlobJson } from "./_lib/blob.js";
 import { currentUser, canModerate } from "./_lib/auth.js";
 import { SetEntry, canList, canViewContent, sanitizeEntry, effectiveVisibility, TOURNAMENT_LEVELS } from "./_lib/sets.js";
 import { sendEmail, emailEnabled, feedbackBody } from "./_lib/email.js";
-import { categoryBuckets, isCategoryBucket, CategoryBucket } from "./_lib/categories.js";
-
-const stripHtml = (s: string) =>
-  (s || "").replace(/<[^>]+>/g, "").replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&").trim();
+import { isCategoryBucket, CategoryBucket } from "./_lib/categories.js";
+import { getSearchDoc } from "./_lib/searchIndex.js";
 
 const MAX_SETS = 80;   // cap how many accessible sets a single query scans
 const MAX_RESULTS = 200;
@@ -33,11 +31,11 @@ export interface SearchOpts {
   scope?: "public" | "all";
 }
 
-// A short window of plain text around the first match, so a text hit shows
-// WHY it matched instead of just an answer line that doesn't contain the query.
-function snippet(text: string, needle: string, width = 70): string | null {
-  const plain = stripHtml(text);
-  const i = plain.toLowerCase().indexOf(needle);
+// A short window of (already plain, lowercase) text around the first match, so
+// a text hit shows WHY it matched instead of just an answer line that doesn't
+// contain the query.
+function snippet(plain: string, needle: string, width = 70): string | null {
+  const i = plain.indexOf(needle);
   if (i < 0) return null;
   const from = Math.max(0, i - width), to = Math.min(plain.length, i + needle.length + width);
   return `${from > 0 ? "…" : ""}${plain.slice(from, to)}${to < plain.length ? "…" : ""}`;
@@ -53,9 +51,8 @@ const setFacts = (s: SetEntry) => ({
 });
 
 // Cross-tournament search over the sets the caller has *content* access to
-// (public, owned, or invited). Reads each set's already-computed players.json
-// or question detail files, so it covers every existing tournament without
-// re-aggregation.
+// (public, owned, or invited), reading each set's prebuilt search document
+// (see _lib/searchIndex.ts).
 async function search(user: string | null, q: string, type: "players" | "questions", opts: SearchOpts, res: VercelResponse) {
   const needle = q.toLowerCase();
   const idx = await readBlobJson<{ sets: SetEntry[] }>("sets/index.json", false);
@@ -74,106 +71,57 @@ async function search(user: string | null, q: string, type: "players" | "questio
   const inAnswer = field !== "text";
   const inText = field !== "answer";
   const inCategory = field === "all";
-  const hit = (s: string) => String(s || "").toLowerCase().includes(needle);
-  const wantCats = opts.cats?.length ? new Set(opts.cats) : null;
-  const inCats = (r: { category?: string; subcategory?: string }) =>
-    !wantCats || categoryBuckets(String(r.category || ""), String(r.subcategory || "")).some((b) => wantCats.has(b));
+  const hit = (s: string) => (s || "").includes(needle);
+  const wantCats = opts.cats?.length ? new Set<string>(opts.cats) : null;
+  const inCats = (buckets: string[]) => !wantCats || buckets.some((b) => wantCats.has(b));
 
   const results: any[] = [];
   await Promise.all(
     accessible.map(async (s) => {
+      const doc = await getSearchDoc(s.slug);
+      if (!doc) return;
       if (type === "players") {
-        const rows = await readBlobJson<any[]>(`sets/${s.slug}/players.json`, true);
-        if (!Array.isArray(rows)) return;
-        for (const r of rows)
-          if (hit(r.name) || hit(r.team))
-            results.push({ ...setFacts(s), playerId: r.id, name: r.name, team: r.team, ppg: r.ppg ?? 0, games: r.games ?? 0, pts: r.pts ?? 0 });
+        for (const p of doc.players)
+          if (hit(p.n) || hit(p.tm))
+            results.push({ ...setFacts(s), playerId: p.id, name: p.name, team: p.team, ppg: p.ppg, games: p.games, pts: p.pts, topCats: p.topCats });
         return;
       }
-      // Questions. The detail files carry the text as well as the answers; the
-      // summary files don't, and a text search needs it.
-      const jobs: Promise<void>[] = [];
       if (kind !== "bonus")
-        jobs.push(readBlobJson<Record<string, any>>(`sets/${s.slug}/tossups_detail.json`, true).then((d) => {
-          if (!d) return;
-          for (const r of Object.values(d)) {
-            const answer = stripHtml(String(r.answer || ""));
-            const byAnswer = inAnswer && hit(answer);
-            const byText = inText && !byAnswer ? snippet(String(r.questionHtml || ""), needle) : null;
-            const byCat = inCategory && (hit(r.category) || hit(r.subcategory));
-            if (!byAnswer && !byText && !byCat) continue;
-            if (!inCats(r)) continue;
-            // How buzzable it was: every placed buzz as [word, value] against the
-            // question's length, plus the headline rates, for an inline graph.
-            const buzzes = (Array.isArray(r.buzzes) ? r.buzzes : [])
-              .filter((b: any) => b && b.wordIndex !== null && b.wordIndex !== undefined)
-              .map((b: any) => [b.wordIndex, b.value]);
-            results.push({
-              ...setFacts(s), kind: "tossup", id: r.id, round: r.round, num: r.num, answer: r.answer, category: r.category,
-              heard: r.heard ?? 0, convPct: r.convPct ?? null, avgBuzzPct: r.avgBuzzPct ?? null, wordCount: r.wordCount ?? null, buzzes,
-              ...(byText ? { snippet: byText } : {}),
-            });
-          }
-        }));
-      if (kind !== "tossup" && s.hasBonuses)
-        jobs.push(readBlobJson<Record<string, any>>(`sets/${s.slug}/bonuses_detail.json`, true).then((d) => {
-          if (!d) return;
-          for (const r of Object.values(d)) {
-            const answers: string[] = Array.isArray(r.answers) ? r.answers : [];
-            const parts: string[] = Array.isArray(r.parts) ? r.parts : [];
-            const ai = inAnswer ? answers.findIndex((a) => hit(stripHtml(String(a || "")))) : -1;
-            const byText = inText && ai < 0 ? [String(r.leadin || ""), ...parts].map((t) => snippet(t, needle)).find(Boolean) ?? null : null;
-            const byCat = inCategory && (hit(r.category) || hit(r.subcategory));
-            if (ai < 0 && !byText && !byCat) continue;
-            if (!inCats(r)) continue;
-            results.push({
-              ...setFacts(s), kind: "bonus", id: r.id, round: r.round, num: r.num,
-              // The matched part's answer leads; the others follow so the bonus is recognisable.
-              answer: ai >= 0 ? answers[ai] : answers[0] ?? "", matchedPart: ai >= 0 ? ai : null,
-              // Every part: its answer, its difficulty mark and how often the
-              // field converted it, so a hit reads like the bonus page's summary.
-              parts: answers.map((a, i) => ({
-                answer: a, difficulty: String((Array.isArray(r.difficultyModifiers) ? r.difficultyModifiers[i] : "") || ""),
-                convPct: (Array.isArray(r.partConv) ? r.partConv.find((pc: any) => pc.idx === i)?.convPct : null) ?? null,
-              })),
-              category: r.category, ...(byText ? { snippet: byText } : {}),
-            });
-          }
-        }));
-      await Promise.all(jobs);
+        for (const r of doc.tossups) {
+          const byAnswer = inAnswer && hit(r.a);
+          const byText = inText && !byAnswer ? snippet(r.t, needle) : null;
+          const byCat = inCategory && (hit(r.category.toLowerCase()) || hit(r.subcategory.toLowerCase()));
+          if (!byAnswer && !byText && !byCat) continue;
+          if (!inCats(r.buckets)) continue;
+          results.push({
+            ...setFacts(s), kind: "tossup", id: r.id, round: r.round, num: r.num, answer: r.answer, category: r.category,
+            heard: r.heard, convPct: r.convPct, avgBuzzPct: r.avgBuzzPct, wordCount: r.wordCount, buzzes: r.buzzes,
+            ...(byText ? { snippet: byText } : {}),
+          });
+        }
+      if (kind !== "tossup")
+        for (const r of doc.bonuses) {
+          const ai = inAnswer ? r.a.findIndex(hit) : -1;
+          const byText = inText && ai < 0 ? snippet(r.t, needle) : null;
+          const byCat = inCategory && (hit(r.category.toLowerCase()) || hit(r.subcategory.toLowerCase()));
+          if (ai < 0 && !byText && !byCat) continue;
+          if (!inCats(r.buckets)) continue;
+          results.push({
+            ...setFacts(s), kind: "bonus", id: r.id, round: r.round, num: r.num,
+            answer: ai >= 0 ? r.answers[ai] : r.answers[0] ?? "", matchedPart: ai >= 0 ? ai : null,
+            parts: r.answers.map((a, i) => ({ answer: a, difficulty: r.parts[i]?.difficulty ?? "", convPct: r.parts[i]?.convPct ?? null })),
+            category: r.category, ...(byText ? { snippet: byText } : {}),
+          });
+        }
     })
   );
 
   if (type === "players") {
-    // Default order: most recent tournament first (client offers other sorts).
+    // Default order: most recent tournament first (the client offers other sorts).
     results.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")) || (b.ppg || 0) - (a.ppg || 0) || String(a.name).localeCompare(String(b.name)));
-    const shown = results.slice(0, MAX_RESULTS);
-    // Attach each hit's three best categories (by points earned in that set),
-    // reading each matched set's players_detail.json once.
-    const slugs = [...new Set(shown.map((r) => r.slug))];
-    const detail = new Map<string, Record<string, any>>();
-    await Promise.all(
-      slugs.map(async (slug) => {
-        const d = await readBlobJson<Record<string, any>>(`sets/${slug}/players_detail.json`, true);
-        if (d) detail.set(slug, d);
-      })
-    );
-    for (const r of shown) {
-      const cats = detail.get(r.slug)?.[r.playerId]?.categories as any[] | undefined;
-      r.topCats = Array.isArray(cats)
-        ? cats
-            .filter((c) => (c.points || 0) > 0)
-            .sort((a, b) => (b.points || 0) - (a.points || 0))
-            .slice(0, 3)
-            .map((c) => ({ category: c.category, points: c.points || 0 }))
-        : [];
-    }
-    res.setHeader("cache-control", "no-store");
-    return res.status(200).json({ results: shown, total: results.length, type });
+  } else {
+    results.sort((a, b) => String(a.setName).localeCompare(String(b.setName)) || a.round - b.round || a.num - b.num);
   }
-
-  results.sort((a, b) => String(a.setName).localeCompare(String(b.setName)) || a.round - b.round || a.num - b.num);
-
   res.setHeader("cache-control", "no-store");
   return res.status(200).json({ results: results.slice(0, MAX_RESULTS), total: results.length, type });
 }

@@ -1,19 +1,14 @@
 import { Link, useParams } from "react-router-dom";
-import { useSetCtx } from "../components/Layout";
+import { useSetCtx, setTabs } from "../components/Layout";
 import { levelLabel, difficultyLabel } from "../types";
 
 export function SetHome() {
-  const { meta, level, tdLink, difficulty } = useSetCtx();
+  const { meta, level, tdLink, difficulty, editions, isOwner } = useSetCtx();
   const { slug = "" } = useParams();
   const base = `/set/${slug}`;
-  const links = [
-    { to: `${base}/tossup`, label: "Tossups", desc: `${meta.numTossups} questions` },
-    ...(meta.hasBonuses ? [{ to: `${base}/bonus`, label: "Bonuses", desc: `${meta.numBonuses} bonuses` }] : []),
-    { to: `${base}/player`, label: "Players", desc: `${meta.numPlayers} players` },
-    ...(meta.individual ? [] : [{ to: `${base}/team`, label: "Teams", desc: `${meta.numTeams} teams` }]),
-    { to: `${base}/category/tossup`, label: "Categories (Tossup)", desc: "By subject" },
-    ...(meta.hasBonuses ? [{ to: `${base}/category/bonus`, label: "Categories (Bonus)", desc: "By subject" }] : []),
-  ];
+  // Every page the header offers, as a card — the same list, so nothing the
+  // header links to is missing from here.
+  const links = setTabs(meta, base, { hasEditions: editions.length > 1, isOwner });
   return (
     <div>
       <div className="page-header">
