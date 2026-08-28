@@ -221,7 +221,9 @@ export function Landing() {
               </span>
               <span className="set-row-meta">
                 {s.level && <span className="set-row-level">{levelLabel(s.level)}</span>}
-                {s.numGames} games · {s.numTeams} teams · {s.rounds} rounds
+                {s.individual
+                  ? <>{s.numGames} rooms · {s.numPlayers} players · {s.rounds} rounds</>
+                  : <>{s.numGames} games · {s.numTeams} teams · {s.rounds} rounds</>}
               </span>
               {s.createdAt && (
                 <span className="set-row-date" title={`Added ${formatDate(s.createdAt)} — ${new Date(s.createdAt).toLocaleString()}`}>

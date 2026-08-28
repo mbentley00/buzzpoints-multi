@@ -62,9 +62,11 @@ export function PlayerDetailPage() {
         <div>
           <h1>{d.name}</h1>
           <p className="subtitle">
-            <Link to={`/set/${slug}/team/${d.teamId}`} className="link">{d.team}</Link>
+            {meta.individual
+              ? <span className="muted">Individual</span>
+              : <Link to={`/set/${slug}/team/${d.teamId}`} className="link">{d.team}</Link>}
             {scope === "all" && !!d.editionIds?.length && <> · <EditionBadges ids={d.editionIds} editions={editions} /></>}
-            {user && (isOwner || allowRequests) && <> · <Rename slug={slug} kind="player" name={d.name} team={d.team} isOwner={isOwner} /></>}
+            {user && (isOwner || allowRequests) && <> · <Rename slug={slug} kind="player" name={d.name} team={d.team} isOwner={isOwner} individual={!!meta.individual} /></>}
           </p>
         </div>
         <button className="btn-primary" onClick={() => setView(view === "cat" ? "buzz" : "cat")}>

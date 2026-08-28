@@ -49,6 +49,7 @@ export function Settings() {
   const [isPrimary, setIsPrimary] = useState(false);
   const [hasYf, setHasYf] = useState(false);
   const [level, setLevel] = useState("");
+  const [individual, setIndividual] = useState(false);
   const [tdLink, setTdLink] = useState("");
   const [accessRequests, setAccessRequests] = useState<{ email: string; name: string; at: string; role?: string; team?: string }[]>([]);
   const [resolved, setResolved] = useState<{ email: string; name: string; status: string; via?: string; resolvedAt?: string }[]>([]);
@@ -89,6 +90,7 @@ export function Settings() {
         setIsPrimary(!!d.isPrimaryOwner);
         setHasYf(!!d.hasYf);
         setLevel(d.level || "");
+        setIndividual(!!d.individual);
         setTdLink(d.tdLink || "");
         setPublicPending(!!d.publicPending);
         setPublicNeedsApproval(!!d.publicNeedsApproval);
@@ -127,7 +129,7 @@ export function Settings() {
   async function saveSettings() {
     setErr(null); setMsg(null); setBusy(true);
     try {
-      const autoPublicAt = visibility === "public" ? null : autoPublish ? new Date(date).toISOString() : null;
+      const autoPublicAt = visibility === "public" || level === "practice" ? null : autoPublish ? new Date(date).toISOString() : null;
       const d = await postJson("/api/manage", { slug, op: "settings", visibility, autoPublicAt, allowRequests });
       refreshIndex();
       if (d.publicPending) {
@@ -149,9 +151,18 @@ export function Settings() {
     setErr(null); setMsg(null); setBusy(true);
     try {
       if (!level) throw new Error("Choose a tournament type.");
-      await postJson("/api/manage", { slug, op: "details", level, tdLink: tdLink.trim() });
+      const d = await postJson("/api/manage", { slug, op: "details", level, tdLink: tdLink.trim(), individual });
+      // Reclassifying can change whether going public needs approval (practice
+      // tournaments don't), and may have granted a pending request outright.
+      setPublicPending(!!d.publicPending);
+      setPublicNeedsApproval(!!d.publicNeedsApproval);
+      if (d.visibility) setVisibility(d.visibility);
+      if (d.level === "practice") setAutoPublish(false);
       refreshIndex();
-      setMsg("Tournament details saved.");
+      // The format changed, so the stats were rebuilt and every page under this
+      // set is showing the old shape until it refetches.
+      if (d.rebuilt) clearSetCache(slug);
+      setMsg(d.level === "practice" && visibility === "public" ? "Tournament details saved. Practice tournaments can't be public, so it's now listed." : d.rebuilt ? "Tournament details saved and stats rebuilt." : "Tournament details saved.");
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally { setBusy(false); }
@@ -371,6 +382,14 @@ export function Settings() {
           <span>Tournament Database link (optional)</span>
           <input type="url" value={tdLink} onChange={(e) => setTdLink(e.target.value)} placeholder="https://hsquizbowl.org/db/tournaments/…" />
         </label>
+        <label className="field-inline">
+          <input type="checkbox" checked={individual} onChange={(e) => setIndividual(e.target.checked)} />
+          <span>Individual shootout (players compete for themselves, like IPNCT)</span>
+        </label>
+        <small className="muted">
+          Reads every player as their own competitor, whatever "teams" the scoresheets were filed under, and ranks
+          players rather than teams. Changing this rebuilds the stats.
+        </small>
         <button className="btn-primary" disabled={busy} onClick={saveDetails}>Save details</button>
       </div>
 
@@ -379,17 +398,19 @@ export function Settings() {
         <label className="field">
           <span>Who can see this tournament</span>
           <select value={visibility} onChange={(e) => setVisibility(e.target.value as Visibility)}>
-            {VIS_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+            {VIS_OPTIONS.filter((o) => o.id !== "public" || level !== "practice").map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
           </select>
           <small className="muted">{visDesc}</small>
-          {publicPending ? (
+          {level === "practice" ? (
+            <small className="muted">Practice tournaments stay listed or private — they can't be made public.</small>
+          ) : publicPending ? (
             <small className="muted">Your request to make this tournament public is awaiting a moderator's approval. Until then it stays {visibility}.</small>
           ) : publicNeedsApproval && visibility !== "public" ? (
             <small className="muted">This tournament was uploaded less than three months ago, so making it public needs a moderator's approval — selecting Public sends them a request.</small>
           ) : null}
         </label>
 
-        {visibility !== "public" && (
+        {visibility !== "public" && level !== "practice" && (
           <div className="field">
             <label className="field-inline">
               <input type="checkbox" checked={autoPublish} onChange={(e) => setAutoPublish(e.target.checked)} />

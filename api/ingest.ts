@@ -111,7 +111,7 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     const name = String(body.name || "").trim();
     if (!name) return res.status(400).json({ error: "Set name is required." });
     if (!body.scoring || !(body.scoring in SCORINGS)) return res.status(400).json({ error: "Unknown scoring format." });
-    const source: SetSource = { name, scoring: body.scoring, hasBonuses: !!body.hasBonuses, editions };
+    const source: SetSource = { name, scoring: body.scoring, hasBonuses: !!body.hasBonuses, ...(body.individual ? { individual: true } : {}), editions };
     const cleanup = () => del([jobPath(jobId), ...Array.from({ length: count }, (_, i) => edPath(jobId, i))]).catch(() => {});
     const refreshSlug = String(body.refreshSlug || "").trim();
     try {
@@ -178,7 +178,7 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     const { results } = await scrapeBonusResults(src.base, target.slug, pairs.slice(0, CHUNK), deadline);
     const withText = results.filter((r) => r.text);
     applyBonusText(ed.packets as any, results);
-    await writeSource(slug, { name: source.name, scoring: source.scoring, hasBonuses: source.hasBonuses, editions: eds });
+    await writeSource(slug, { ...source, editions: eds });
     const remaining = missingBonusPairs(ed).length;
     // Nothing came back and nothing moved: the source is refusing the detail pages,
     // so say so instead of spinning through every chunk to no effect.
@@ -315,7 +315,7 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     if (blocked) return res.status(400).json({ error: `Tournament name contains a disallowed word: "${blocked}".` });
     const source: SetSource = { name, scoring, hasBonuses: job.hasBonuses, editions };
     try {
-      const { slug } = await createFromSource(source, owner, { name, visibility: body.visibility, autoPublicAt: body.autoPublicAt ?? null, level, tdLink });
+      const { slug } = await createFromSource(source, owner, { name, visibility: body.visibility, autoPublicAt: body.autoPublicAt ?? null, level, tdLink, individual: !!body.individual });
       await cleanupJob();
       return res.status(200).json({ slug, editions: editions.length });
     } catch (e) {
@@ -330,6 +330,7 @@ import { sendEmail, appUrl, submissionPendingBody, publishRequestBody } from "./
 
 interface Body {
   name?: string; scoring?: string; hasBonuses?: boolean; packets?: FileRef[]; games?: FileRef[];
+  individual?: boolean; // an individual shootout (players compete for themselves)
   visibility?: string; autoPublicAt?: string | null; editionOf?: string; edition?: string;
   editionId?: string; // when set with editionOf: append files to this existing edition
   replaceRound?: boolean; // with editionId: swap out the rounds these files cover instead of appending
@@ -477,7 +478,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const k = kept(e);
           return { ...e, packets: [...k.packets, ...packets], games: [...k.games, ...games] };
         });
-        next = { name: source.name, scoring: source.scoring, hasBonuses: source.hasBonuses, editions: merged };
+        next = { ...source, editions: merged };
         resultId = targetId;
       } else {
         // Create a new edition / mirror.
@@ -485,10 +486,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (blockedLabel) return res.status(400).json({ error: `Edition label contains a disallowed word: "${blockedLabel}".` });
         const id = `e${eds.length}`;
         const label = (body.edition || "").trim() || `Mirror ${eds.length + 1}`;
-        next = {
-          name: source.name, scoring: source.scoring, hasBonuses: source.hasBonuses,
-          editions: [...eds, { id, label, packets, games }],
-        };
+        next = { ...source, editions: [...eds, { id, label, packets, games }] };
         resultId = id;
       }
 
@@ -522,14 +520,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     catch (e) { if (e instanceof CreateError) return res.status(e.status).json({ error: e.message }); throw e; }
 
     // First-post gate: queue for review unless this account has posted before or
-    // is a moderator/admin.
+    // is a moderator/admin. Practice tournaments skip it — they can never be
+    // public (createTournament clamps them to listed/private), so there's
+    // nothing for a reviewer to protect against.
     const index = await readIndex();
     const established = index.sets.some((s) => s.owner === owner);
     const privileged = await canModerate(owner);
-    if (!established && !privileged) {
+    if (!established && !privileged && level !== "practice") {
       const id = crypto.randomBytes(9).toString("base64url");
       await writePendingPayload(id, {
-        name, scoring: body.scoring!, hasBonuses: !!body.hasBonuses,
+        name, scoring: body.scoring!, hasBonuses: !!body.hasBonuses, ...(body.individual ? { individual: true } : {}),
         visibility: body.visibility, autoPublicAt: body.autoPublicAt ?? null,
         edition: body.edition, level, ...(tdLink ? { tdLink } : {}),
         packets: body.packets!.map((r) => ({ name: r.name, json: r.json })),
@@ -558,8 +558,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // public, so it takes the same moderator approval: create the set Listed
     // with the request queued, rather than public and unreviewed. (Moderators
     // and admins publish directly — they're the approvers. URL imports aren't
-    // gated either, but those go through createFromSource, not here.)
-    const wantsPublic = normVisibility(body.visibility) === "public" && !privileged;
+    // gated either, but those go through createFromSource, not here. Practice
+    // tournaments can't be public at all, so there's nothing to request.)
+    const wantsPublic = normVisibility(body.visibility) === "public" && !privileged && level !== "practice";
     if (wantsPublic) body.visibility = "listed";
     const { slug, categoryWarnings, roundWarnings, bonusDiffWarnings } = await createTournament(body, owner);
     let publicPending = false;

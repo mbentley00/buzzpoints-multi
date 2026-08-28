@@ -63,6 +63,9 @@ export interface AggregateConfig {
   // that tags a bonus "medium, easy, easy" is describing a bonus nobody wrote;
   // the override REPLACES what the packet said for that bonus, part for part.
   bonusDiffs?: BonusDiffs | null;
+  // An individual shootout (IPNCT-style): several players in a room, each
+  // answering for themselves. See individualize().
+  individual?: boolean;
 }
 
 // Hand edits layered over the tags derived from metadata.
@@ -809,6 +812,58 @@ type TuCat = CatAcc & { main: string };
 type BnCat = { heard: number; pts: number; main: string; parts: Map<string, [number, number]> };
 
 /* ----------------------------- main ----------------------------- */
+// An individual shootout: several players in a room, each answering for
+// themselves, with no team behind them. Scorekeeping software only knows two
+// sides, so a source files such a room as two made-up "teams" of several
+// players each — or as one team per player, when the scorer already thought of
+// it that way. Either way, the team is a fiction; the player is the unit.
+//
+// Rather than teach every stat below a second notion of "who scored", each
+// player becomes a team of one, named after themself. Rosters, standings,
+// opponents, bonus control, corrections and renames then all work unchanged:
+// the room's "teams" are its players, and a game with six of them is simply a
+// six-team game (which the result logic handles — see the place/W-L block).
+//
+// Tossups heard carry over from whatever the source recorded against the
+// player; bonus points are re-summed from the parts, since the source's
+// per-team bonus total belongs to a team that no longer exists.
+export function individualize(g: GameFile): GameFile {
+  const teams = new Map<string, { tuh: number | undefined; bonus: number }>();
+  const of = (name: string) => {
+    let t = teams.get(name);
+    if (!t) { t = { tuh: undefined, bonus: 0 }; teams.set(name, t); }
+    return t;
+  };
+  for (const mt of g.match_teams || []) {
+    for (const p of mt.team?.players || []) if (p?.name) of(p.name);
+    for (const mp of mt.match_players || []) {
+      const n = mp.player?.name;
+      if (!n) continue;
+      const t = of(n);
+      if (mp.tossups_heard != null) t.tuh = (t.tuh ?? 0) + (mp.tossups_heard || 0);
+    }
+  }
+  const match_questions = (g.match_questions || []).map((mq) => {
+    let controller: string | null = null;
+    const buzzes = (mq.buzzes || []).map((bz) => {
+      const n = bz.player?.name;
+      if (!n) return bz;
+      of(n);
+      if ((bz.result?.value ?? 0) > 0) controller = n;
+      return { ...bz, team: { name: n } };
+    });
+    if (controller && mq.bonus)
+      of(controller).bonus += (mq.bonus.parts || []).reduce((a, p) => a + numPts(p.controlled_points), 0);
+    return { ...mq, buzzes };
+  });
+  const match_teams = [...teams].map(([name, t]) => ({
+    team: { name, players: [{ name }] },
+    match_players: [{ player: { name }, ...(t.tuh !== undefined ? { tossups_heard: t.tuh } : {}) }],
+    bonus_points: t.bonus,
+  }));
+  return { ...g, match_teams, match_questions };
+}
+
 export function aggregate(
   packets: PacketFile[],
   games: GameFile[],
@@ -826,6 +881,7 @@ export function aggregate(
 ): Record<string, unknown> {
   const scoring = cfg.scoring;
   const hasPower = scoring.hasPower;
+  if (cfg.individual) games = games.map(individualize);
   const tierOf = (v: number) => classify(v, scoring);
   const isPower = (v: number) => tierOf(v) === "power";
   const isGet = (v: number) => tierOf(v) === "get";
@@ -849,10 +905,12 @@ export function aggregate(
   // Team renames, applied before anything else reads a team name: rosters,
   // standings and the scope of a player rename all key off the name a team ends
   // up with, so they must all see the same one.
+  // In an individual shootout a player IS their team, so a player rename must
+  // move the team of one along with them — the same name, in both places.
   const teamRenameAt = new Map<string, string>();
   for (const r of renames) {
-    if (renameKind(r) !== "team" || !r?.from || !r?.to) continue;
-    teamRenameAt.set(r.from, r.to);
+    if (!r?.from || !r?.to) continue;
+    if (renameKind(r) === "team" || cfg.individual) teamRenameAt.set(r.from, r.to);
   }
   const teamNamed = teamRenameAt.size ? (name: string) => teamRenameAt.get(name) ?? name : (name: string) => name;
 
@@ -863,7 +921,10 @@ export function aggregate(
   const renameAt = new Map<string, string>();
   for (const r of renames) {
     if (renameKind(r) !== "player" || !r?.from || !r?.to) continue;
-    renameAt.set(`${r.team ?? ""}${SEP}${r.from}`, r.to);
+    // A "team" scope in a shootout names the player themself — the rename is
+    // set-wide either way, so store it that way and it also matches the
+    // renamed team of one.
+    renameAt.set(`${cfg.individual ? "" : r.team ?? ""}${SEP}${r.from}`, r.to);
   }
   const renamed = renameAt.size
     ? (name: string, team: string | null) =>
@@ -995,7 +1056,7 @@ export function aggregate(
   // counted for the season totals below; it was simply thrown away at the end of
   // each iteration, and nothing downstream could reconstruct it (a tossup nobody
   // buzzed leaves no trace, and bonus hearings record no opponent).
-  type GTeam = { name: string; tuPts: number; bonusPts: number; bonusesHeard: number; powers: number; gets: number; incorrect: number };
+  type GTeam = { name: string; tuPts: number; bonusPts: number; bonusesHeard: number; powers: number; gets: number; incorrect: number; place?: number; result?: "W" | "L" | "T" };
   type GPlayer = { name: string; team: string; tuh: number; powers: number; gets: number; incorrect: number; pts: number };
   type GTeamRow = GTeam & { score: number };
   const gameRecs: { round: number; editionId?: string; tuh: number; teams: GTeam[]; players: GPlayer[] }[] = [];
@@ -1225,6 +1286,27 @@ export function aggregate(
       if (pa > pb) { tmOf(a).wins++; tmOf(b).losses++; }
       else if (pb > pa) { tmOf(b).wins++; tmOf(a).losses++; }
       else { tmOf(a).ties++; tmOf(b).ties++; }
+      for (const t of gTeams.values()) t.result = (gamePts.get(t.name) || 0) === Math.max(pa, pb) ? (pa === pb ? "T" : "W") : "L";
+    }
+    // A shootout room is decided among everyone in it: each player gets a
+    // place (ties share one), and a "win" is winning the room outright — a tie
+    // for the top is a tie, anything else a loss. A 2-player room is the
+    // two-team case above, which already did the same thing.
+    if (cfg.individual && teamNames.length > 2) {
+      const ranked = teamNames.map((t) => ({ t, pts: gamePts.get(t) || 0 })).sort((a, b) => b.pts - a.pts);
+      const top = ranked[0].pts;
+      const atTop = ranked.filter((x) => x.pts === top).length;
+      let place = 0;
+      ranked.forEach((x, i) => {
+        if (i === 0 || x.pts !== ranked[i - 1].pts) place = i + 1;
+        const gt = gtOf(x.t);
+        gt.place = place;
+        if (x.pts !== top) { tmOf(x.t).losses++; gt.result = "L"; }
+        else if (atTop > 1) { tmOf(x.t).ties++; gt.result = "T"; }
+        else { tmOf(x.t).wins++; gt.result = "W"; }
+      });
+    } else if (cfg.individual) {
+      for (const t of gTeams.values()) t.place = t.result === "L" ? 2 : 1;
     }
 
     gameRecs.push({
@@ -1745,7 +1827,7 @@ export function aggregate(
       const scoreOf = (t: GTeamRow) => t.tuPts + t.bonusPts;
       const teams = rec.teams.map((t) => ({ ...t, score: t.tuPts + t.bonusPts }));
       const top = Math.max(...teams.map(scoreOf));
-      const decided = teams.length === 2;
+      const decided = teams.length === 2 || (cfg.individual && teams.length > 1);
       return {
         round: rec.round,
         ...(rec.editionId ? { editionId: rec.editionId } : {}),
@@ -1761,8 +1843,10 @@ export function aggregate(
           ppb: t.bonusesHeard ? Math.round((100 * t.bonusPts) / t.bonusesHeard) / 100 : 0,
           powers: t.powers, gets: t.gets, incorrect: t.incorrect,
           // Only a two-team game has a result to report; anything else is a
-          // malformed or one-sided file and is left blank rather than guessed at.
-          result: !decided ? null : t.score === top && teams.every((o) => o.score === top) ? "T" : t.score === top ? "W" : "L",
+          // malformed or one-sided file and is left blank rather than guessed
+          // at — except a shootout room, whose result is a place in the room.
+          result: !decided ? null : t.result ?? (t.score === top && teams.every((o) => o.score === top) ? "T" : t.score === top ? "W" : "L"),
+          ...(t.place !== undefined ? { place: t.place } : {}),
           players: rec.players
             .filter((p) => p.team === t.name)
             .sort((a, b) => b.pts - a.pts || a.name.localeCompare(b.name))
@@ -1781,6 +1865,9 @@ export function aggregate(
   files["meta.json"] = {
     setName: cfg.name, setSlug: cfg.slug, scoring: scoring.id, scoringLabel: scoring.label,
     hasPower: scoring.hasPower, hasNeg: scoring.hasNeg, hasBonuses: cfg.hasBonuses,
+    // An individual shootout: every "team" here is one player. The client hides
+    // the team views and reads room places instead of head-to-head results.
+    individual: !!cfg.individual,
     // Whether per-team/per-player bonus breakdowns exist. False for imports that
     // only expose aggregate bonus conversion (no per-game results), so the client
     // hides team-level PPB while still showing tournament/category bonus stats.

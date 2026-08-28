@@ -7,6 +7,7 @@ export const TOURNAMENT_LEVELS: { id: string; label: string }[] = [
   { id: "open", label: "Open" },
   { id: "popculture", label: "Pop culture" },
   { id: "side", label: "Side event" },
+  { id: "practice", label: "Practice" },
 ];
 export const levelLabel = (id?: string): string => TOURNAMENT_LEVELS.find((l) => l.id === id)?.label ?? "";
 
@@ -56,6 +57,9 @@ export interface SetEntry {
   hasYf?: boolean; // owner uploaded a companion YellowFruit file (corrected export available)
   level?: string; // tournament type (see TOURNAMENT_LEVELS)
   tdLink?: string; // optional hsquizbowl Tournament Database link
+  // An individual shootout (IPNCT-style): players compete for themselves, so
+  // "teams" here are players. Absent means a team tournament.
+  individual?: boolean;
   numGames: number;
   numTeams: number;
   numPlayers: number;
@@ -151,7 +155,10 @@ export interface GameTeamLine {
   gets: number;
   incorrect: number;
   // Null when the file didn't describe a two-team game, so nothing is guessed.
+  // In an individual shootout it says whether this player won their room.
   result: "W" | "L" | "T" | null;
+  // Finishing place in the room (ties share one). Individual shootouts only.
+  place?: number;
   players: GamePlayerLine[];
 }
 export interface GameRow {
@@ -170,6 +177,9 @@ export interface Meta {
   hasPower: boolean;
   hasNeg: boolean;
   hasBonuses: boolean;
+  // An individual shootout: every "team" in the data is one player, so the
+  // team views are hidden and results are places in a room. Absent => teams.
+  individual?: boolean;
   // Whether per-team/per-player bonus data exists. Absent on older sets => treat
   // as true. False for imports that only carry aggregate bonus conversion.
   hasTeamBonuses?: boolean;

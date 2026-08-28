@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { refreshIndex } from "../data";
 import { useAuth } from "../auth";
@@ -58,6 +58,9 @@ export function CreateSet() {
   const [scoring, setScoring] = useState("mACF");
   const [detected, setDetected] = useState<string | null>(null);
   const [hasBonuses, setHasBonuses] = useState(true);
+  // Individual shootout (IPNCT-style): players compete for themselves. Such a
+  // format is tossups-only, so ticking it unticks bonuses (still changeable).
+  const [individual, setIndividual] = useState(false);
   const [packets, setPackets] = useState<File[]>([]);
   const [games, setGames] = useState<File[]>([]);
   const [yfFile, setYfFile] = useState<File[]>([]);
@@ -65,6 +68,9 @@ export function CreateSet() {
   const [autoPublish, setAutoPublish] = useState(true);
   const [autoPublishDate, setAutoPublishDate] = useState(plusYears(2));
   const [status, setStatus] = useState<string | null>(null);
+  // Practice tournaments are never public; switching to Practice after picking
+  // Public would otherwise leave the select on a hidden option.
+  useEffect(() => { if (level === "practice" && visibility === "public") setVisibility("listed"); }, [level, visibility]);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<string | null>(null);
   const [warned, setWarned] = useState<{ slug: string; warnings: CategoryWarning[]; rounds: RoundWarning[]; bonusDiffs: BonusDiffWarning[] } | null>(null);
@@ -127,7 +133,7 @@ export function CreateSet() {
       }
       setStatus("Building the tournament…");
       const autoPublicAt = visibility === "public" ? null : autoPublish ? new Date(autoPublishDate).toISOString() : null;
-      const fin = await importPost({ op: "import-finish", jobId: start.jobId, name: name.trim() || undefined, level, tdLink: tdLink.trim() || undefined, visibility, autoPublicAt });
+      const fin = await importPost({ op: "import-finish", jobId: start.jobId, name: name.trim() || undefined, level, tdLink: tdLink.trim() || undefined, individual, visibility, autoPublicAt });
       refreshIndex();
       navigate(`/set/${fin.slug}`);
     } catch (err) {
@@ -166,7 +172,7 @@ export function CreateSet() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          name: name.trim(), level, tdLink: tdLink.trim() || undefined, scoring, hasBonuses, visibility, autoPublicAt,
+          name: name.trim(), level, tdLink: tdLink.trim() || undefined, scoring, hasBonuses, individual, visibility, autoPublicAt,
           packets: packetRefs, games: gameRefs, ...(yf ? { yf } : {}),
         }),
       });
@@ -382,6 +388,17 @@ export function CreateSet() {
             <small className="muted">Link to this tournament's entry on the hsquizbowl Tournament Database, if it has one.</small>
           </label>
 
+          <label className="field-inline">
+            <input type="checkbox" checked={individual} onChange={(e) => { setIndividual(e.target.checked); if (e.target.checked) setHasBonuses(false); }} />
+            <span>Individual shootout (players compete for themselves, like IPNCT)</span>
+          </label>
+          {individual && (
+            <small className="muted">
+              Every player is scored on their own, whatever "teams" the scoresheets were filed under — a room of six
+              players is read as six competitors, and standings rank players rather than teams.
+            </small>
+          )}
+
           {mode === "upload" && <>
           <label className="field">
             <span>Scoring format</span>
@@ -429,14 +446,17 @@ export function CreateSet() {
           <label className="field">
             <span>Visibility</span>
             <select value={visibility} onChange={(e) => setVisibility(e.target.value as Visibility)}>
-              {VISIBILITY_OPTIONS.map((o) => (
+              {VISIBILITY_OPTIONS.filter((o) => o.id !== "public" || level !== "practice").map((o) => (
                 <option key={o.id} value={o.id}>{o.label}</option>
               ))}
             </select>
             <small className="muted">{visDesc}</small>
+            {level === "practice" && (
+              <small className="muted">Practice tournaments stay listed or private, and don't need a moderator's review.</small>
+            )}
           </label>
 
-          {visibility !== "public" && (
+          {visibility !== "public" && level !== "practice" && (
             <div className="field">
               <label className="field-inline">
                 <input type="checkbox" checked={autoPublish} onChange={(e) => setAutoPublish(e.target.checked)} />

@@ -115,7 +115,7 @@ export function FirstSentence() {
               {x.buzzers.map((b, i) => (
                 <span key={i} className={`fs-buzzer ${valueClass(b.value)}`} title={valueLabel(b.value)}>
                   <span className="fs-dot" />
-                  {b.player} <span className="muted">· {b.team}</span>
+                  {b.player}{b.team !== b.player && <span className="muted"> · {b.team}</span>}
                 </span>
               ))}
             </div>

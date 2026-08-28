@@ -42,7 +42,7 @@ function BuzzPop({ bz, slug }: { bz: Buzz[]; slug: string }) {
           <span className={`q-pop-val ${annotClass(b.value)}`}>{b.value > 0 ? `+${b.value}` : b.value}</span>
           <span className="q-pop-who">
             {b.playerId ? <Link className="link" to={`/set/${slug}/player/${b.playerId}`}>{b.player}</Link> : b.player}
-            <span className="q-pop-team">{b.team}</span>
+            {b.team !== b.player && <span className="q-pop-team">{b.team}</span>}
           </span>
         </span>
       ))}
@@ -257,9 +257,12 @@ function BuzzEditor({ d, b, slug, isOwner, teammates, cols, onClose, onApplied }
   );
 }
 
-function BuzzRow({ d, b, slug, i, isOwner, canEdit, editing, highlight, teammates, opponents, editions, showEdition, onEdit, onClose, onApplied }: {
+function BuzzRow({ d, b, slug, i, isOwner, canEdit, editing, highlight, teammates, opponents, editions, showEdition, individual, onEdit, onClose, onApplied }: {
   d: TossupDetail; b: Buzz; slug: string; i: number; isOwner: boolean; canEdit: boolean; editing: boolean;
   highlight: boolean; teammates: string[]; opponents: string[]; editions: EditionSummary[]; showEdition: boolean;
+  // A shootout: the "team" is this player and the "opponent" is one of several
+  // people in the room — neither is worth a cell.
+  individual: boolean;
   onEdit: () => void; onClose: () => void; onApplied: () => void;
 }) {
   const t = tier(b.value);
@@ -271,11 +274,13 @@ function BuzzRow({ d, b, slug, i, isOwner, canEdit, editing, highlight, teammate
             {b.playerId ? <Link className="link" to={`/set/${slug}/player/${b.playerId}`}>{b.player}</Link> : b.player}
             {canEdit && !editing && <button className="btn-link btn-edit" onClick={onEdit} title="Correct this buzz">Edit</button>}
           </span>
-          <span className="buzz-team"><TeamName name={b.team} id={b.teamId} slug={slug} roster={teammates} /></span>
+          {!individual && <span className="buzz-team"><TeamName name={b.team} id={b.teamId} slug={slug} roster={teammates} /></span>}
         </td>
-        <td className="buzz-opp">
-          {b.opponent ? <TeamName name={b.opponent} id={b.opponentId} slug={slug} roster={opponents} /> : "—"}
-        </td>
+        {!individual && (
+          <td className="buzz-opp">
+            {b.opponent ? <TeamName name={b.opponent} id={b.opponentId} slug={slug} roster={opponents} /> : "—"}
+          </td>
+        )}
         {showEdition && <td className="buzz-ed">{b.editionId ? <EditionBadges ids={[b.editionId]} editions={editions} /> : <span className="muted">—</span>}</td>}
         <td className="right mono">{b.wordIndex === null ? "—" : b.imprecise ? `≈${b.wordIndex + 1}` : b.wordIndex + 1}</td>
         <td className="right mono">{b.value}</td>
@@ -364,7 +369,7 @@ export function TossupDetailPage() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Player / Team</th><th>Opponent</th>
+                  {meta.individual ? <th>Player</th> : <><th>Player / Team</th><th>Opponent</th></>}
                   {showEdition && <th title="Edition (mirror) this buzz was played in">Edition</th>}
                   <th className="right" title="Buzz position (word #)">Buzz</th><th className="right">Val</th>
                 </tr>
@@ -375,7 +380,7 @@ export function TossupDetailPage() {
                     key={i} d={d} b={b} slug={slug} i={i} isOwner={isOwner} canEdit={!!user && (isOwner || allowRequests)}
                     editing={editing === i} highlight={(hoverWord !== null && effIdx(d, b) === hoverWord) || (focusWord !== null && b.wordIndex === focusWord)}
                     teammates={rosters?.[b.team] ?? []} opponents={rosters?.[b.opponent ?? ""] ?? []}
-                    editions={editions} showEdition={showEdition}
+                    editions={editions} showEdition={showEdition} individual={!!meta.individual}
                     onEdit={() => setEditing(i)} onClose={() => setEditing(null)}
                     onApplied={() => { setEditing(null); setNonce((n) => n + 1); }}
                   />

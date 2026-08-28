@@ -15,6 +15,10 @@ export interface SetSource {
   name: string;
   scoring: string;
   hasBonuses: boolean;
+  // An individual shootout (IPNCT-style): players compete for themselves, and
+  // every player is aggregated as a team of one. See individualize() in
+  // aggregate.ts. Absent means a team tournament.
+  individual?: boolean;
   editions?: Edition[];     // multi-edition model
   packets?: PacketFile[];   // legacy single-edition fallback
   games?: GameFile[];       // legacy
@@ -29,13 +33,16 @@ export interface EditionSummary { id: string; label: string; numGames: number; n
 export type Visibility = "public" | "listed" | "private";
 
 // Tournament level/type ids (labels live on the client).
-export const TOURNAMENT_LEVELS = ["hs", "college", "open", "popculture", "side"] as const;
+export const TOURNAMENT_LEVELS = ["hs", "college", "open", "popculture", "side", "practice"] as const;
 
 export interface SetEntry {
   slug: string;
   name: string;
   scoring: string;
   hasBonuses: boolean;
+  // Individual shootout — mirrors SetSource.individual, for the list and the
+  // set header. Absent means a team tournament.
+  individual?: boolean;
   // "results" = imported from a YellowFruit/QBJ box score (no buzz/question data);
   // absent/"buzz" = the default packet + QBJ buzz-level tournament.
   kind?: "buzz" | "results";
@@ -118,7 +125,14 @@ export const ownerEmails = (e: SetEntry): string[] =>
 
 // Effective visibility, applying the auto-publish date: a non-public set whose
 // autoPublicAt has passed is treated as public.
+// Practice tournaments are never public: they're listed or private only, with no
+// auto-publish date. That's what lets them skip both the first-post review and
+// the public-viewing approval — there's nothing to approve.
+export const isPractice = (e: { level?: string }): boolean => e.level === "practice";
+export const practiceVisibility = (v: Visibility): Visibility => (v === "public" ? "listed" : v);
+
 export function effectiveVisibility(e: SetEntry): Visibility {
+  if (isPractice(e)) return practiceVisibility(e.visibility ?? "listed");
   if (e.visibility === "public") return "public";
   if (e.autoPublicAt && Date.now() >= Date.parse(e.autoPublicAt)) return "public";
   return e.visibility ?? "listed";
@@ -705,7 +719,7 @@ function attachVersions(out: Record<string, unknown>, editions: Edition[]) {
 // at the top level and, when there are 2+ editions, each edition under
 // editions/<id>/. Returns the combined meta and the per-edition summaries.
 export async function aggregateAndWrite(slug: string, source: SetSource, corrections: Correction[]) {
-  const cfg: AggregateConfig = { name: source.name, slug, scoring: getScoring(source.scoring), hasBonuses: source.hasBonuses };
+  const cfg: AggregateConfig = { name: source.name, slug, scoring: getScoring(source.scoring), hasBonuses: source.hasBonuses, individual: !!source.individual };
   // Align mirrors that read the packets in different round orders onto a common
   // packet numbering, so combined stats key each question consistently.
   const editions = canonicalizeEditions(editionsOf(source));

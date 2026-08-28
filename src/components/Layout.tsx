@@ -105,7 +105,8 @@ export function SetLayout() {
     { to: `${base}/buzzer-races`, label: "Buzzer Races" },
     { to: `${base}/first-sentence`, label: "First Sentence" },
     { to: `${base}/player`, label: "Players" },
-    { to: `${base}/team`, label: "Teams" },
+    // A shootout's "teams" are its players — one page for them is enough.
+    ...(meta?.individual ? [] : [{ to: `${base}/team`, label: "Teams" }]),
     { to: `${base}/standard`, label: "Standard Stats" },
     { to: `${base}/category/tossup`, label: "Categories (Tossup)" },
     ...(meta?.hasBonuses ? [{ to: `${base}/category/bonus`, label: "Categories (Bonus)" }] : []),

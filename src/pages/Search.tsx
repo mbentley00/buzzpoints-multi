@@ -125,7 +125,7 @@ export function Search() {
                     <div className="search-result-row">
                       <div className="search-result-main">{p.name}</div>
                       <div className="search-result-meta">
-                        {p.team && <span>{p.team}</span>}
+                        {p.team && p.team !== p.name && <span>{p.team}</span>}
                         <span className="search-set">{p.setName}</span>
                         <span className="search-stat">{num(p.ppg)} PPG · {p.games} G</span>
                       </div>

@@ -14,7 +14,7 @@ import {
   writeVirtualCats, readRoundTags, writeRoundTags, DEFAULT_ROUND_TAGS, RoundTags, RoundTagsDoc, TOURNAMENT_LEVELS,
   editionsOf, canonicalizeEditions, Edition, SetSource, AccessRequest, readRenames, writeRenames, renameKey,
   readMetaMap, writeMetaMap, readTagEdits, writeTagEdits, readBonusDiffs, writeBonusDiffs,
-  isSetOwner, isPrimaryOwner, ownerEmails, requestsAllowed, needsPublishApproval,
+  isSetOwner, isPrimaryOwner, ownerEmails, requestsAllowed, needsPublishApproval, isPractice, practiceVisibility,
 } from "./_lib/sets.js";
 import { VirtualCategory, scanRoundAlignment, metaFields, MetaMap, MetaField, BonusDiffs } from "./_lib/aggregate.js";
 import { LETTER_ROUND_BASE } from "./_lib/publish.js";
@@ -138,7 +138,7 @@ const editionView = (e: Edition) => ({
 // Replace a source's editions, normalizing a legacy single-edition source to the
 // multi-edition model on the way (same shape ingest writes when appending).
 const withEditions = (source: SetSource, editions: Edition[]): SetSource =>
-  ({ name: source.name, scoring: source.scoring, hasBonuses: source.hasBonuses, editions });
+  ({ ...source, editions });
 
 // The most recently settled access requests, newest first.
 const resolvedList = (access: AccessRequest[]) =>
@@ -295,6 +295,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         hasYf: !!entry.hasYf,
         level: entry.level ?? "",
         tdLink: entry.tdLink ?? "",
+        individual: !!entry.individual,
         accessRequests: access.filter((a) => a.status === "pending"),
         // Recently-settled requests, so an owner following a request email to an
         // empty pending list can see the person let themselves in with a link.
@@ -308,6 +309,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (op === "settings") {
       const v = body.visibility;
       if (v !== undefined && !VIS.has(v)) return res.status(400).json({ error: "Invalid visibility." });
+      if (isPractice(entry) && (v === "public" || (body.autoPublicAt !== undefined && body.autoPublicAt !== null)))
+        return res.status(400).json({ error: "Practice tournaments can't be made public — they stay listed or private." });
       // Making a fresh upload public needs a moderator's approval (imports and
       // sets over three months old don't; moderators approve, so they bypass).
       // The request is queued on the entry instead of applied; everything else
@@ -733,7 +736,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         absorbed.push({ slug: s.slug, name: s.name, editions: incoming.length });
       }
 
-      const nextSource: SetSource = { name: destSource.name, scoring: destSource.scoring, hasBonuses, editions: eds };
+      const nextSource: SetSource = { ...destSource, hasBonuses, editions: eds };
       await writeSource(slug, nextSource);
       await writeCorrections(slug, corrections);
       await writeRenames(slug, renames);
@@ -817,8 +820,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const link = String(body.tdLink || "").trim();
       if (link && !/^https?:\/\/\S+$/i.test(link)) return res.status(400).json({ error: "The Tournament Database link must be a valid URL." });
       if (link) entry.tdLink = link.slice(0, 500); else delete entry.tdLink;
+      // Switching between a team tournament and an individual shootout changes
+      // how every game is read, so the stats are rebuilt on the spot.
+      let rebuilt = false;
+      if (body.individual !== undefined && !!body.individual !== !!entry.individual) {
+        const source = await readSource(slug);
+        if (!source) return res.status(500).json({ error: "Source data not found (set predates source storage; re-create it)." });
+        if (body.individual) { entry.individual = true; source.individual = true; }
+        else { delete entry.individual; delete source.individual; }
+        await writeSource(slug, source);
+        const { meta, editions } = await aggregateAndWrite(slug, source, await readCorrections(slug));
+        Object.assign(entry, { numGames: meta.numGames, numTeams: meta.numTeams, numPlayers: meta.numPlayers, numTossups: meta.numTossups, rounds: meta.rounds.length, editions });
+        rebuilt = true;
+      }
+      // Practice tournaments are never public: reclassifying one walks it back to
+      // listed, cancels any auto-publish date, and drops a pending public request.
+      if (isPractice(entry)) {
+        entry.visibility = practiceVisibility(entry.visibility ?? "listed");
+        entry.autoPublicAt = null;
+        delete entry.publicPending;
+      }
+      const stillGated = needsPublishApproval(entry) && !(await canModerate(user));
       await writeIndex(index);
-      return res.status(200).json({ ok: true, level: entry.level, tdLink: entry.tdLink ?? "" });
+      return res.status(200).json({
+        ok: true, level: entry.level, tdLink: entry.tdLink ?? "", visibility: entry.visibility, individual: !!entry.individual, rebuilt,
+        autoPublicAt: entry.autoPublicAt ?? null, publicPending: !!entry.publicPending, publicNeedsApproval: stillGated,
+      });
     } else {
       return res.status(400).json({ error: "Unknown op." });
     }

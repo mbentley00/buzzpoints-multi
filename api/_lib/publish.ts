@@ -5,7 +5,7 @@ import { PacketFile, GameFile } from "./aggregate.js";
 import { SCORINGS } from "./scoring.js";
 import {
   readIndex, writeIndex, writeSource, writeCorrections, writeRequests, readCorrections,
-  aggregateAndWrite, SetSource, SetEntry, Visibility, writeYf, TOURNAMENT_LEVELS, isSetOwner,
+  aggregateAndWrite, SetSource, SetEntry, Visibility, writeYf, TOURNAMENT_LEVELS, isSetOwner, practiceVisibility,
 } from "./sets.js";
 import { parseYellowFruit } from "./yellowfruit.js";
 
@@ -13,7 +13,7 @@ import { parseYellowFruit } from "./yellowfruit.js";
 // a blob the client uploaded directly (resolved to `json` before aggregation).
 export interface FileRef { name: string; json?: any; pathname?: string; }
 export interface CreateBody {
-  name?: string; scoring?: string; hasBonuses?: boolean;
+  name?: string; scoring?: string; hasBonuses?: boolean; individual?: boolean;
   packets?: FileRef[]; games?: FileRef[];
   visibility?: string; autoPublicAt?: string | null; edition?: string;
   yf?: any; // optional companion YellowFruit (.yft) for corrected re-export
@@ -78,10 +78,11 @@ export async function createTournament(body: CreateBody, owner: string): Promise
 
   const { packets, games } = parseFiles(body);
   const hasBonuses = !!body.hasBonuses;
-  const visibility = normVisibility(body.visibility);
+  const individual = !!body.individual;
+  const visibility = level === "practice" ? practiceVisibility(normVisibility(body.visibility)) : normVisibility(body.visibility);
   const createdAt = new Date().toISOString();
   let autoPublicAt: string | null = null;
-  if (visibility !== "public") {
+  if (visibility !== "public" && level !== "practice") {
     if (body.autoPublicAt === null) autoPublicAt = null;
     else if (typeof body.autoPublicAt === "string" && !Number.isNaN(Date.parse(body.autoPublicAt))) autoPublicAt = new Date(body.autoPublicAt).toISOString();
     else autoPublicAt = new Date(Date.now() + TWO_YEARS_MS).toISOString();
@@ -93,7 +94,7 @@ export async function createTournament(body: CreateBody, owner: string): Promise
   if (taken.has(slug)) { let n = 2; while (taken.has(`${slug}-${n}`)) n++; slug = `${slug}-${n}`; }
 
   const label = (body.edition || "").trim() || "Original";
-  const source: SetSource = { name, scoring: body.scoring!, hasBonuses, editions: [{ id: "e0", label, packets, games }] };
+  const source: SetSource = { name, scoring: body.scoring!, hasBonuses, ...(individual ? { individual } : {}), editions: [{ id: "e0", label, packets, games }] };
   await writeSource(slug, source);
   await writeCorrections(slug, []);
   await writeRequests(slug, []);
@@ -111,7 +112,7 @@ export async function createTournament(body: CreateBody, owner: string): Promise
   const { meta, editions } = await aggregateAndWrite(slug, source, []);
 
   const entry: SetEntry = {
-    slug, name, scoring: body.scoring!, hasBonuses, owner, editions, origin: "upload",
+    slug, name, scoring: body.scoring!, hasBonuses, ...(individual ? { individual } : {}), owner, editions, origin: "upload",
     visibility, invites: [], autoPublicAt, ...(hasYf ? { hasYf } : {}), level, ...(tdLink ? { tdLink } : {}),
     numGames: meta.numGames, numTeams: meta.numTeams, numPlayers: meta.numPlayers,
     numTossups: meta.numTossups, rounds: meta.rounds.length, createdAt,
@@ -142,6 +143,8 @@ export async function updateFromSource(
 
   // Keep the existing display name; only the underlying data is refreshed.
   source.name = entry.name || source.name;
+  // ...and the format: a re-scrape knows nothing about how the set is read.
+  if (entry.individual) source.individual = true;
   await writeSource(slug, source);
   const { meta, editions } = await aggregateAndWrite(slug, source, await readCorrections(slug));
 
@@ -160,18 +163,20 @@ export async function updateFromSource(
 export async function createFromSource(
   source: SetSource,
   owner: string,
-  opts: { name?: string; visibility?: string; autoPublicAt?: string | null; level?: string; tdLink?: string }
+  opts: { name?: string; visibility?: string; autoPublicAt?: string | null; level?: string; tdLink?: string; individual?: boolean }
 ): Promise<{ slug: string }> {
   const name = (opts.name || source.name || "").trim();
   if (!name) throw new CreateError(400, "Tournament name is required.");
   const level = validLevel(opts.level);
   const tdLink = cleanTdLink(opts.tdLink);
   source.name = name;
+  if (opts.individual) source.individual = true;
+  const individual = !!source.individual;
 
-  const visibility = normVisibility(opts.visibility);
+  const visibility = level === "practice" ? practiceVisibility(normVisibility(opts.visibility)) : normVisibility(opts.visibility);
   const createdAt = new Date().toISOString();
   let autoPublicAt: string | null = null;
-  if (visibility !== "public") {
+  if (visibility !== "public" && level !== "practice") {
     if (opts.autoPublicAt === null) autoPublicAt = null;
     else if (typeof opts.autoPublicAt === "string" && !Number.isNaN(Date.parse(opts.autoPublicAt))) autoPublicAt = new Date(opts.autoPublicAt).toISOString();
     else autoPublicAt = new Date(Date.now() + TWO_YEARS_MS).toISOString();
@@ -188,7 +193,7 @@ export async function createFromSource(
   const { meta, editions } = await aggregateAndWrite(slug, source, []);
 
   const entry: SetEntry = {
-    slug, name, scoring: source.scoring, hasBonuses: source.hasBonuses, owner, editions, origin: "import",
+    slug, name, scoring: source.scoring, hasBonuses: source.hasBonuses, ...(individual ? { individual } : {}), owner, editions, origin: "import",
     visibility, invites: [], autoPublicAt, level, ...(tdLink ? { tdLink } : {}),
     numGames: meta.numGames, numTeams: meta.numTeams, numPlayers: meta.numPlayers,
     numTossups: meta.numTossups, rounds: meta.rounds.length, createdAt,

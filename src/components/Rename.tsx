@@ -17,8 +17,11 @@ async function postJson(url: string, body: unknown) {
   return d;
 }
 
-export function Rename({ slug, kind, name, team, isOwner }: {
+export function Rename({ slug, kind, name, team, isOwner, individual = false }: {
   slug: string; kind: "player" | "team"; name: string; team?: string; isOwner: boolean;
+  // An individual shootout: the player is their own team, so there's no
+  // "which team" to scope by and the rename is always set-wide.
+  individual?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [to, setTo] = useState(name);
@@ -34,7 +37,7 @@ export function Rename({ slug, kind, name, team, isOwner }: {
   async function submit() {
     setErr(null);
     setBusy(true);
-    const rename = { kind, from: name, to: to.trim(), team: isTeam || allTeams ? null : team };
+    const rename = { kind, from: name, to: to.trim(), team: isTeam || allTeams || individual ? null : team };
     try {
       if (isOwner) {
         await postJson("/api/correct", { slug, rename });
@@ -68,7 +71,7 @@ export function Rename({ slug, kind, name, team, isOwner }: {
         <span>Rename to</span>
         <input value={to} onChange={(e) => setTo(e.target.value)} style={{ minWidth: 220 }} />
       </label>
-      {!isTeam && (
+      {!isTeam && !individual && (
         <label className="field-inline">
           <input type="checkbox" checked={allTeams} onChange={(e) => setAllTeams(e.target.checked)} />
           <span>Apply on every team, not just {team}</span>
@@ -90,7 +93,7 @@ export function Rename({ slug, kind, name, team, isOwner }: {
         ) : (
           <>
             Every buzz, box score and roster entry for <strong>{name}</strong>
-            {allTeams ? "" : <> on <strong>{team}</strong></>} will use the new name. If someone already appears under the
+            {allTeams || individual ? "" : <> on <strong>{team}</strong></>} will use the new name. If someone already appears under the
             new spelling, the two merge into one player.
           </>
         )}

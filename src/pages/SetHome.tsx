@@ -10,7 +10,7 @@ export function SetHome() {
     { to: `${base}/tossup`, label: "Tossups", desc: `${meta.numTossups} questions` },
     ...(meta.hasBonuses ? [{ to: `${base}/bonus`, label: "Bonuses", desc: `${meta.numBonuses} bonuses` }] : []),
     { to: `${base}/player`, label: "Players", desc: `${meta.numPlayers} players` },
-    { to: `${base}/team`, label: "Teams", desc: `${meta.numTeams} teams` },
+    ...(meta.individual ? [] : [{ to: `${base}/team`, label: "Teams", desc: `${meta.numTeams} teams` }]),
     { to: `${base}/category/tossup`, label: "Categories (Tossup)", desc: "By subject" },
     ...(meta.hasBonuses ? [{ to: `${base}/category/bonus`, label: "Categories (Bonus)", desc: "By subject" }] : []),
   ];
@@ -21,7 +21,9 @@ export function SetHome() {
           <h1>{meta.setName}</h1>
           <p className="subtitle">
             {level && <>{levelLabel(level)} · </>}
-            {meta.numGames} games · {meta.numTeams} teams · {meta.numPlayers} players · {meta.rounds.length} rounds ·{" "}
+            {meta.individual
+              ? <>{meta.numGames} rooms · {meta.numPlayers} players · {meta.rounds.length} rounds · individual shootout · </>
+              : <>{meta.numGames} games · {meta.numTeams} teams · {meta.numPlayers} players · {meta.rounds.length} rounds · </>}
             {meta.scoringLabel}
             {meta.hasBonuses ? " · with bonuses" : " · no bonuses"}
           </p>
