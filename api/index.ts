@@ -27,6 +27,10 @@ export interface SearchOpts {
   // which is how a filter can span sets that each name their categories
   // differently.
   cats?: CategoryBucket[];
+  // Which of the caller's viewable sets to search. "public" (the default) is
+  // only the ones anyone could see; "all" adds the listed and private sets this
+  // caller has been let into. Never anything beyond canViewContent.
+  scope?: "public" | "all";
 }
 
 // A short window of plain text around the first match, so a text hit shows
@@ -55,8 +59,14 @@ const setFacts = (s: SetEntry) => ({
 async function search(user: string | null, q: string, type: "players" | "questions", opts: SearchOpts, res: VercelResponse) {
   const needle = q.toLowerCase();
   const idx = await readBlobJson<{ sets: SetEntry[] }>("sets/index.json", false);
+  // canViewContent is the same test /api/data applies before serving question
+  // content unredacted — the search must never show a question, a snippet or
+  // an answer from a set the caller couldn't open and read in full. (Moderators
+  // and admins get no special reach here: their redacted view of a private set
+  // doesn't extend to searching its text.)
   const accessible = (idx?.sets ?? [])
     .filter((s) => canViewContent(s, user))
+    .filter((s) => opts.scope === "all" || effectiveVisibility(s) === "public")
     .filter((s) => !opts.level || s.level === opts.level)
     .slice(0, MAX_SETS);
   const kind = opts.kind ?? "all";
@@ -239,6 +249,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         kind: kindQ === "tossup" || kindQ === "bonus" ? kindQ : "all",
         field: fieldQ === "answer" || fieldQ === "text" ? fieldQ : "all",
         cats: String(req.query.cat || "").split(",").map((c) => c.trim()).filter(isCategoryBucket),
+        scope: req.query.scope === "all" ? "all" : "public",
       };
       return await search(user, q, type, opts, res);
     }

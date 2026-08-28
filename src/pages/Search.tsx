@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AuthNav, Loading, ErrorBox } from "../components/Common";
 import { Html, CategoryTag, num, roundLabel, primaryAnswer } from "../util";
+import { useAuth } from "../auth";
 import { TOURNAMENT_LEVELS, CATEGORY_BUCKETS, Visibility, levelLabel, difficultyLabel } from "../types";
 
 type SearchType = "players" | "questions";
@@ -96,6 +97,10 @@ export function Search() {
   const kind: QKind = (["tossup", "bonus"].includes(params.get("kind") || "") ? params.get("kind") : "all") as QKind;
   const field: QField = (["answer", "text"].includes(params.get("field") || "") ? params.get("field") : "all") as QField;
   const cat = CATEGORY_BUCKETS.some((b) => b.id === params.get("cat")) ? params.get("cat")! : "";
+  // Public tournaments by default; a signed-in viewer can widen it to the listed
+  // and private ones they've been let into. The server enforces access either way.
+  const scope: "public" | "all" = params.get("scope") === "all" ? "all" : "public";
+  const { user } = useAuth();
 
   const [input, setInput] = useState(q);
   const [typeSel, setTypeSel] = useState<SearchType>(type);
@@ -113,6 +118,7 @@ export function Search() {
     let alive = true;
     setLoading(true); setError("");
     const qs = new URLSearchParams({ q, type });
+    if (scope === "all") qs.set("scope", "all");
     if (level) qs.set("level", level);
     if (type === "questions") { if (kind !== "all") qs.set("kind", kind); if (field !== "all") qs.set("field", field); if (cat) qs.set("cat", cat); }
     fetch(`/api/index?${qs}`)
@@ -126,14 +132,15 @@ export function Search() {
       .catch((e) => { if (alive) setError(String(e.message || e)); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [q, type, level, kind, field, cat]);
+  }, [q, type, level, kind, field, cat, scope]);
 
-  type Filters = { level?: string; kind?: QKind; field?: QField; cat?: string };
+  type Filters = { level?: string; kind?: QKind; field?: QField; cat?: string; scope?: "public" | "all" };
   const run = (nextQ: string, nextType: SearchType, more: Filters = {}) => {
     const qq = nextQ.trim();
     if (!qq) { setParams({}); return; }
     const next: Record<string, string> = { q: qq, type: nextType };
-    const lv = more.level ?? level, kd = more.kind ?? kind, fd = more.field ?? field, ct = more.cat ?? cat;
+    const lv = more.level ?? level, kd = more.kind ?? kind, fd = more.field ?? field, ct = more.cat ?? cat, sc = more.scope ?? scope;
+    if (sc === "all") next.scope = "all";
     if (lv) next.level = lv;
     if (nextType === "questions") { if (kd !== "all") next.kind = kd; if (fd !== "all") next.field = fd; if (ct) next.cat = ct; }
     setParams(next);
@@ -146,7 +153,8 @@ export function Search() {
     if (q) run(q, typeSel, more);
     else {
       const next: Record<string, string> = {};
-      const lv = more.level ?? level, kd = more.kind ?? kind, fd = more.field ?? field, ct = more.cat ?? cat;
+      const lv = more.level ?? level, kd = more.kind ?? kind, fd = more.field ?? field, ct = more.cat ?? cat, sc = more.scope ?? scope;
+      if (sc === "all") next.scope = "all";
       if (lv) next.level = lv; if (kd !== "all") next.kind = kd; if (fd !== "all") next.field = fd; if (ct) next.cat = ct;
       setParams(next);
     }
@@ -168,7 +176,7 @@ export function Search() {
 
       <main className="content">
         <h1>Search</h1>
-        <p className="subtitle">Find players or questions across every tournament you can view.</p>
+        <p className="subtitle">Find players or questions across public tournaments{user ? " — or every tournament you can view" : ""}.</p>
 
         <form className="search-form" onSubmit={onSubmit}>
           <div className="search-toggle">
@@ -186,6 +194,17 @@ export function Search() {
           <button className="btn-primary" type="submit">Search</button>
         </form>
         <div className="search-filters">
+          {/* Anonymous viewers can only ever see public sets, so the choice is
+              only offered once there's something to widen to. */}
+          {user && (
+            <label className="filter">
+              Tournaments{" "}
+              <select value={scope} onChange={(e) => setFilter({ scope: e.target.value === "all" ? "all" : "public" })}>
+                <option value="public">Public only</option>
+                <option value="all">All I can view</option>
+              </select>
+            </label>
+          )}
           <label className="filter">
             Tournament type{" "}
             <select value={level} onChange={(e) => setFilter({ level: e.target.value })}>
