@@ -18,7 +18,7 @@ import { readBlobJson } from "./blob.js";
 import { categoryBuckets, CategoryBucket } from "./categories.js";
 
 export const SEARCH_FILE = "_search.json";
-const VERSION = 1;
+const VERSION = 2; // 2: correct / heard counts behind the conversion rates
 
 export interface SearchTossup {
   id: string; round: number; num: number;
@@ -26,7 +26,7 @@ export interface SearchTossup {
   a: string;                 // answer, plain + lowercase, for matching
   t: string;                 // question text, plain + lowercase
   category: string; subcategory: string; buckets: CategoryBucket[];
-  heard: number; convPct: number | null; avgBuzzPct: number | null; wordCount: number | null;
+  heard: number; correct: number; convPct: number | null; avgBuzzPct: number | null; wordCount: number | null;
   buzzes: [number, number][]; // [wordIndex, value] of every placed buzz
 }
 export interface SearchBonus {
@@ -34,7 +34,8 @@ export interface SearchBonus {
   answers: string[]; a: string[];
   t: string;                 // lead-in + parts, plain + lowercase
   category: string; subcategory: string; buckets: CategoryBucket[];
-  parts: { difficulty: string; convPct: number | null }[];
+  heard: number;
+  parts: { difficulty: string; convPct: number | null; convCount: number | null }[];
 }
 export interface SearchPlayer {
   id: string; name: string; n: string; team: string; tm: string;
@@ -56,7 +57,7 @@ export function buildSearchDoc(files: Record<string, any>): SearchDoc {
   const tossups: SearchTossup[] = Object.values(tu).map((r) => ({
     id: r.id, round: r.round, num: r.num, answer: r.answer ?? "", a: low(r.answer), t: low(r.questionHtml),
     category: r.category ?? "", subcategory: r.subcategory ?? "", buckets: categoryBuckets(r.category, r.subcategory),
-    heard: r.heard ?? 0, convPct: r.convPct ?? null, avgBuzzPct: r.avgBuzzPct ?? null, wordCount: r.wordCount ?? null,
+    heard: r.heard ?? 0, correct: (r.powers ?? 0) + (r.gets ?? 0), convPct: r.convPct ?? null, avgBuzzPct: r.avgBuzzPct ?? null, wordCount: r.wordCount ?? null,
     buzzes: (Array.isArray(r.buzzes) ? r.buzzes : [])
       .filter((b: any) => b && b.wordIndex !== null && b.wordIndex !== undefined)
       .map((b: any) => [b.wordIndex, b.value] as [number, number]),
@@ -69,7 +70,8 @@ export function buildSearchDoc(files: Record<string, any>): SearchDoc {
     return {
       id: r.id, round: r.round, num: r.num, answers, a: answers.map(low), t: low([r.leadin, ...parts].join(" ")),
       category: r.category ?? "", subcategory: r.subcategory ?? "", buckets: categoryBuckets(r.category, r.subcategory),
-      parts: answers.map((_, i) => ({ difficulty: String(mods[i] || ""), convPct: conv.find((p) => p.idx === i)?.convPct ?? null })),
+      heard: r.heard ?? 0,
+      parts: answers.map((_, i) => { const c = conv.find((p) => p.idx === i); return { difficulty: String(mods[i] || ""), convPct: c?.convPct ?? null, convCount: c?.convCount ?? null }; }),
     };
   });
   const players: SearchPlayer[] = pl.map((r) => {

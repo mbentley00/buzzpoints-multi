@@ -111,7 +111,7 @@ async function search(user: string | null, q: string, type: "players" | "questio
           if (!inCats(r.buckets)) continue;
           results.push({
             ...setFacts(s), kind: "tossup", id: r.id, round: r.round, num: r.num, answer: r.answer, category: r.category,
-            heard: r.heard, convPct: r.convPct, avgBuzzPct: r.avgBuzzPct, wordCount: r.wordCount, buzzes: r.buzzes,
+            heard: r.heard, correct: r.correct, convPct: r.convPct, avgBuzzPct: r.avgBuzzPct, wordCount: r.wordCount, buzzes: r.buzzes,
             ...(byText ? { snippet: byText } : {}), ...(aSnip ? { answerSnippet: aSnip } : {}),
           });
         }
@@ -125,7 +125,8 @@ async function search(user: string | null, q: string, type: "players" | "questio
           results.push({
             ...setFacts(s), kind: "bonus", id: r.id, round: r.round, num: r.num,
             answer: ai >= 0 ? r.answers[ai] : r.answers[0] ?? "", matchedPart: ai >= 0 ? ai : null,
-            parts: r.answers.map((a, i) => ({ answer: a, difficulty: r.parts[i]?.difficulty ?? "", convPct: r.parts[i]?.convPct ?? null })),
+            heard: r.heard,
+            parts: r.answers.map((a, i) => ({ answer: a, difficulty: r.parts[i]?.difficulty ?? "", convPct: r.parts[i]?.convPct ?? null, convCount: r.parts[i]?.convCount ?? null })),
             category: r.category, ...(byText ? { snippet: byText } : {}), ...(aSnip ? { answerSnippet: aSnip } : {}),
           });
         }

@@ -17,7 +17,7 @@ interface QuestionHit extends SetFacts {
   kind: "tossup" | "bonus"; id: string; round: number; num: number; answer: string; category: string;
   // Bonuses: every part (answer, difficulty mark, field-wide conversion), and
   // which one matched (null when the lead-in / parts / category did instead).
-  parts?: { answer: string; difficulty: string; convPct: number | null }[]; matchedPart?: number | null;
+  parts?: { answer: string; difficulty: string; convPct: number | null; convCount: number | null }[]; matchedPart?: number | null;
   // A window of question text around the match, when that's what matched.
   snippet?: string;
   // A window of the answer line around the match, when that's what matched —
@@ -25,8 +25,13 @@ interface QuestionHit extends SetFacts {
   answerSnippet?: string;
   // Tossups: how buzzable it was — every placed buzz as [word, value], the
   // question's length, and the headline rates.
-  heard?: number; convPct?: number | null; avgBuzzPct?: number | null; wordCount?: number | null; buzzes?: [number, number][];
+  heard?: number; correct?: number; convPct?: number | null; avgBuzzPct?: number | null; wordCount?: number | null; buzzes?: [number, number][];
 }
+
+// "50% (3/6)": a rate with the count behind it, so a striking figure from a
+// handful of rooms reads as what it is.
+const rate = (pct: number | null | undefined, n: number | null | undefined, of: number | null | undefined) =>
+  pct == null ? null : `${num(pct, 0)}%${n != null && of != null ? ` (${n}/${of})` : ""}`;
 
 // A part's difficulty mark, as packets write it ("easy", "e", "hard"), in one letter.
 const diffShort = (d: string) => { const c = d.trim().charAt(0).toUpperCase(); return "EMH".includes(c) && c ? c : d; };
@@ -193,7 +198,7 @@ export function Search() {
               <Link className="link" to={`/set/${r.slug}/bonus/${r.id}`}><Html html={primaryAnswer(pt.answer)} /></Link>
               <span className="search-part-stats">
                 {pt.difficulty && <span className="search-part-diff" title="Difficulty mark">{diffShort(pt.difficulty)}</span>}
-                {pt.convPct != null && <span className="search-part-conv" title="Conversion across the tournament">{num(pt.convPct, 0)}%</span>}
+                {pt.convPct != null && <span className="search-part-conv" title="Conversion across the tournament (rooms that got it / rooms that heard it)">{rate(pt.convPct, pt.convCount, r.heard)}</span>}
               </span>
             </div>
           ))}
@@ -208,8 +213,8 @@ export function Search() {
         title: "Cumulative buzzes as the question is read: grey is every buzz, green the correct ones; the dashed line is the average correct buzz." },
       { key: "avg", label: "Avg buzz", align: "right" as const, sortVal: (r: QuestionHit) => r.avgBuzzPct ?? 999, render: (r: QuestionHit) => (r.kind === "tossup" && r.avgBuzzPct != null ? `${num(r.avgBuzzPct, 0)}%` : <span className="muted">—</span>),
         title: "Average correct buzz, as a share of the way through the question. Lower is more buzzable." },
-      { key: "conv", label: "Conv", align: "right" as const, sortVal: (r: QuestionHit) => r.convPct ?? -1, render: (r: QuestionHit) => (r.kind === "tossup" && r.convPct != null ? `${num(r.convPct, 0)}%` : <span className="muted">—</span>),
-        title: "Share of rooms that answered it correctly" },
+      { key: "conv", label: "Conv", align: "right" as const, sortVal: (r: QuestionHit) => r.convPct ?? -1, render: (r: QuestionHit) => (r.kind === "tossup" && r.convPct != null ? <span className="nowrap">{rate(r.convPct, r.correct, r.heard)}</span> : <span className="muted">—</span>),
+        title: "Rooms that answered it correctly, out of rooms that heard it" },
       { key: "heard", label: "Heard", align: "right" as const, sortVal: (r: QuestionHit) => r.heard ?? -1, render: (r: QuestionHit) => (r.kind === "tossup" ? r.heard ?? 0 : <span className="muted">—</span>) },
     ] : []),
     { key: "cat", label: "Category", sortVal: (r) => r.category.toLowerCase(), render: (r) => (r.category ? <CategoryTag cat={r.category} /> : <span className="muted">—</span>) },

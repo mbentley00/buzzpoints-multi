@@ -1306,3 +1306,4 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
 
 /* A heading over a group of fields that aren't each separately labelled. */
 .field-label { font-weight: 600; font-size: 13.5px; margin-top: 6px; }
+.nowrap { white-space: nowrap; }
