@@ -50,23 +50,38 @@ function SetCell({ s }: { s: SetFacts }) {
   );
 }
 
-// A tossup's buzzes on one strip, start of the question to the end: a tick per
-// buzz, coloured power / get / neg, with the average correct buzz marked. Enough
-// to see at a glance whether a question was answered early, late, or mostly negged.
-function BuzzStrip({ q }: { q: QuestionHit }) {
+// A tossup's buzzes as a small cumulative chart, the same shape as the one on
+// the tossup page: how many buzzes had come in by each word (grey), and how many
+// of those were correct (green, filled), with the average correct buzz as a
+// dashed line. The question runs from 0 to its last word, both labelled.
+function BuzzChart({ q }: { q: QuestionHit }) {
   const n = q.wordCount || 0;
   const buzzes = q.buzzes ?? [];
   if (!n || !q.heard) return <span className="muted">—</span>;
-  const W = 120, H = 14;
+  const W = 150, H = 44, PAD_B = 11, top = 3;
+  const plotH = H - PAD_B - top;
   const x = (w: number) => Math.min(W, Math.max(0, (w / n) * W));
-  const cls = (v: number) => (v > 10 ? "bs-pwr" : v > 0 ? "bs-get" : "bs-neg");
+  const total = buzzes.length || 1;
+  const y = (c: number) => top + plotH - (c / total) * plotH;
+  // A step path: count so far, stepping up at each buzz's word.
+  const steps = (pts: number[]) => {
+    const sorted = [...pts].sort((a, b) => a - b);
+    let d = `M0,${y(0)}`, c = 0;
+    for (const w of sorted) { d += ` H${x(w)}`; c++; d += ` V${y(c)}`; }
+    return d + ` H${W}`;
+  };
+  const all = buzzes.map(([w]) => w);
+  const correct = buzzes.filter(([, v]) => v > 0).map(([w]) => w);
   const avgX = q.avgBuzzPct != null ? (q.avgBuzzPct / 100) * W : null;
   return (
-    <span className="buzz-strip" title={`${q.heard} heard · ${buzzes.length} buzzes · ${q.convPct ?? 0}% converted${q.avgBuzzPct != null ? ` · average correct buzz ${q.avgBuzzPct}% of the way through` : ""}`}>
+    <span className="buzz-chart" title={`${q.heard} heard · ${buzzes.length} buzzes, ${correct.length} correct · ${q.convPct ?? 0}% converted${q.avgBuzzPct != null ? ` · average correct buzz ${q.avgBuzzPct}% of the way through` : ""}`}>
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden="true">
-        <line x1={0} y1={H / 2} x2={W} y2={H / 2} className="bs-base" />
-        {buzzes.map(([w, v], i) => <line key={i} x1={x(w)} x2={x(w)} y1={2} y2={H - 2} className={cls(v)} />)}
-        {avgX != null && <polygon points={`${avgX - 3},${H} ${avgX + 3},${H} ${avgX},${H - 4}`} className="bs-avg" />}
+        <line x1={0} y1={y(0)} x2={W} y2={y(0)} className="bc-axis" />
+        <path d={`${steps(all)} V${y(0)} Z`} className="bc-total" />
+        <path d={`${steps(correct)} V${y(0)} Z`} className="bc-correct" />
+        {avgX != null && <line x1={avgX} x2={avgX} y1={top} y2={y(0)} className="bc-avg" />}
+        <text x={0} y={H - 1} className="bc-label">0</text>
+        <text x={W} y={H - 1} className="bc-label" textAnchor="end">end</text>
       </svg>
     </span>
   );
@@ -172,8 +187,8 @@ export function Search() {
     ) },
     { key: "match", label: "Matched text", sortVal: (r) => (r.snippet ? 1 : 0), render: (r) => (r.snippet ? <span className="search-snippet">{r.snippet}</span> : <span className="muted">—</span>) },
     ...(kind !== "bonus" ? [
-      { key: "buzz", label: "Buzzes", sortVal: (r: QuestionHit) => r.avgBuzzPct ?? 999, render: (r: QuestionHit) => (r.kind === "tossup" ? <BuzzStrip q={r} /> : <span className="muted">—</span>),
-        title: "Where each buzz fell along the question: blue power, green correct, red wrong. ▲ marks the average correct buzz." },
+      { key: "buzz", label: "Buzzes", sortVal: (r: QuestionHit) => r.avgBuzzPct ?? 999, render: (r: QuestionHit) => (r.kind === "tossup" ? <BuzzChart q={r} /> : <span className="muted">—</span>),
+        title: "Cumulative buzzes as the question is read: grey is every buzz, green the correct ones; the dashed line is the average correct buzz." },
       { key: "avg", label: "Avg buzz", align: "right" as const, sortVal: (r: QuestionHit) => r.avgBuzzPct ?? 999, render: (r: QuestionHit) => (r.kind === "tossup" && r.avgBuzzPct != null ? `${num(r.avgBuzzPct, 0)}%` : <span className="muted">—</span>),
         title: "Average correct buzz, as a share of the way through the question. Lower is more buzzable." },
       { key: "conv", label: "Conv", align: "right" as const, sortVal: (r: QuestionHit) => r.convPct ?? -1, render: (r: QuestionHit) => (r.kind === "tossup" && r.convPct != null ? `${num(r.convPct, 0)}%` : <span className="muted">—</span>),

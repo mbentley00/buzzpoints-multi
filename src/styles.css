@@ -408,14 +408,13 @@ h2 { font-size: 16px; font-weight: 700; margin: 26px 0 10px; }
 .content-wide { max-width: 1500px; }
 .search-part-diff, .search-part-conv { font-size: 11px; color: var(--muted); background: var(--hover); border-radius: 4px; padding: 0 5px; font-variant-numeric: tabular-nums; }
 .search-result-meta .vis-badge { margin-left: 0; }
-.buzz-strip { display: inline-flex; align-items: center; }
-.buzz-strip svg { flex: none; overflow: visible; }
-.buzz-strip .bs-base { stroke: var(--panel-line, #ccc); stroke-width: 1; }
-.buzz-strip .bs-pwr { stroke: var(--power); stroke-width: 2; }
-.buzz-strip .bs-get { stroke: var(--get); stroke-width: 2; }
-.buzz-strip .bs-neg { stroke: var(--neg); stroke-width: 2; opacity: 0.8; }
-.buzz-strip .bs-avg { fill: var(--ink); }
-.buzz-strip-text b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.buzz-chart { display: inline-block; line-height: 0; }
+.buzz-chart svg { overflow: visible; }
+.buzz-chart .bc-axis { stroke: var(--panel-line, #ccc); stroke-width: 1; }
+.buzz-chart .bc-total { fill: #9aa3ad; fill-opacity: 0.45; stroke: #8a939d; stroke-width: 1; }
+.buzz-chart .bc-correct { fill: var(--get); fill-opacity: 0.55; stroke: var(--get); stroke-width: 1.2; }
+.buzz-chart .bc-avg { stroke: #d08a2b; stroke-width: 1.5; stroke-dasharray: 2 2; }
+.buzz-chart .bc-label { font-size: 9px; fill: var(--muted); }
 .mini-btn.on { background: var(--nav); color: #fff; border-color: var(--nav); }
 .search-box {
   flex: 1; min-width: 240px; max-width: 460px; padding: 9px 12px; font-size: 15px;
