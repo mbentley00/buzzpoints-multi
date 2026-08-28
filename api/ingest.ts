@@ -315,7 +315,7 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     if (blocked) return res.status(400).json({ error: `Tournament name contains a disallowed word: "${blocked}".` });
     const source: SetSource = { name, scoring, hasBonuses: job.hasBonuses, editions };
     try {
-      const { slug } = await createFromSource(source, owner, { name, visibility: body.visibility, autoPublicAt: body.autoPublicAt ?? null, level, tdLink, individual: !!body.individual });
+      const { slug } = await createFromSource(source, owner, { name, visibility: body.visibility, autoPublicAt: body.autoPublicAt ?? null, level, tdLink, difficulty: body.difficulty, individual: !!body.individual });
       await cleanupJob();
       return res.status(200).json({ slug, editions: editions.length });
     } catch (e) {
@@ -336,6 +336,7 @@ interface Body {
   replaceRound?: boolean; // with editionId: swap out the rounds these files cover instead of appending
   yf?: any; // optional companion YellowFruit (.yft) JSON for corrected re-export
   level?: string; tdLink?: string; // tournament type + optional Tournament Database link
+  difficulty?: string; // question difficulty on the level's scale
   importUrl?: string; // import-start: the Buzzpoints site to import
   // import-start: import exactly these tournament slugs as the set's editions,
   // instead of the ones discovered from importUrl. For sites whose mirrors don't
@@ -531,7 +532,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await writePendingPayload(id, {
         name, scoring: body.scoring!, hasBonuses: !!body.hasBonuses, ...(body.individual ? { individual: true } : {}),
         visibility: body.visibility, autoPublicAt: body.autoPublicAt ?? null,
-        edition: body.edition, level, ...(tdLink ? { tdLink } : {}),
+        edition: body.edition, level, ...(tdLink ? { tdLink } : {}), ...(body.difficulty ? { difficulty: body.difficulty } : {}),
         packets: body.packets!.map((r) => ({ name: r.name, json: r.json })),
         games: body.games!.map((r) => ({ name: r.name, json: r.json })),
         ...(body.yf ? { yf: body.yf } : {}),

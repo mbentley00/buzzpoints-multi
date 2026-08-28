@@ -17,7 +17,7 @@ import {
   isSetOwner, isPrimaryOwner, ownerEmails, requestsAllowed, needsPublishApproval, isPractice, practiceVisibility,
 } from "./_lib/sets.js";
 import { VirtualCategory, scanRoundAlignment, metaFields, MetaMap, MetaField, BonusDiffs } from "./_lib/aggregate.js";
-import { LETTER_ROUND_BASE } from "./_lib/publish.js";
+import { LETTER_ROUND_BASE, cleanDifficulty } from "./_lib/publish.js";
 import { sendEmail, appUrl, accessRequestBody, accessGrantedBody, coOwnerBody, publishRequestBody } from "./_lib/email.js";
 import { readModConfig, findBlocked } from "./_lib/moderation.js";
 
@@ -295,6 +295,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         hasYf: !!entry.hasYf,
         level: entry.level ?? "",
         tdLink: entry.tdLink ?? "",
+        difficulty: entry.difficulty ?? "",
         individual: !!entry.individual,
         accessRequests: access.filter((a) => a.status === "pending"),
         // Recently-settled requests, so an owner following a request email to an
@@ -820,6 +821,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const link = String(body.tdLink || "").trim();
       if (link && !/^https?:\/\/\S+$/i.test(link)) return res.status(400).json({ error: "The Tournament Database link must be a valid URL." });
       if (link) entry.tdLink = link.slice(0, 500); else delete entry.tdLink;
+      // Difficulty is on the level's scale; a level with none drops it.
+      let difficulty: string | undefined;
+      try { difficulty = cleanDifficulty(lvl, body.difficulty); }
+      catch (e) { return res.status(400).json({ error: (e as Error).message }); }
+      if (difficulty) entry.difficulty = difficulty; else delete entry.difficulty;
       // Switching between a team tournament and an individual shootout changes
       // how every game is read, so the stats are rebuilt on the spot.
       let rebuilt = false;
@@ -843,7 +849,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const stillGated = needsPublishApproval(entry) && !(await canModerate(user));
       await writeIndex(index);
       return res.status(200).json({
-        ok: true, level: entry.level, tdLink: entry.tdLink ?? "", visibility: entry.visibility, individual: !!entry.individual, rebuilt,
+        ok: true, level: entry.level, tdLink: entry.tdLink ?? "", difficulty: entry.difficulty ?? "", visibility: entry.visibility, individual: !!entry.individual, rebuilt,
         autoPublicAt: entry.autoPublicAt ?? null, publicPending: !!entry.publicPending, publicNeedsApproval: stillGated,
       });
     } else {

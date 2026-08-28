@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useIndex } from "../data";
 import { useAuth } from "../auth";
-import { SetEntry, TOURNAMENT_LEVELS, levelLabel } from "../types";
+import { SetEntry, TOURNAMENT_LEVELS, levelLabel, difficultyLabel } from "../types";
 import { Loading, ErrorBox, AuthNav, SearchInput } from "../components/Common";
 import { formatDate, relativeTime } from "../util";
 
@@ -221,6 +221,7 @@ export function Landing() {
               </span>
               <span className="set-row-meta">
                 {s.level && <span className="set-row-level">{levelLabel(s.level)}</span>}
+                {difficultyLabel(s.level, s.difficulty) && <span className="set-row-level" title="Question difficulty">{difficultyLabel(s.level, s.difficulty)}</span>}
                 {s.individual
                   ? <>{s.numGames} rooms · {s.numPlayers} players · {s.rounds} rounds</>
                   : <>{s.numGames} games · {s.numTeams} teams · {s.rounds} rounds</>}

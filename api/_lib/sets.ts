@@ -35,6 +35,20 @@ export type Visibility = "public" | "listed" | "private";
 // Tournament level/type ids (labels live on the client).
 export const TOURNAMENT_LEVELS = ["hs", "college", "open", "popculture", "side", "practice"] as const;
 
+// Question difficulty, per level. High school uses the usual four tiers; college
+// and open use the College Quizbowl Calendar dot scale
+// (https://collegequizbowlcalendar.com/difficulty-scale/) from 1 to 5 in half
+// steps, stored as the number's string ("3.5"). Other levels carry none. Kept
+// as data on the entry so a conversion-stats database can later group sets by
+// how hard their questions were.
+export const HS_DIFFICULTIES = ["novice", "regs", "regs+", "nationals"] as const;
+export const DOT_DIFFICULTIES = ["1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5", "5"] as const;
+export function difficultiesFor(level: string | undefined): readonly string[] {
+  if (level === "hs") return HS_DIFFICULTIES;
+  if (level === "college" || level === "open") return DOT_DIFFICULTIES;
+  return [];
+}
+
 export interface SetEntry {
   slug: string;
   name: string;
@@ -86,6 +100,9 @@ export interface SetEntry {
   // hsquizbowl Tournament Database entry. Set at creation; absent on legacy sets.
   level?: string;
   tdLink?: string;
+  // Question difficulty on the level's own scale (see difficultiesFor). Absent
+  // when not set, or when the level has no scale.
+  difficulty?: string;
   numGames: number;
   numTeams: number;
   numPlayers: number;

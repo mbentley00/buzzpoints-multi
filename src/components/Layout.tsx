@@ -52,7 +52,7 @@ export function SetLayout() {
   // The owner can close the correction queue; absent on older index entries,
   // which means it was never closed.
   const allowRequests = entry?.allowRequests !== false;
-  const ctx: SetCtx = { meta: meta as Meta, slug, scope, editions, owner, isOwner, user, allowRequests, level: entry?.level, tdLink: entry?.tdLink };
+  const ctx: SetCtx = { meta: meta as Meta, slug, scope, editions, owner, isOwner, user, allowRequests, level: entry?.level, tdLink: entry?.tdLink, difficulty: entry?.difficulty };
   // A player's or a team's id is assigned per aggregation scope: ids are handed
   // out in name order over whoever appears in THAT scope, so p25 in the combined
   // file and p25 in one edition's file are simply different people (checked on a

@@ -11,6 +11,36 @@ export const TOURNAMENT_LEVELS: { id: string; label: string }[] = [
 ];
 export const levelLabel = (id?: string): string => TOURNAMENT_LEVELS.find((l) => l.id === id)?.label ?? "";
 
+// Question difficulty, on the level's own scale (ids match the server's
+// difficultiesFor). High school has four tiers. College and open use the
+// College Quizbowl Calendar dot scale — https://collegequizbowlcalendar.com/difficulty-scale/
+// — from 1 to 5 in half steps; the names on the whole numbers are the
+// calendar's own. Other levels have no scale.
+const HS_DIFFICULTIES = [
+  { id: "novice", label: "Novice" },
+  { id: "regs", label: "Regs" },
+  { id: "regs+", label: "Regs+" },
+  { id: "nationals", label: "Nationals" },
+];
+const DOT_NAMES: Record<string, string> = { "1": "Easy", "2": "Medium", "3": "Regionals", "4": "Nationals" };
+const dots = (n: number) => "●".repeat(Math.floor(n)) + (n % 1 ? "◐" : "");
+const DOT_DIFFICULTIES = ["1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5", "5"].map((id) => ({
+  id,
+  label: `${dots(Number(id))} ${id}${DOT_NAMES[id] ? ` — ${DOT_NAMES[id]}` : ""}`,
+}));
+export function difficultyOptions(level?: string): { id: string; label: string }[] {
+  if (level === "hs") return HS_DIFFICULTIES;
+  if (level === "college" || level === "open") return DOT_DIFFICULTIES;
+  return [];
+}
+// Short form for badges: "Regs+", or "●●●◐ 3.5".
+export function difficultyLabel(level?: string, id?: string): string {
+  if (!id) return "";
+  if (level === "hs") return HS_DIFFICULTIES.find((d) => d.id === id)?.label ?? id;
+  if (level === "college" || level === "open") return `${dots(Number(id))} ${id}`;
+  return "";
+}
+
 export interface EditionSummary {
   id: string;
   label: string;
@@ -57,6 +87,7 @@ export interface SetEntry {
   hasYf?: boolean; // owner uploaded a companion YellowFruit file (corrected export available)
   level?: string; // tournament type (see TOURNAMENT_LEVELS)
   tdLink?: string; // optional hsquizbowl Tournament Database link
+  difficulty?: string; // question difficulty on the level's scale (see difficultyOptions)
   // An individual shootout (IPNCT-style): players compete for themselves, so
   // "teams" here are players. Absent means a team tournament.
   individual?: boolean;
@@ -81,6 +112,7 @@ export interface SetCtx {
   allowRequests: boolean;
   level?: string;
   tdLink?: string;
+  difficulty?: string;
 }
 
 // A buzz reassignment / move, as sent to /api/correct or /api/request.

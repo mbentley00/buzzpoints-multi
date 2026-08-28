@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useSetCtx } from "../components/Layout";
 import { clearSetCache, refreshIndex } from "../data";
-import { Visibility, TOURNAMENT_LEVELS } from "../types";
+import { Visibility, TOURNAMENT_LEVELS, difficultyOptions } from "../types";
 import { Loading } from "../components/Common";
 import { RoundTagsEditor } from "../components/RoundTagsEditor";
 import { RoundAlignEditor, GameFilesEditor, UploadCleanup, RenamesEditor } from "../components/SourceFiles";
@@ -51,6 +51,7 @@ export function Settings() {
   const [level, setLevel] = useState("");
   const [individual, setIndividual] = useState(false);
   const [tdLink, setTdLink] = useState("");
+  const [difficulty, setDifficulty] = useState("");
   const [accessRequests, setAccessRequests] = useState<{ email: string; name: string; at: string; role?: string; team?: string }[]>([]);
   const [resolved, setResolved] = useState<{ email: string; name: string; status: string; via?: string; resolvedAt?: string }[]>([]);
   const [links, setLinks] = useState<{ id: string; label: string; at: string; revoked?: boolean; uses: number }[]>([]);
@@ -92,6 +93,7 @@ export function Settings() {
         setLevel(d.level || "");
         setIndividual(!!d.individual);
         setTdLink(d.tdLink || "");
+        setDifficulty(d.difficulty || "");
         setPublicPending(!!d.publicPending);
         setPublicNeedsApproval(!!d.publicNeedsApproval);
         setAccessRequests(d.accessRequests || []);
@@ -151,7 +153,8 @@ export function Settings() {
     setErr(null); setMsg(null); setBusy(true);
     try {
       if (!level) throw new Error("Choose a tournament type.");
-      const d = await postJson("/api/manage", { slug, op: "details", level, tdLink: tdLink.trim(), individual });
+      const d = await postJson("/api/manage", { slug, op: "details", level, tdLink: tdLink.trim(), difficulty, individual });
+      setDifficulty(d.difficulty || "");
       // Reclassifying can change whether going public needs approval (practice
       // tournaments don't), and may have granted a pending request outright.
       setPublicPending(!!d.publicPending);
@@ -371,13 +374,29 @@ export function Settings() {
       <div className="create-form" style={{ maxWidth: 520 }}>
         <label className="field">
           <span>Tournament type</span>
-          <select value={level} onChange={(e) => setLevel(e.target.value)}>
+          <select value={level} onChange={(e) => { setLevel(e.target.value); setDifficulty(""); }}>
             <option value="" disabled>Choose a type…</option>
             {TOURNAMENT_LEVELS.map((l) => (
               <option key={l.id} value={l.id}>{l.label}</option>
             ))}
           </select>
         </label>
+        {difficultyOptions(level).length > 0 && (
+          <label className="field">
+            <span>Question difficulty (optional)</span>
+            <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
+              <option value="">Not set</option>
+              {difficultyOptions(level).map((d) => (
+                <option key={d.id} value={d.id}>{d.label}</option>
+              ))}
+            </select>
+            {level !== "hs" && (
+              <small className="muted">
+                The <a className="link" href="https://collegequizbowlcalendar.com/difficulty-scale/" target="_blank" rel="noreferrer">College Quizbowl Calendar scale</a>, in half steps.
+              </small>
+            )}
+          </label>
+        )}
         <label className="field">
           <span>Tournament Database link (optional)</span>
           <input type="url" value={tdLink} onChange={(e) => setTdLink(e.target.value)} placeholder="https://hsquizbowl.org/db/tournaments/…" />

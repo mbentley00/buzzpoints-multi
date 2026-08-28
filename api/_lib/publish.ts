@@ -5,7 +5,7 @@ import { PacketFile, GameFile } from "./aggregate.js";
 import { SCORINGS } from "./scoring.js";
 import {
   readIndex, writeIndex, writeSource, writeCorrections, writeRequests, readCorrections,
-  aggregateAndWrite, SetSource, SetEntry, Visibility, writeYf, TOURNAMENT_LEVELS, isSetOwner, practiceVisibility,
+  aggregateAndWrite, SetSource, SetEntry, Visibility, writeYf, TOURNAMENT_LEVELS, isSetOwner, practiceVisibility, difficultiesFor,
 } from "./sets.js";
 import { parseYellowFruit } from "./yellowfruit.js";
 
@@ -18,6 +18,7 @@ export interface CreateBody {
   visibility?: string; autoPublicAt?: string | null; edition?: string;
   yf?: any; // optional companion YellowFruit (.yft) for corrected re-export
   level?: string; tdLink?: string; // tournament type + optional Tournament Database link
+  difficulty?: string; // question difficulty on the level's scale (see difficultiesFor)
 }
 
 // Validate the tournament level (required) and normalize an optional TD link.
@@ -25,6 +26,17 @@ export function validLevel(level: unknown): string {
   if (typeof level !== "string" || !(TOURNAMENT_LEVELS as readonly string[]).includes(level))
     throw new CreateError(400, "Choose a tournament type (high school, college, open, pop culture, or side event).");
   return level;
+}
+// The difficulty a set may carry: one of its level's options, or nothing. A
+// level without a scale silently drops whatever was sent, so switching a set
+// from college to a side event doesn't strand a "3.5" on it.
+export function cleanDifficulty(level: string, d: unknown): string | undefined {
+  const s = String(d ?? "").trim();
+  if (!s) return undefined;
+  const opts = difficultiesFor(level);
+  if (!opts.length) return undefined;
+  if (!opts.includes(s)) throw new CreateError(400, "Choose a difficulty from the list.");
+  return s;
 }
 export function cleanTdLink(link: unknown): string | undefined {
   const s = String(link ?? "").trim();
@@ -75,6 +87,7 @@ export async function createTournament(body: CreateBody, owner: string): Promise
   if (!body.games?.length) throw new CreateError(400, "At least one game (QBJ) is required.");
   const level = validLevel(body.level);
   const tdLink = cleanTdLink(body.tdLink);
+  const difficulty = cleanDifficulty(level, body.difficulty);
 
   const { packets, games } = parseFiles(body);
   const hasBonuses = !!body.hasBonuses;
@@ -113,7 +126,7 @@ export async function createTournament(body: CreateBody, owner: string): Promise
 
   const entry: SetEntry = {
     slug, name, scoring: body.scoring!, hasBonuses, ...(individual ? { individual } : {}), owner, editions, origin: "upload",
-    visibility, invites: [], autoPublicAt, ...(hasYf ? { hasYf } : {}), level, ...(tdLink ? { tdLink } : {}),
+    visibility, invites: [], autoPublicAt, ...(hasYf ? { hasYf } : {}), level, ...(tdLink ? { tdLink } : {}), ...(difficulty ? { difficulty } : {}),
     numGames: meta.numGames, numTeams: meta.numTeams, numPlayers: meta.numPlayers,
     numTossups: meta.numTossups, rounds: meta.rounds.length, createdAt,
   };
@@ -163,12 +176,13 @@ export async function updateFromSource(
 export async function createFromSource(
   source: SetSource,
   owner: string,
-  opts: { name?: string; visibility?: string; autoPublicAt?: string | null; level?: string; tdLink?: string; individual?: boolean }
+  opts: { name?: string; visibility?: string; autoPublicAt?: string | null; level?: string; tdLink?: string; difficulty?: string; individual?: boolean }
 ): Promise<{ slug: string }> {
   const name = (opts.name || source.name || "").trim();
   if (!name) throw new CreateError(400, "Tournament name is required.");
   const level = validLevel(opts.level);
   const tdLink = cleanTdLink(opts.tdLink);
+  const difficulty = cleanDifficulty(level, opts.difficulty);
   source.name = name;
   if (opts.individual) source.individual = true;
   const individual = !!source.individual;
@@ -194,7 +208,7 @@ export async function createFromSource(
 
   const entry: SetEntry = {
     slug, name, scoring: source.scoring, hasBonuses: source.hasBonuses, ...(individual ? { individual } : {}), owner, editions, origin: "import",
-    visibility, invites: [], autoPublicAt, level, ...(tdLink ? { tdLink } : {}),
+    visibility, invites: [], autoPublicAt, level, ...(tdLink ? { tdLink } : {}), ...(difficulty ? { difficulty } : {}),
     numGames: meta.numGames, numTeams: meta.numTeams, numPlayers: meta.numPlayers,
     numTossups: meta.numTossups, rounds: meta.rounds.length, createdAt,
   };

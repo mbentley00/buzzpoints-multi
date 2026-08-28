@@ -1,9 +1,9 @@
 import { Link, useParams } from "react-router-dom";
 import { useSetCtx } from "../components/Layout";
-import { levelLabel } from "../types";
+import { levelLabel, difficultyLabel } from "../types";
 
 export function SetHome() {
-  const { meta, level, tdLink } = useSetCtx();
+  const { meta, level, tdLink, difficulty } = useSetCtx();
   const { slug = "" } = useParams();
   const base = `/set/${slug}`;
   const links = [
@@ -21,6 +21,7 @@ export function SetHome() {
           <h1>{meta.setName}</h1>
           <p className="subtitle">
             {level && <>{levelLabel(level)} · </>}
+            {difficultyLabel(level, difficulty) && <>{difficultyLabel(level, difficulty)} · </>}
             {meta.individual
               ? <>{meta.numGames} rooms · {meta.numPlayers} players · {meta.rounds.length} rounds · individual shootout · </>
               : <>{meta.numGames} games · {meta.numTeams} teams · {meta.numPlayers} players · {meta.rounds.length} rounds · </>}

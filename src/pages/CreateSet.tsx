@@ -6,7 +6,7 @@ import { AuthNav } from "../components/Common";
 import { detectScoring } from "../detectScoring";
 import { uploadFiles } from "../upload";
 import { FileDrop } from "../components/FileDrop";
-import { Visibility, TOURNAMENT_LEVELS, RoundWarning, BonusDiffWarning } from "../types";
+import { Visibility, TOURNAMENT_LEVELS, RoundWarning, BonusDiffWarning, difficultyOptions } from "../types";
 import { warningText } from "../components/SourceFiles";
 import { hasYearFirst, yearFirstSuggestion } from "../util";
 
@@ -55,6 +55,7 @@ export function CreateSet() {
   const nameSuggestion = useMemo(() => yearFirstSuggestion(name), [name]);
   const [level, setLevel] = useState("");
   const [tdLink, setTdLink] = useState("");
+  const [difficulty, setDifficulty] = useState("");
   const [scoring, setScoring] = useState("mACF");
   const [detected, setDetected] = useState<string | null>(null);
   const [hasBonuses, setHasBonuses] = useState(true);
@@ -133,7 +134,7 @@ export function CreateSet() {
       }
       setStatus("Building the tournament…");
       const autoPublicAt = visibility === "public" ? null : autoPublish ? new Date(autoPublishDate).toISOString() : null;
-      const fin = await importPost({ op: "import-finish", jobId: start.jobId, name: name.trim() || undefined, level, tdLink: tdLink.trim() || undefined, individual, visibility, autoPublicAt });
+      const fin = await importPost({ op: "import-finish", jobId: start.jobId, name: name.trim() || undefined, level, tdLink: tdLink.trim() || undefined, difficulty: difficulty || undefined, individual, visibility, autoPublicAt });
       refreshIndex();
       navigate(`/set/${fin.slug}`);
     } catch (err) {
@@ -172,7 +173,7 @@ export function CreateSet() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          name: name.trim(), level, tdLink: tdLink.trim() || undefined, scoring, hasBonuses, individual, visibility, autoPublicAt,
+          name: name.trim(), level, tdLink: tdLink.trim() || undefined, difficulty: difficulty || undefined, scoring, hasBonuses, individual, visibility, autoPublicAt,
           packets: packetRefs, games: gameRefs, ...(yf ? { yf } : {}),
         }),
       });
@@ -374,13 +375,30 @@ export function CreateSet() {
 
           <label className="field">
             <span>Tournament type</span>
-            <select value={level} onChange={(e) => setLevel(e.target.value)}>
+            <select value={level} onChange={(e) => { setLevel(e.target.value); setDifficulty(""); }}>
               <option value="" disabled>Choose a type…</option>
               {TOURNAMENT_LEVELS.map((l) => (
                 <option key={l.id} value={l.id}>{l.label}</option>
               ))}
             </select>
           </label>
+
+          {difficultyOptions(level).length > 0 && (
+            <label className="field">
+              <span>Question difficulty (optional)</span>
+              <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
+                <option value="">Not set</option>
+                {difficultyOptions(level).map((d) => (
+                  <option key={d.id} value={d.id}>{d.label}</option>
+                ))}
+              </select>
+              {level !== "hs" && (
+                <small className="muted">
+                  The <a className="link" href="https://collegequizbowlcalendar.com/difficulty-scale/" target="_blank" rel="noreferrer">College Quizbowl Calendar scale</a>, in half steps.
+                </small>
+              )}
+            </label>
+          )}
 
           <label className="field">
             <span>Tournament Database link (optional)</span>
