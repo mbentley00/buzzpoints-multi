@@ -12,6 +12,7 @@ import { currentUser, getRole } from "./_lib/auth.js";
 import { readBlobJson } from "./_lib/blob.js";
 import { readIndex, writeIndex, readSource, aggregateAndWrite, readCorrections, effectiveVisibility, ownerEmails, SetEntry } from "./_lib/sets.js";
 import { sendEmail, appUrl, publishReminderBody } from "./_lib/email.js";
+import { cleanDifficulty, CreateError } from "./_lib/publish.js";
 
 // Scraping a set again is often impossible and re-uploading is manual, so a backup
 // carries the things that CAN'T be recomputed: the uploaded packets and games, and
@@ -132,6 +133,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
     res.setHeader("content-disposition", `attachment; filename="buzzpoints-${slug}-${at.slice(0, 10)}.json"`);
     return res.status(200).json(backup);
+  }
+
+  // ---- bulk difficulty (admin only) ----
+  // POST { op: "set-difficulty", items: [{ slug, difficulty }] } — stamp a
+  // question difficulty on several sets at once, each checked against its own
+  // level's scale (see cleanDifficulty). An empty difficulty clears it. Used to
+  // backfill sets whose difficulty is known from elsewhere; nothing else on the
+  // entry is touched.
+  if (req.method === "POST" && (req.body || {}).op === "set-difficulty") {
+    if (role !== "admin") return res.status(403).json({ error: "Admin access required." });
+    const items = Array.isArray((req.body || {}).items) ? ((req.body as any).items as { slug?: unknown; difficulty?: unknown }[]) : [];
+    const index = await readIndex();
+    const done: { slug: string; difficulty: string | null }[] = [];
+    const errors: { slug: string; error: string }[] = [];
+    for (const it of items) {
+      const slug = String(it?.slug || "");
+      const entry = index.sets.find((s) => s.slug === slug);
+      if (!entry) { errors.push({ slug, error: "No such set." }); continue; }
+      try {
+        const d = cleanDifficulty(entry.level || "", it?.difficulty);
+        if (d) entry.difficulty = d; else delete entry.difficulty;
+        done.push({ slug, difficulty: d ?? null });
+      } catch (e) {
+        errors.push({ slug, error: e instanceof CreateError ? e.message : (e as Error).message });
+      }
+    }
+    if (done.length) await writeIndex(index);
+    return res.status(200).json({ ok: true, done, errors });
   }
 
   if (req.method === "POST" && (req.body || {}).op === "restore") {
