@@ -34,19 +34,19 @@ export function setTabs(meta: Meta, base: string, o: { hasEditions: boolean; isO
   return [
     { to: `${base}/tossup`, label: "Tossups", desc: n(meta.numTossups, "question") },
     ...(meta.hasBonuses ? [{ to: `${base}/bonus`, label: "Bonuses", desc: n(meta.numBonuses, "bonus", "bonuses") }] : []),
-    { to: `${base}/packet`, label: "Packets", desc: "Questions by round" },
-    { to: `${base}/buzzer-races`, label: "Races", desc: "Tossups many rooms buzzed on at once" },
-    { to: `${base}/first-sentence`, label: "1st Sentence", desc: "Buzzes on the opening clue" },
     { to: `${base}/player`, label: "Players", desc: n(meta.numPlayers, "player") },
     // A shootout's "teams" are its players — one page for them is enough.
     ...(meta.individual ? [] : [{ to: `${base}/team`, label: "Teams", desc: n(meta.numTeams, "team") }]),
     { to: `${base}/category/tossup`, label: "Categories (T)", desc: "By subject" },
     ...(meta.hasBonuses ? [{ to: `${base}/category/bonus`, label: "Categories (B)", desc: "By subject" }] : []),
+    { to: `${base}/buzzer-races`, label: "Races", desc: "Tossups many rooms buzzed on at once" },
+    { to: `${base}/first-sentence`, label: "1st Sentence", desc: "Buzzes on the opening clue" },
+    { to: `${base}/packet`, label: "Packets", desc: "Questions by round" },
     // Only worth a tab once the owner has marked a metadata field as a tag.
     ...(meta.hasTags ? [{ to: `${base}/tags`, label: "Tags", desc: "By writer, era, or other tag" }] : []),
-    ...(o.hasEditions || o.isOwner ? [{ to: `${base}/editions`, label: "Editions", desc: o.hasEditions ? "Compare mirrors" : "Add a mirror" }] : []),
     // The YellowFruit-style report — standings, individuals, scoreboard.
     { to: `${base}/standard`, label: "YF Stats", desc: "Standings, individuals, scoreboard" },
+    ...(o.hasEditions || o.isOwner ? [{ to: `${base}/editions`, label: "Editions", desc: o.hasEditions ? "Compare mirrors" : "Add a mirror" }] : []),
     ...(o.isOwner ? [{ to: `${base}/requests`, label: "Corrections", desc: "Review proposed fixes" }] : []),
     ...(o.isOwner ? [{ to: `${base}/settings`, label: "Settings", desc: "Visibility, details, repairs" }] : []),
   ];
