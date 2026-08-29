@@ -162,5 +162,15 @@ export const feedbackBody = (from: string, page: string, message: string) =>
   );
 
 // Sent to the submitter if their first tournament is rejected.
+// ---- discussion (per-set forum) ----
+export const forumJoinRequestBody = (requester: string, name: string, setName: string, note: string, url: string) =>
+  wrap(`<p><strong>${esc(name)}</strong> (${esc(requester)}) asked to post in the discussion for <strong>${esc(setName)}</strong>.</p>${note ? `<p><strong>Note:</strong> ${esc(note)}</p>` : ""}<p>Approve or decline in the tournament's settings.</p>${btn(url, "Review request")}`);
+export const forumApprovedBody = (setName: string, url: string) =>
+  wrap(`<p>You can now post in the discussion for <strong>${esc(setName)}</strong> on Buzzpoints.</p>${btn(url, "Open discussion")}`);
+// A reply in a thread the recipient has written in. `muteUrl` is a signed
+// one-click link that stops further mail about this one thread.
+export const forumReplyBody = (poster: string, setName: string, title: string, excerpt: string, url: string, muteUrl: string) =>
+  wrap(`<p><strong>${esc(poster)}</strong> replied in <strong>${esc(title)}</strong> — the discussion for <strong>${esc(setName)}</strong>.</p><blockquote style="border-left:3px solid #ccc;margin:12px 0;padding:4px 12px;color:#444">${esc(excerpt)}</blockquote>${btn(url, "Read the reply")}<p style="font-size:12px;color:#777">You're getting this because you posted in that thread. <a href="${muteUrl}">Stop emails for this thread</a>.</p>`);
+
 export const submissionRejectedBody = (setName: string, reason: string) =>
   wrap(`<p>Your submission <strong>${esc(setName)}</strong> was not approved.</p>${reason ? `<p>Reason: ${esc(reason)}</p>` : ""}<p>You're welcome to fix any issues and submit again.</p>`);

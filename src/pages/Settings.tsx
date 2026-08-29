@@ -8,6 +8,7 @@ import { RoundTagsEditor } from "../components/RoundTagsEditor";
 import { RoundAlignEditor, GameFilesEditor, UploadCleanup, RenamesEditor } from "../components/SourceFiles";
 import { MetaMapEditor } from "../components/MetaMapEditor";
 import { BonusDifficultyEditor } from "../components/BonusDifficulty";
+import { ForumMembers } from "../components/ForumMembers";
 import { byLabel, hasYearFirst, yearFirstSuggestion } from "../util";
 import { AddFilesForm } from "../components/AddFiles";
 
@@ -50,6 +51,7 @@ export function Settings() {
   const [hasYf, setHasYf] = useState(false);
   const [level, setLevel] = useState("");
   const [individual, setIndividual] = useState(false);
+  const [forum, setForum] = useState(false);
   const [tdLink, setTdLink] = useState("");
   const [difficulty, setDifficulty] = useState("");
   const [accessRequests, setAccessRequests] = useState<{ email: string; name: string; at: string; role?: string; team?: string }[]>([]);
@@ -92,6 +94,7 @@ export function Settings() {
         setHasYf(!!d.hasYf);
         setLevel(d.level || "");
         setIndividual(!!d.individual);
+        setForum(!!d.forum);
         setTdLink(d.tdLink || "");
         setDifficulty(d.difficulty || "");
         setPublicPending(!!d.publicPending);
@@ -553,6 +556,25 @@ export function Settings() {
           </a>
         </>
       )}
+
+      <h2 id="discussion" style={{ marginTop: 28 }}>Discussion</h2>
+      <div className="create-form" style={{ maxWidth: 640 }}>
+        <label className="field-inline">
+          <input type="checkbox" checked={forum} onChange={async (e) => {
+            const on = e.target.checked; setForum(on); setErr(null);
+            try { await postJson("/api/manage", { slug, op: "settings", forum: on }); refreshIndex(); setMsg(on ? "Discussion is open." : "Discussion is closed."); }
+            catch (err) { setForum(!on); setErr(String((err as Error).message || err)); }
+          }} />
+          <span>Open a discussion for this tournament</span>
+        </label>
+        <small className="muted">
+          Off by default. When it's on, signed-in viewers with access to the tournament can read the threads, and can
+          post once you've approved them here — you'll get an email when someone asks. Everyone who has written in a
+          thread is emailed when it gets a reply. Posts are stored as BBCode, phpBB's own markup, so the discussion can
+          later be synced to a phpBB forum.
+        </small>
+        {forum && <ForumMembers slug={slug} enabled={forum} />}
+      </div>
 
       <h2 style={{ marginTop: 28 }}>Maintenance</h2>
       <p className="muted">Recompute all stats from the uploaded files (use this to pick up new stats pages or fixes).</p>

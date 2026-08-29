@@ -1307,3 +1307,23 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
 /* A heading over a group of fields that aren't each separately labelled. */
 .field-label { font-weight: 600; font-size: 13.5px; margin-top: 6px; }
 .nowrap { white-space: nowrap; }
+
+/* ---- discussion ---- */
+.forum-posts { display: flex; flex-direction: column; gap: 12px; margin: 12px 0 18px; }
+.forum-post { border: 1px solid var(--panel-line, #ddd); border-radius: 8px; padding: 12px 16px; background: var(--surface, transparent); }
+.forum-post.deleted { opacity: 0.7; }
+.forum-post-head { display: flex; gap: 4px; align-items: baseline; font-size: 13px; margin-bottom: 8px; }
+.forum-post-num { margin-left: auto; font-variant-numeric: tabular-nums; }
+.forum-post-actions { display: flex; gap: 14px; margin-top: 8px; font-size: 13px; }
+.forum-composer { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.forum-composer textarea, .forum-title-input { font: inherit; padding: 8px 10px; border: 1px solid var(--field-border, #bbb); border-radius: 6px; width: 100%; box-sizing: border-box; }
+.forum-composer textarea { resize: vertical; min-height: 120px; }
+.forum-composer-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.forum-preview { border: 1px dashed var(--panel-line, #ccc); border-radius: 6px; padding: 10px 12px; min-height: 120px; }
+.forum-join { margin: 12px 0; }
+.forum-list td { vertical-align: top; }
+.bb { line-height: 1.5; overflow-wrap: anywhere; }
+.bb .bb-quote { border-left: 3px solid var(--panel-line, #ccc); margin: 8px 0; padding: 4px 12px; color: var(--ink-soft, inherit); }
+.bb .bb-quote cite { display: block; font-style: normal; font-weight: 600; font-size: 12.5px; margin-bottom: 2px; }
+.bb .bb-code { background: var(--hover); border-radius: 6px; padding: 8px 10px; overflow-x: auto; font-size: 13px; }
+.bb ul, .bb ol { margin: 6px 0; padding-left: 24px; }

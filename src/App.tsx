@@ -30,6 +30,7 @@ import { Join } from "./pages/Join";
 import { Admin } from "./pages/Admin";
 import { Requests } from "./pages/Requests";
 import { Settings } from "./pages/Settings";
+import { Discussion } from "./pages/Discussion";
 
 export default function App() {
   return (
@@ -65,6 +66,8 @@ export default function App() {
         <Route path="tags" element={<Tags />} />
         <Route path="editions" element={<Editions />} />
         <Route path="requests" element={<Requests />} />
+        <Route path="discussion" element={<Discussion />} />
+        <Route path="discussion/:thread" element={<Discussion />} />
         <Route path="settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

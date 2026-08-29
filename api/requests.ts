@@ -12,7 +12,181 @@ import {
   readBonusCorrections, writeBonusCorrections, mergeBonusCorrection, validBonusCorrection,
 } from "./_lib/sets.js";
 import { renameKind } from "./_lib/aggregate.js";
-import { sendEmail, appUrl, correctionRequestBody } from "./_lib/email.js";
+import { sendEmail, appUrl, correctionRequestBody, forumJoinRequestBody, forumApprovedBody, forumReplyBody } from "./_lib/email.js";
+import { loadUsers, signPurpose, readPurpose, normEmail } from "./_lib/auth.js";
+import { readForum, writeForum, participants, plainText, threadView, threadSummary, toPhpbb, ForumData, ForumThread, MAX_TITLE, MAX_BODY, MAX_NOTE } from "./_lib/forum.js";
+import { canViewContent, SetEntry } from "./_lib/sets.js";
+
+/* ----------------------------- discussion ----------------------------- */
+// The per-set forum rides on this endpoint (the function cap leaves no room
+// for its own). GET ?slug&forum=1[&thread=id][&export=phpbb]; POST with an
+// action of forum-join / -approve / -decline / -revoke / -thread / -reply /
+// -edit / -delete / -lock; GET ?forumMute=<signed token> from an email link.
+
+type ForumStatus = "owner" | "member" | "pending" | "declined" | "none";
+function forumStatus(entry: SetEntry, data: ForumData, user: string): ForumStatus {
+  if (isSetOwner(entry, user)) return "owner";
+  if (data.members.includes(user)) return "member";
+  if (data.pending.some((p) => p.email === user)) return "pending";
+  if (data.declined.includes(user)) return "declined";
+  return "none";
+}
+const canPostIn = (s: ForumStatus) => s === "owner" || s === "member";
+const mutePurpose = (slug: string, thread: string) => `forum-mute:${slug}:${thread}`;
+const cleanText = (v: unknown, max: number) => String(v ?? "").replace(/\r\n?/g, "\n").trim().slice(0, max);
+
+async function displayName(email: string): Promise<string> {
+  const u = (await loadUsers())[normEmail(email)];
+  return (u?.name || "").trim() || email.split("@")[0];
+}
+
+async function forumGet(req: VercelRequest, res: VercelResponse, user: string | null) {
+  const slug = String(req.query.slug || "");
+  const entry = await getSetEntry(slug);
+  if (!entry) return res.status(404).json({ error: "Tournament not found." });
+  if (!user) return res.status(401).json({ error: "Log in to read the discussion." });
+  // Reading the discussion takes the same access as reading the set's questions.
+  if (!canViewContent(entry, user)) return res.status(403).json({ error: "You don't have access to this tournament." });
+  const isOwner = isSetOwner(entry, user);
+  const data = await readForum(slug);
+  const status = forumStatus(entry, data, user);
+  if (req.query.export === "phpbb") {
+    if (!isOwner) return res.status(403).json({ error: "Owner only." });
+    res.setHeader("content-disposition", `attachment; filename="${slug}-discussion-phpbb.json"`);
+    return res.status(200).json(toPhpbb(slug, entry.name, data));
+  }
+  const threadId = String(req.query.thread || "");
+  const t = threadId ? data.threads.find((x) => x.id === threadId) : undefined;
+  if (threadId && !t) return res.status(404).json({ error: "Thread not found." });
+  return res.status(200).json({
+    enabled: !!entry.forum, status, isOwner,
+    threads: [...data.threads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map((x) => threadSummary(x, user, isOwner)),
+    ...(t ? { thread: threadView(t, user, isOwner) } : {}),
+    ...(isOwner ? { members: data.members, pending: data.pending } : {}),
+  });
+}
+
+async function forumMute(req: VercelRequest, res: VercelResponse) {
+  const token = String(req.query.forumMute || "");
+  const slug = String(req.query.slug || ""), thread = String(req.query.thread || "");
+  const email = readPurpose(token, mutePurpose(slug, thread));
+  if (!email) return res.status(400).send("This link has expired or isn't valid.");
+  const data = await readForum(slug);
+  const list = new Set(data.muted[email] || []); list.add(thread); data.muted[email] = [...list];
+  await writeForum(slug, data);
+  res.setHeader("content-type", "text/html; charset=utf-8");
+  return res.status(200).send(`<p style="font-family:sans-serif">You won't get more emails about that thread. <a href="${appUrl()}/set/${slug}/discussion/${thread}">Open it</a>.</p>`);
+}
+
+async function forumPost(body: any, res: VercelResponse, user: string) {
+  const action = String(body.action || "");
+  const slug = String(body.slug || "");
+  const entry = await getSetEntry(slug);
+  if (!entry) return res.status(404).json({ error: "Tournament not found." });
+  if (!canViewContent(entry, user)) return res.status(403).json({ error: "You don't have access to this tournament." });
+  const isOwner = isSetOwner(entry, user);
+  if (!entry.forum && !isOwner) return res.status(403).json({ error: "This tournament's discussion isn't open." });
+  const data = await readForum(slug);
+  const status = forumStatus(entry, data, user);
+  const base = `${appUrl()}/set/${slug}/discussion`;
+  const now = new Date().toISOString();
+
+  if (action === "forum-join") {
+    if (canPostIn(status)) return res.status(200).json({ ok: true, status });
+    if (status === "pending") return res.status(200).json({ ok: true, status });
+    const name = await displayName(user);
+    const note = cleanText(body.note, MAX_NOTE);
+    data.pending.push({ email: user, name, at: now, ...(note ? { note } : {}) });
+    data.declined = data.declined.filter((e) => e !== user);
+    await writeForum(slug, data);
+    for (const to of ownerEmails(entry))
+      await sendEmail({ to, subject: `Request to post — ${entry.name}`, html: forumJoinRequestBody(user, name, entry.name, note, `${appUrl()}/set/${slug}/settings#discussion`) });
+    return res.status(200).json({ ok: true, status: "pending" });
+  }
+
+  if (action === "forum-approve" || action === "forum-decline" || action === "forum-revoke") {
+    if (!isOwner) return res.status(403).json({ error: "Owner only." });
+    const email = normEmail(String(body.email || ""));
+    if (!email) return res.status(400).json({ error: "Which account?" });
+    data.pending = data.pending.filter((p) => p.email !== email);
+    if (action === "forum-approve") {
+      if (!data.members.includes(email)) data.members.push(email);
+      data.declined = data.declined.filter((e) => e !== email);
+    } else if (action === "forum-decline") {
+      if (!data.declined.includes(email)) data.declined.push(email);
+    } else {
+      data.members = data.members.filter((e) => e !== email);
+    }
+    await writeForum(slug, data);
+    if (action === "forum-approve")
+      await sendEmail({ to: email, subject: `You can post — ${entry.name}`, html: forumApprovedBody(entry.name, base) });
+    return res.status(200).json({ ok: true, members: data.members, pending: data.pending });
+  }
+
+  // Everything below writes into a thread.
+  if (!canPostIn(status)) return res.status(403).json({ error: status === "pending" ? "Your request to post is still waiting for the owner." : "Ask the tournament's owner to approve you before posting." });
+
+  if (action === "forum-thread") {
+    const title = cleanText(body.title, MAX_TITLE), text = cleanText(body.body, MAX_BODY);
+    if (!title || !text) return res.status(400).json({ error: "A thread needs a title and a first post." });
+    const byName = await displayName(user);
+    const t: ForumThread = {
+      id: crypto.randomBytes(6).toString("base64url"), title, by: user, byName, at: now, updatedAt: now,
+      posts: [{ id: crypto.randomBytes(6).toString("base64url"), by: user, byName, at: now, body: text }],
+    };
+    data.threads.push(t);
+    await writeForum(slug, data);
+    return res.status(200).json({ ok: true, id: t.id });
+  }
+
+  const t = data.threads.find((x) => x.id === String(body.thread || ""));
+  if (!t) return res.status(404).json({ error: "Thread not found." });
+
+  if (action === "forum-lock") {
+    if (!isOwner) return res.status(403).json({ error: "Owner only." });
+    t.locked = !!body.locked;
+    await writeForum(slug, data);
+    return res.status(200).json({ ok: true, locked: t.locked });
+  }
+  if (t.locked && !isOwner) return res.status(403).json({ error: "This thread is locked." });
+
+  if (action === "forum-reply") {
+    const text = cleanText(body.body, MAX_BODY);
+    if (!text) return res.status(400).json({ error: "Write something first." });
+    const byName = await displayName(user);
+    const p = { id: crypto.randomBytes(6).toString("base64url"), by: user, byName, at: now, body: text };
+    t.posts.push(p); t.updatedAt = now;
+    await writeForum(slug, data);
+    // Everyone who has written in the thread hears about the reply, with a
+    // signed link to stop hearing about this thread.
+    const excerpt = plainText(text).slice(0, 300);
+    for (const to of participants(t, data, user)) {
+      const token = signPurpose(to, mutePurpose(slug, t.id), 60 * 60 * 24 * 90);
+      const muteUrl = `${appUrl()}/api/requests?forumMute=${encodeURIComponent(token)}&slug=${encodeURIComponent(slug)}&thread=${encodeURIComponent(t.id)}`;
+      await sendEmail({ to, subject: `Re: ${t.title} — ${entry.name}`, html: forumReplyBody(byName, entry.name, t.title, excerpt, `${base}/${t.id}#post-${p.id}`, muteUrl) });
+    }
+    return res.status(200).json({ ok: true, id: p.id });
+  }
+
+  const p = t.posts.find((x) => x.id === String(body.post || ""));
+  if (!p) return res.status(404).json({ error: "Post not found." });
+  if (action === "forum-edit") {
+    if (p.by !== user) return res.status(403).json({ error: "You can only edit your own posts." });
+    if (p.deleted) return res.status(400).json({ error: "That post was removed." });
+    const text = cleanText(body.body, MAX_BODY);
+    if (!text) return res.status(400).json({ error: "Write something first." });
+    p.body = text; p.editedAt = now;
+    await writeForum(slug, data);
+    return res.status(200).json({ ok: true });
+  }
+  if (action === "forum-delete") {
+    if (p.by !== user && !isOwner) return res.status(403).json({ error: "Owner only." });
+    p.deleted = true; p.body = "";
+    await writeForum(slug, data);
+    return res.status(200).json({ ok: true });
+  }
+  return res.status(400).json({ error: "Unknown discussion action." });
+}
 
 // Human-readable one-line summary of a proposed edit, for the owner email.
 function requestSummary(r: CorrectionRequest): string {
@@ -40,6 +214,9 @@ function requestSummary(r: CorrectionRequest): string {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const user = currentUser(req);
 
+  if (req.method === "GET" && req.query.forumMute) return forumMute(req, res);
+  if (req.method === "GET" && req.query.forum) return forumGet(req, res, user);
+
   if (req.method === "GET") {
     const slug = String(req.query.slug || "");
     const entry = await getSetEntry(slug);
@@ -53,6 +230,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!user) return res.status(401).json({ error: "Log in." });
 
   const body = (req.body || {}) as any;
+  if (typeof body.action === "string" && body.action.startsWith("forum-")) {
+    try { return await forumPost(body, res, user); }
+    catch (e) { return res.status(500).json({ error: (e as Error).message }); }
+  }
 
   // ---- submit a correction request (any logged-in viewer) ----
   if (body.action === "submit") {

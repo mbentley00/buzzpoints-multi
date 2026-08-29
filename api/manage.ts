@@ -296,6 +296,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         level: entry.level ?? "",
         tdLink: entry.tdLink ?? "",
         difficulty: entry.difficulty ?? "",
+        forum: !!entry.forum,
         individual: !!entry.individual,
         accessRequests: access.filter((a) => a.status === "pending"),
         // Recently-settled requests, so an owner following a request email to an
@@ -349,6 +350,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (entry.visibility === "public") entry.autoPublicAt = null;
       // Whether viewers may propose buzz corrections and renames.
       if (body.allowRequests !== undefined) entry.allowRequests = !!body.allowRequests;
+      // Whether the discussion is open. Members and threads persist while it's off.
+      if (body.forum !== undefined) { if (body.forum) entry.forum = true; else delete entry.forum; }
       if (gated) {
         await writeIndex(index);
         return res.status(200).json({ ok: true, publicPending: true, visibility: entry.visibility, autoPublicAt: entry.autoPublicAt ?? null, allowRequests: requestsAllowed(entry), invites: entry.invites ?? [] });

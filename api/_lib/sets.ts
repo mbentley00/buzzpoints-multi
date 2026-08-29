@@ -104,6 +104,8 @@ export interface SetEntry {
   // Question difficulty on the level's own scale (see difficultiesFor). Absent
   // when not set, or when the level has no scale.
   difficulty?: string;
+  // Whether the set's discussion (see _lib/forum.ts) is open. Off by default.
+  forum?: boolean;
   numGames: number;
   numTeams: number;
   numPlayers: number;

@@ -127,3 +127,11 @@ To run the `/api/*` functions and Blob store locally, use the Vercel CLI
 - Uploads go directly to Blob from the browser, so large tournaments are fine.
 - The Blob store is private; computed JSON is served through `/api/data`, which
   redacts question content for sets the caller isn't entitled to see.
+
+## Discussion (per-set forum)
+
+Off by default; an owner opens it in Settings. Signed-in viewers with access to the set can read the threads; to post they ask, the owner approves (email both ways), and from then on they can start threads and reply. A reply emails everyone who has written in that thread, with a signed one-click link to stop emails for that thread. Owners can lock threads, remove posts, and revoke members.
+
+Storage is one `_forum.json` per set (the underscore keeps `/api/data` from ever serving it — it holds emails). The ops ride on `/api/requests` (`?forum=1` to read, `action: "forum-…"` to write).
+
+**phpBB compatibility.** Post bodies are stored as BBCode — phpBB's own markup — and the client renders a strict whitelist of it ([b] [i] [u] [s] [url] [quote] [code] [list]). Every thread and post carries the fields a phpBB `topics` / `posts` row wants, and an empty `phpbb: { forumId, topicId, postId }` slot for the ids a sync would assign. Owners can download the whole discussion in that shape (`?forum=1&export=phpbb`), which is the input a future sync-to-phpBB job will consume; see `toPhpbb()` in `api/_lib/forum.ts`.
