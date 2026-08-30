@@ -298,6 +298,13 @@ export function BonusDetailPage() {
         {d.results.length > 0 && (
           <div className="tu-right">
             <h2 style={{ marginTop: 0 }}>Conversion ({d.results.length})</h2>
+            {!user && allowRequests && (
+              <p className=\"muted\">
+                <Link to={`/login?next=${encodeURIComponent(`/set/${slug}/bonus/${d.id}`)}`} className=\"link\">Log in</Link> to suggest a fix to which parts a team got.
+              </p>
+            )}
+            {user && !isOwner && allowRequests && <p className=\"muted\">Wrong parts recorded for a team? Use <strong>Suggest</strong> on its row to send the owner a correction.</p>}
+            {!isOwner && !allowRequests && <p className=\"muted\">This tournament&apos;s owner isn&apos;t taking correction requests.</p>}
             <DataTable
               rows={d.results}
               columns={columns}
