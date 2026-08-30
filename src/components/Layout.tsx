@@ -48,7 +48,7 @@ export function setTabs(meta: Meta, base: string, o: { hasEditions: boolean; isO
     { to: `${base}/standard`, label: "YF Stats", desc: "Standings, individuals, scoreboard" },
     // Only once the owner has opened it (signed-in viewers see the tab; the
     // page itself asks anyone else to log in).
-    ...(o.forum ? [{ to: `${base}/discussion`, label: "Discussion", desc: "Threads about this tournament" }] : []),
+    ...(o.forum ? [{ to: `${base}/discussion`, label: "Forums", desc: "Threads about this tournament" }] : []),
     ...(o.hasEditions || o.isOwner ? [{ to: `${base}/editions`, label: "Editions", desc: o.hasEditions ? "Compare mirrors" : "Add a mirror" }] : []),
     ...(o.isOwner ? [{ to: `${base}/requests`, label: "Corrections", desc: "Review proposed fixes" }] : []),
     ...(o.isOwner ? [{ to: `${base}/settings`, label: "Settings", desc: "Visibility, details, repairs" }] : []),
