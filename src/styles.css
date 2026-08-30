@@ -1318,6 +1318,14 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
 .forum-composer { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
 .forum-composer textarea, .forum-title-input { font: inherit; padding: 8px 10px; border: 1px solid var(--field-border, #bbb); border-radius: 6px; width: 100%; box-sizing: border-box; }
 .forum-composer textarea { resize: vertical; min-height: 120px; }
+.bb-editor { display: flex; flex-direction: column; gap: 0; }
+.bb-toolbar { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; padding: 5px 6px; border: 1px solid var(--field-border, #bbb); border-bottom: 0; border-radius: 6px 6px 0 0; background: var(--hover); }
+.bb-toolbar-gap { flex: 1; }
+.bb-tool { font: inherit; font-size: 13px; min-width: 30px; padding: 3px 8px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--ink); cursor: pointer; }
+.bb-tool:hover:not(:disabled) { border-color: var(--field-border, #bbb); background: var(--surface, #fff); }
+.bb-tool.on { background: var(--surface, #fff); border-color: var(--field-border, #bbb); font-weight: 600; }
+.bb-tool:disabled { opacity: 0.4; cursor: default; }
+.bb-editor textarea, .bb-editor .forum-preview { border-top-left-radius: 0; border-top-right-radius: 0; margin: 0; }
 .forum-composer-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .forum-preview { border: 1px dashed var(--panel-line, #ccc); border-radius: 6px; padding: 10px 12px; min-height: 120px; }
 .forum-join { margin: 12px 0; }

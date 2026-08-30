@@ -3,6 +3,7 @@ import { Link, useParams, useNavigate } from "react-router-dom";
 import { useSetCtx } from "../components/Layout";
 import { PageHeader, Loading, ErrorBox } from "../components/Common";
 import { BBCode } from "../bbcode";
+import { BBEditor } from "../components/BBEditor";
 import { ForumStatus, ForumThreadSummary, ForumThreadView } from "../types";
 
 // A set's discussion: threads of posts by approved members. Reading needs a
@@ -68,22 +69,18 @@ function Composer({ label, placeholder, busyLabel, withTitle, onSubmit, onCancel
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [preview, setPreview] = useState(false);
   const ok = body.trim().length > 0 && (!withTitle || title.trim().length > 0);
   return (
     <div className="forum-composer">
       {withTitle && <input className="forum-title-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Thread title" maxLength={120} />}
-      {preview
-        ? <div className="forum-preview"><BBCode src={body} /></div>
-        : <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder={placeholder} rows={6} maxLength={8000} />}
+      <BBEditor value={body} onChange={setBody} placeholder={placeholder} autoFocus={!withTitle} />
       <div className="forum-composer-foot">
-        <small className="muted">BBCode: [b]bold[/b] [i]italic[/i] [quote=name]…[/quote] [url=https://…]link[/url] [code]…[/code] [list][*]item[/list]</small>
+        <small className="muted">BBCode, as on phpBB — the buttons wrap whatever you've selected.</small>
         <div className="buzz-edit-actions">
-          <button type="button" className="btn-link" onClick={() => setPreview((p) => !p)}>{preview ? "Edit" : "Preview"}</button>
           {onCancel && <button type="button" className="btn-link" onClick={onCancel}>Cancel</button>}
           <button className="btn-primary btn-sm" disabled={!ok || busy} onClick={async () => {
             setBusy(true); setErr(null);
-            try { await onSubmit(title.trim(), body.trim()); setTitle(""); setBody(""); setPreview(false); }
+            try { await onSubmit(title.trim(), body.trim()); setTitle(""); setBody(""); }
             catch (e) { setErr(String((e as Error).message || e)); } finally { setBusy(false); }
           }}>{busy ? busyLabel : label}</button>
         </div>
@@ -141,7 +138,7 @@ export function Discussion() {
                 <p className="muted"><em>This post was removed.</em></p>
               ) : editing === p.id ? (
                 <div className="forum-composer">
-                  <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)} rows={6} maxLength={8000} />
+                  <BBEditor value={editBody} onChange={setEditBody} autoFocus />
                   <div className="buzz-edit-actions">
                     <button className="btn-primary btn-sm" disabled={!editBody.trim()} onClick={async () => { await post({ slug, action: "forum-edit", thread: t.id, post: p.id, body: editBody.trim() }); setEditing(null); refresh(); }}>Save</button>
                     <button className="btn-link" onClick={() => setEditing(null)}>Cancel</button>
