@@ -8,7 +8,7 @@ export function Login() {
   const [params] = useSearchParams();
   const next = params.get("next") || "/";
 
-  const [mode, setMode] = useState<"login" | "signup" | "forgot">(params.get("mode") === "signup" ? "signup" : "login");
+  const [mode, setMode] = useState<"login" | "signup" | "forgot">(params.get("mode") === "signup" ? "signup" : params.get("mode") === "forgot" ? "forgot" : "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");

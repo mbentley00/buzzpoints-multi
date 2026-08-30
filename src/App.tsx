@@ -31,6 +31,7 @@ import { Admin } from "./pages/Admin";
 import { Requests } from "./pages/Requests";
 import { Settings } from "./pages/Settings";
 import { Discussion } from "./pages/Discussion";
+import { Profile } from "./pages/Profile";
 
 export default function App() {
   return (
@@ -43,6 +44,7 @@ export default function App() {
       <Route path="/reset" element={<ResetPassword />} />
       <Route path="/join/:slug" element={<Join />} />
       <Route path="/admin" element={<Admin />} />
+      <Route path="/profile" element={<Profile />} />
       <Route path="/new" element={<CreateSet />} />
       <Route path="/set/:slug" element={<SetLayout />}>
         <Route index element={<SetHome />} />

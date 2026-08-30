@@ -1036,7 +1036,8 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
   width: 100%; font: inherit; font-size: 14px; padding: 8px 10px;
   border: 1px solid var(--line-strong); border-radius: 6px; resize: vertical;
 }
-.auth-user { font-size: 13px; color: rgba(255, 255, 255, 0.85); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.auth-user { font-size: 13px; color: rgba(255, 255, 255, 0.85); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: none; }
+a.auth-user:hover { color: #fff; text-decoration: underline; }
 
 /* inline buzz editor */
 .buzz-edit-row td { background: var(--surface-3); }

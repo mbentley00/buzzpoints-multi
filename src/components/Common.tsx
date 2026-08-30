@@ -45,7 +45,7 @@ export function AuthNav() {
       <ThemeToggle />
       <Feedback />
       {isModerator && <Link to="/admin" className="nav-link">{isAdmin ? "Admin" : "Moderation"}</Link>}
-      <span className="auth-user" title={user}>{name || user}</span>
+      <Link to="/profile" className="auth-user" title={`${user} — your profile`}>{name || user}</Link>
       <button className="btn-link" onClick={() => logout()}>Log out</button>
     </span>
   );

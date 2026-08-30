@@ -8,6 +8,7 @@ export type Role = "user" | "moderator" | "admin";
 interface AuthState {
   user: string | null; // email — the identity used for ownership checks
   name: string | null;
+  institution: string | null;
   isAdmin: boolean;
   role: Role;
   isModerator: boolean; // moderator OR admin
@@ -24,12 +25,14 @@ interface AuthState {
   // Sets the new password and signs in; resolves to where the link said to go.
   resetPassword: (token: string, password: string) => Promise<string | null>;
   logout: () => Promise<void>;
+  // Change the name shown on posts and corrections, and the affiliation.
+  updateProfile: (name: string, institution: string) => Promise<void>;
 }
 
 const Ctx = createContext<AuthState>(null as unknown as AuthState);
 export const useAuth = () => useContext(Ctx);
 
-type AuthResp = { email?: string | null; name?: string | null; isAdmin?: boolean; role?: Role; error?: string; needsVerification?: boolean; devUrl?: string; next?: string | null };
+type AuthResp = { email?: string | null; name?: string | null; institution?: string | null; isAdmin?: boolean; role?: Role; error?: string; needsVerification?: boolean; devUrl?: string; next?: string | null };
 async function call(body: Record<string, unknown>): Promise<{ ok: boolean; status: number; data: AuthResp }> {
   const r = await fetch("/api/auth", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const data = await r.json().catch(() => ({}));
@@ -45,12 +48,14 @@ function fail(data: AuthResp): never {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<string | null>(null);
   const [name, setName] = useState<string | null>(null);
+  const [institution, setInstitution] = useState<string | null>(null);
   const [role, setRole] = useState<Role>("user");
   const [loading, setLoading] = useState(true);
 
   const apply = (d: AuthResp) => {
     setUser(d.email ?? null);
     setName(d.name ?? null);
+    setInstitution(d.institution ?? null);
     setRole(d.role ?? (d.isAdmin ? "admin" : "user"));
     refreshIndex(); // visible list + ownership depend on the session
   };
@@ -58,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     fetch("/api/auth")
       .then((r) => r.json())
-      .then((d) => { setUser(d.email ?? null); setName(d.name ?? null); setRole(d.role ?? (d.isAdmin ? "admin" : "user")); })
+      .then((d) => { setUser(d.email ?? null); setName(d.name ?? null); setInstitution(d.institution ?? null); setRole(d.role ?? (d.isAdmin ? "admin" : "user")); })
       .catch(() => setUser(null))
       .finally(() => setLoading(false));
   }, []);
@@ -66,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: AuthState = {
     user,
     name,
+    institution,
     isAdmin: role === "admin",
     role,
     isModerator: role !== "user",
@@ -77,6 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     forgotPassword: async (e, next) => { const { ok, data } = await call({ action: "forgot-password", email: e, next }); if (!ok) fail(data); return { devUrl: data.devUrl }; },
     resetPassword: async (token, p) => { const { ok, data } = await call({ action: "reset-password", token, password: p }); if (!ok) fail(data); apply(data); return data.next ?? null; },
     logout: async () => { await call({ action: "logout" }); apply({ email: null, name: null, isAdmin: false }); },
+    updateProfile: async (n, inst) => { const { ok, data } = await call({ action: "profile", name: n, institution: inst }); if (!ok) fail(data); setName(data.name ?? null); setInstitution(data.institution ?? null); },
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

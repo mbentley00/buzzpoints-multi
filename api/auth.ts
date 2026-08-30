@@ -125,6 +125,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ needsVerification: true, email, delivered, devUrl });
     }
 
+    // ---- profile: the signed-in account's name and affiliation ----
+    if (action === "profile") {
+      const me = currentUser(req);
+      if (!me || !users[me]) return res.status(401).json({ error: "Log in." });
+      const body = (req.body || {}) as { name?: unknown; institution?: unknown };
+      const name = String(body.name ?? "").trim().slice(0, 80);
+      if (name.length < 2) return res.status(400).json({ error: "Enter your name." });
+      const institution = String(body.institution ?? "").trim().slice(0, 120);
+      users[me].name = name;
+      if (institution) users[me].institution = institution; else delete users[me].institution;
+      await saveUsers(users);
+      return res.status(200).json({ email: me, name, institution: institution || null, isAdmin: isAdminEmail(me), role: roleOf(me, users) });
+    }
+
     if (action === "login") {
       const u = users[email];
       if (!u || !verifyPassword(password, u.pwHash))
