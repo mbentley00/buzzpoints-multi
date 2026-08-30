@@ -218,6 +218,7 @@ export function Landing() {
                 <VisBadge s={s} />
                 <AdminOnlyBadge s={s} isAdmin={isAdmin} />
                 {s.editions && s.editions.length > 1 && <span className="edition-count">{s.editions.length} editions</span>}
+                {!!s.forumUnread && <span className="badge-new" title={`${s.forumUnread} new forum post${s.forumUnread === 1 ? "" : "s"}`}>{s.forumUnread} new</span>}
               </span>
               <span className="set-row-meta">
                 {s.level && <span className="set-row-level">{levelLabel(s.level)}</span>}

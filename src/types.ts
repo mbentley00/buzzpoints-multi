@@ -107,6 +107,7 @@ export interface SetEntry {
   tdLink?: string; // optional hsquizbowl Tournament Database link
   difficulty?: string; // question difficulty on the level's scale (see difficultyOptions)
   forum?: boolean; // the set's discussion is open (off by default)
+  forumUnread?: number; // forum posts this viewer hasn't seen (signed-in viewers only)
   // An individual shootout (IPNCT-style): players compete for themselves, so
   // "teams" here are players. Absent means a team tournament.
   individual?: boolean;
@@ -132,14 +133,16 @@ export interface SetCtx {
   level?: string;
   tdLink?: string;
   difficulty?: string;
-  // Whether the set's discussion is open.
+  // Whether the set's discussion is open, and how many of its posts this
+  // viewer hasn't seen.
   forum: boolean;
+  forumUnread: number;
 }
 
 // ---- discussion (see api/_lib/forum.ts) ----
 export type ForumStatus = "owner" | "member" | "pending" | "declined" | "none";
 export interface ForumPostView { id: string; byName: string; by?: string; at: string; body: string; editedAt?: string; deleted?: boolean; mine: boolean }
-export interface ForumThreadSummary { id: string; title: string; byName: string; by?: string; at: string; updatedAt: string; locked: boolean; mine: boolean; postCount: number; lastByName: string; lastAt: string }
+export interface ForumThreadSummary { id: string; title: string; byName: string; by?: string; at: string; updatedAt: string; locked: boolean; mine: boolean; postCount: number; lastByName: string; lastAt: string; unread: number }
 export interface ForumThreadView { id: string; title: string; byName: string; by?: string; at: string; updatedAt: string; locked: boolean; mine: boolean; postCount: number; posts: ForumPostView[] }
 
 // A buzz reassignment / move, as sent to /api/correct or /api/request.

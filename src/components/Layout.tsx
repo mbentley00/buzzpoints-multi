@@ -28,8 +28,8 @@ export function useScopedJson<T>(file: string, nonce = 0) {
 
 // The pages under a set, in header order. The set's landing page lists the
 // same ones as cards, so the two can't drift apart.
-export interface SetTab { to: string; label: string; desc: string }
-export function setTabs(meta: Meta, base: string, o: { hasEditions: boolean; isOwner: boolean; forum?: boolean }): SetTab[] {
+export interface SetTab { to: string; label: string; desc: string; badge?: number }
+export function setTabs(meta: Meta, base: string, o: { hasEditions: boolean; isOwner: boolean; forum?: boolean; forumUnread?: number }): SetTab[] {
   const n = (k: number, one: string, many = one + "s") => `${k} ${k === 1 ? one : many}`;
   return [
     { to: `${base}/tossup`, label: "Tossups", desc: n(meta.numTossups, "question") },
@@ -48,7 +48,7 @@ export function setTabs(meta: Meta, base: string, o: { hasEditions: boolean; isO
     { to: `${base}/standard`, label: "YF Stats", desc: "Standings, individuals, scoreboard" },
     // Only once the owner has opened it (signed-in viewers see the tab; the
     // page itself asks anyone else to log in).
-    ...(o.forum ? [{ to: `${base}/discussion`, label: "Forums", desc: "Threads about this tournament" }] : []),
+    ...(o.forum ? [{ to: `${base}/discussion`, label: "Forums", desc: o.forumUnread ? `${o.forumUnread} new post${o.forumUnread === 1 ? "" : "s"}` : "Threads about this tournament", badge: o.forumUnread || 0 }] : []),
     ...(o.hasEditions || o.isOwner ? [{ to: `${base}/editions`, label: "Editions", desc: o.hasEditions ? "Compare mirrors" : "Add a mirror" }] : []),
     ...(o.isOwner ? [{ to: `${base}/requests`, label: "Corrections", desc: "Review proposed fixes" }] : []),
     ...(o.isOwner ? [{ to: `${base}/settings`, label: "Settings", desc: "Visibility, details, repairs" }] : []),
@@ -81,7 +81,7 @@ export function SetLayout() {
   // The owner can close the correction queue; absent on older index entries,
   // which means it was never closed.
   const allowRequests = entry?.allowRequests !== false;
-  const ctx: SetCtx = { meta: meta as Meta, slug, scope, editions, owner, isOwner, user, allowRequests, level: entry?.level, tdLink: entry?.tdLink, difficulty: entry?.difficulty, forum: !!entry?.forum };
+  const ctx: SetCtx = { meta: meta as Meta, slug, scope, editions, owner, isOwner, user, allowRequests, level: entry?.level, tdLink: entry?.tdLink, difficulty: entry?.difficulty, forum: !!entry?.forum, forumUnread: entry?.forumUnread ?? 0 };
   // A player's or a team's id is assigned per aggregation scope: ids are handed
   // out in name order over whoever appears in THAT scope, so p25 in the combined
   // file and p25 in one edition's file are simply different people (checked on a
@@ -127,7 +127,7 @@ export function SetLayout() {
   };
 
   const base = `/set/${slug}`;
-  const tabs = meta ? setTabs(meta, base, { hasEditions, isOwner, forum: !!entry?.forum }) : [];
+  const tabs = meta ? setTabs(meta, base, { hasEditions, isOwner, forum: !!entry?.forum, forumUnread: entry?.forumUnread }) : [];
 
   return (
     <div className="app">
@@ -147,7 +147,7 @@ export function SetLayout() {
             {meta &&
               tabs.map((t) => (
                 <NavLink key={t.to} to={t.to} className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}>
-                  {t.label}
+                  {t.label}{!!t.badge && <span className="badge-new" title={`${t.badge} new post${t.badge === 1 ? "" : "s"}`}>{t.badge}</span>}
                 </NavLink>
               ))}
           </nav>

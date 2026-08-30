@@ -50,10 +50,24 @@ export interface ForumData {
   declined: string[];             // asked and turned down (may ask again)
   // Threads each address has asked not to be emailed about.
   muted: Record<string, string[]>;
+  // How many posts of each thread each address has seen (email → thread id →
+  // count), set when they open the thread. What's above that is "new" to them.
+  seen: Record<string, Record<string, number>>;
   threads: ForumThread[];
 }
 
-const empty = (): ForumData => ({ members: [], pending: [], declined: [], muted: {}, threads: [] });
+const empty = (): ForumData => ({ members: [], pending: [], declined: [], muted: {}, seen: {}, threads: [] });
+
+const livePosts = (t: ForumThread) => t.posts.filter((p) => !p.deleted).length;
+// Posts in a thread this address hasn't seen. A thread never opened is all new.
+export const unreadIn = (t: ForumThread, data: ForumData, email: string) =>
+  Math.max(0, livePosts(t) - (data.seen[email]?.[t.id] ?? 0));
+export const unreadFor = (data: ForumData, email: string) =>
+  data.threads.reduce((n, t) => n + unreadIn(t, data, email), 0);
+export function markSeen(data: ForumData, email: string, t: ForumThread) {
+  const mine = data.seen[email] || (data.seen[email] = {});
+  mine[t.id] = livePosts(t);
+}
 
 export async function readForum(slug: string): Promise<ForumData> {
   const d = await readBlobJson<Partial<ForumData>>(`sets/${slug}/${FORUM_FILE}`, false);
@@ -93,13 +107,14 @@ export function threadView(t: ForumThread, user: string, isOwner: boolean) {
     posts: t.posts.map(post),
   };
 }
-export function threadSummary(t: ForumThread, user: string, isOwner: boolean) {
+export function threadSummary(t: ForumThread, user: string, isOwner: boolean, data: ForumData) {
   const last = [...t.posts].reverse().find((p) => !p.deleted);
   return {
     id: t.id, title: t.title, byName: t.byName, at: t.at, updatedAt: t.updatedAt, locked: !!t.locked,
     mine: t.by === user, ...(isOwner ? { by: t.by } : {}),
     postCount: t.posts.filter((p) => !p.deleted).length,
     lastByName: last?.byName ?? t.byName, lastAt: last?.at ?? t.at,
+    unread: unreadIn(t, data, user),
   };
 }
 

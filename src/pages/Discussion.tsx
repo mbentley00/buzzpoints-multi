@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useSetCtx } from "../components/Layout";
+import { refreshIndex } from "../data";
 import { PageHeader, Loading, ErrorBox } from "../components/Common";
 import { BBCode } from "../bbcode";
 import { BBEditor } from "../components/BBEditor";
@@ -30,7 +31,14 @@ function useForum(slug: string, threadId: string | undefined, nonce: number) {
     setData(null); setError(null);
     fetch(`/api/requests?slug=${encodeURIComponent(slug)}&forum=1${threadId ? `&thread=${encodeURIComponent(threadId)}` : ""}`)
       .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
-      .then(({ ok, d }) => { if (!alive) return; if (!ok) throw new Error(d.error || "Failed to load"); setData(d); })
+      .then(({ ok, d }) => {
+        if (!alive) return;
+        if (!ok) throw new Error(d.error || "Failed to load");
+        setData(d);
+        // Opening a thread marks its posts seen on the server; the badges read
+        // the set list, so refresh it to agree.
+        if (threadId) refreshIndex();
+      })
       .catch((e) => { if (alive) setError(String(e.message || e)); });
     return () => { alive = false; };
   }, [slug, threadId, nonce]);
@@ -191,7 +199,11 @@ export function Discussion() {
             <tbody>
               {data.threads.map((th) => (
                 <tr key={th.id}>
-                  <td><Link className="link" to={`/set/${slug}/discussion/${th.id}`}>{th.title}</Link>{th.locked && <span className="set-row-level" style={{ marginLeft: 6 }}>locked</span>}</td>
+                  <td>
+                    <Link className={"link" + (th.unread ? " forum-unread" : "")} to={`/set/${slug}/discussion/${th.id}`}>{th.title}</Link>
+                    {!!th.unread && <span className="badge-new" title={`${th.unread} new post${th.unread === 1 ? "" : "s"}`}>{th.unread} new</span>}
+                    {th.locked && <span className="set-row-level" style={{ marginLeft: 6 }}>locked</span>}
+                  </td>
                   <td>{th.byName} <span className="muted">· {when(th.at)}</span></td>
                   <td className="right mono">{th.postCount}</td>
                   <td>{th.lastByName} <span className="muted">· {when(th.lastAt)}</span></td>

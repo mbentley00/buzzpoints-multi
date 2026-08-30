@@ -7,6 +7,7 @@ import { SetEntry, canList, canViewContent, sanitizeEntry, effectiveVisibility, 
 import { sendEmail, emailEnabled, feedbackBody } from "./_lib/email.js";
 import { isCategoryBucket, CategoryBucket } from "./_lib/categories.js";
 import { getSearchDoc } from "./_lib/searchIndex.js";
+import { readForum, unreadFor } from "./_lib/forum.js";
 
 const MAX_SETS = 80;   // cap how many accessible sets a single query scans
 const MAX_RESULTS = 200;
@@ -223,7 +224,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const idx = await readBlobJson<{ sets: SetEntry[] }>("sets/index.json", false);
     const sets = (idx?.sets ?? [])
       .filter((s) => canList(s, user, admin))
-      .map((s) => sanitizeEntry(s, user));
+      .map((s) => sanitizeEntry(s, user) as ReturnType<typeof sanitizeEntry> & { forumUnread?: number });
+    // How many forum posts this viewer hasn't seen, per set with a discussion
+    // they can read — what the badges show. Only such sets are read, and only
+    // for a signed-in viewer, so the list stays one file for everyone else.
+    if (user)
+      await Promise.all(sets.map(async (s) => {
+        const full = (idx?.sets ?? []).find((e) => e.slug === s.slug);
+        if (!full?.forum || !canViewContent(full, user)) return;
+        const data = await readForum(s.slug).catch(() => null);
+        if (data) s.forumUnread = unreadFor(data, user);
+      }));
     res.setHeader("cache-control", "no-store");
     return res.status(200).json({ sets });
   } catch (e) {

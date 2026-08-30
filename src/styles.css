@@ -1330,6 +1330,8 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
 .forum-preview { border: 1px dashed var(--panel-line, #ccc); border-radius: 6px; padding: 10px 12px; min-height: 120px; }
 .forum-join { margin: 12px 0; }
 .forum-list td { vertical-align: top; }
+.forum-unread { font-weight: 700; }
+.badge-new { display: inline-block; margin-left: 6px; padding: 0 6px; min-width: 18px; border-radius: 9px; background: var(--neg, #b15c52); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; vertical-align: middle; white-space: nowrap; }
 .bb { line-height: 1.5; overflow-wrap: anywhere; }
 .bb .bb-quote { border-left: 3px solid var(--panel-line, #ccc); margin: 8px 0; padding: 4px 12px; color: var(--ink-soft, inherit); }
 .bb .bb-quote cite { display: block; font-style: normal; font-weight: 600; font-size: 12.5px; margin-bottom: 2px; }

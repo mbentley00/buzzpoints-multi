@@ -14,7 +14,7 @@ import {
 import { renameKind } from "./_lib/aggregate.js";
 import { sendEmail, appUrl, correctionRequestBody, forumJoinRequestBody, forumApprovedBody, forumReplyBody } from "./_lib/email.js";
 import { loadUsers, signPurpose, readPurpose, normEmail } from "./_lib/auth.js";
-import { readForum, writeForum, participants, plainText, threadView, threadSummary, toPhpbb, ForumData, ForumThread, MAX_TITLE, MAX_BODY, MAX_NOTE } from "./_lib/forum.js";
+import { readForum, writeForum, participants, plainText, threadView, threadSummary, toPhpbb, unreadFor, markSeen, ForumData, ForumThread, MAX_TITLE, MAX_BODY, MAX_NOTE } from "./_lib/forum.js";
 import { canViewContent, SetEntry } from "./_lib/sets.js";
 
 /* ----------------------------- discussion ----------------------------- */
@@ -58,12 +58,17 @@ async function forumGet(req: VercelRequest, res: VercelResponse, user: string | 
   const threadId = String(req.query.thread || "");
   const t = threadId ? data.threads.find((x) => x.id === threadId) : undefined;
   if (threadId && !t) return res.status(404).json({ error: "Thread not found." });
-  return res.status(200).json({
+  const out = {
     enabled: !!entry.forum, status, isOwner,
-    threads: [...data.threads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map((x) => threadSummary(x, user, isOwner)),
+    threads: [...data.threads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map((x) => threadSummary(x, user, isOwner, data)),
     ...(t ? { thread: threadView(t, user, isOwner) } : {}),
     ...(isOwner ? { members: data.members, pending: data.pending } : {}),
-  });
+    unread: unreadFor(data, user),
+  };
+  // Opening a thread is reading it: everything in it stops being new. (Counted
+  // into `out` first, so the page can still say what was new on arrival.)
+  if (t) { markSeen(data, user, t); await writeForum(slug, data); }
+  return res.status(200).json(out);
 }
 
 async function forumMute(req: VercelRequest, res: VercelResponse) {
@@ -135,6 +140,7 @@ async function forumPost(body: any, res: VercelResponse, user: string) {
       posts: [{ id: crypto.randomBytes(6).toString("base64url"), by: user, byName, at: now, body: text }],
     };
     data.threads.push(t);
+    markSeen(data, user, t);
     await writeForum(slug, data);
     return res.status(200).json({ ok: true, id: t.id });
   }
@@ -156,6 +162,7 @@ async function forumPost(body: any, res: VercelResponse, user: string) {
     const byName = await displayName(user);
     const p = { id: crypto.randomBytes(6).toString("base64url"), by: user, byName, at: now, body: text };
     t.posts.push(p); t.updatedAt = now;
+    markSeen(data, user, t);
     await writeForum(slug, data);
     // Everyone who has written in the thread hears about the reply, with a
     // signed link to stop hearing about this thread.
