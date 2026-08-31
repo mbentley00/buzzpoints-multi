@@ -657,16 +657,28 @@ function buildVirtualNode<A>(
   // under "Science - Biology" — and without this the same questions appear under
   // two rows of one merged category, which reads as the merge having half worked.
   for (const m of members) {
-    const memAcc = newAcc();
-    let has = false;
+    // Everything this member claims, kept per subcategory. A member that names
+    // one raw category ("Biology") stays one sub-row under its own name; a
+    // member that swallows a whole branch ("History", matching "History -
+    // American/European/…") becomes one sub-row per branch it matched —
+    // otherwise the merged category collapses to a single row that repeats its
+    // own name, and there is nothing to expand (which is exactly how merged
+    // History and Literature looked wherever one member covered everything).
+    const matched = new Map<string, A>();
     for (const [fs, s] of subStats) {
       if (seen.has(fs) || !vmatchSub(fs, m)) continue;
       seen.add(fs);
-      addAcc(memAcc, s);
+      let acc = matched.get(fs); if (!acc) { acc = newAcc(); matched.set(fs, acc); }
+      addAcc(acc, s);
       addAcc(mainAcc, s);
-      has = true;
     }
-    if (has) subs.push({ subcategory: m, subLabel: m.split(" - ").slice(-1)[0].trim(), ...fin(memAcc), leaves: [] });
+    if (!matched.size) continue;
+    if (matched.size === 1) {
+      subs.push({ subcategory: m, subLabel: m.split(" - ").slice(-1)[0].trim(), ...fin([...matched.values()][0]), leaves: [] });
+    } else {
+      for (const [fs, acc] of matched)
+        subs.push({ subcategory: fs, subLabel: fs.split(" - ").slice(-1)[0].trim(), ...fin(acc), leaves: [] });
+    }
   }
   if (!subs.length) return null;
   subs.sort((a, b) => a.subLabel.toLowerCase().localeCompare(b.subLabel.toLowerCase()));
