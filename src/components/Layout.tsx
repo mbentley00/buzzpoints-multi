@@ -243,7 +243,20 @@ export function SetLayout() {
                 </>
               )
             ) : (
-              <>You need to <Link to={`/login?next=${encodeURIComponent(loc.pathname + loc.search)}`} className="link">log in</Link> (and be invited) to view it.</>
+              // Not signed in. The old wording ("log in (and be invited)") read
+              // as a dead end — the reader has no way to know that asking is
+              // possible, or that this very page is where you ask. `reason` is
+              // carried so the login page can say what it's for.
+              <>
+                <div>
+                  Anyone can ask its owner for access. Log in or create an account, and you'll come straight back here
+                  to send the request.
+                </div>
+                <div className="request-form">
+                  <Link className="btn-primary" to={`/login?next=${encodeURIComponent(loc.pathname + loc.search)}&reason=access`}>Log in to request access</Link>
+                  <Link className="link" to={`/login?mode=signup&next=${encodeURIComponent(loc.pathname + loc.search)}&reason=access`}>Create an account</Link>
+                </div>
+              </>
             )}
           </div>
         )}

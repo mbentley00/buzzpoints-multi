@@ -13,7 +13,7 @@ import { formatDate, relativeTime } from "../util";
 const GROUP_LABELS = [
   "Your tournaments & shared with you",
   "Public tournaments",
-  "Restricted — request access",
+  "Restricted — log in and request access",
 ];
 // 0 = owned or granted access, 1 = public, 2 = invite-only without access yet.
 function groupOf(s: SetEntry, user: string | null): 0 | 1 | 2 {

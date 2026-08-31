@@ -1308,6 +1308,7 @@ a.auth-user:hover { color: #fff; text-decoration: underline; }
 /* A heading over a group of fields that aren't each separately labelled. */
 .field-label { font-weight: 600; font-size: 13.5px; margin-top: 6px; }
 .nowrap { white-space: nowrap; }
+.request-form .btn-primary { text-decoration: none; }
 
 /* ---- discussion ---- */
 .forum-posts { display: flex; flex-direction: column; gap: 12px; margin: 12px 0 18px; }

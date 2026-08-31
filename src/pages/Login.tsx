@@ -7,6 +7,10 @@ export function Login() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const next = params.get("next") || "/";
+  // Why the visitor was sent here, so the page can say what happens next
+  // instead of leaving a request-access flow looking like a dead end.
+  const reason = params.get("reason") || "";
+  const setSlug = /^\/set\/([a-z0-9-]+)/.exec(next)?.[1] ?? null;
 
   const [mode, setMode] = useState<"login" | "signup" | "forgot">(params.get("mode") === "signup" ? "signup" : params.get("mode") === "forgot" ? "forgot" : "login");
   const [email, setEmail] = useState("");
@@ -117,9 +121,19 @@ export function Login() {
           <Link to="/" className="link">← All tournaments</Link>
         </div>
         <h1>{mode === "signup" ? "Create an account" : mode === "forgot" ? "Reset your password" : "Log in"}</h1>
+        {reason === "access" && mode !== "forgot" && (
+          <div className="caveat">
+            <strong>To request access to a restricted tournament, you need an account.</strong>
+            <div>
+              {mode === "signup" ? "Create one" : "Log in"} and you'll be taken back to the tournament, where you can tell
+              its owner how you were involved and send a request. Owners get an email and decide who can view it.
+            </div>
+          </div>
+        )}
         {user ? (
           <p className="caveat">
-            You are signed in as <strong>{user}</strong>. <Link to={next} className="link">Continue →</Link>
+            You are signed in as <strong>{user}</strong>.{" "}
+            <Link to={next} className="link">{reason === "access" && setSlug ? "Continue and request access →" : "Continue →"}</Link>
           </p>
         ) : (
           <form className="create-form" onSubmit={submit} style={{ maxWidth: 380 }}>
