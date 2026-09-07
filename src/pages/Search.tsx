@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AuthNav, Loading, ErrorBox } from "../components/Common";
 import { DataTable, Column } from "../components/DataTable";
-import { Html, CategoryTag, num, roundLabel, primaryAnswer } from "../util";
+import { Html, CategoryTag, num, roundLabel, primaryAnswer, searchable } from "../util";
 import { TOURNAMENT_LEVELS, CATEGORY_BUCKETS, Visibility, levelLabel, difficultyLabel } from "../types";
 import { useAuth } from "../auth";
 
@@ -96,7 +96,9 @@ function BuzzChart({ q }: { q: QuestionHit }) {
 }
 
 const yearOf = (iso: string | null) => (iso ? iso.slice(0, 4) : "");
-const plain = (html: string) => html.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").toLowerCase();
+// Answer text reduced to what a query is compared against: no markup, no case,
+// no accents — the same shape the server matched on.
+const plain = (html: string) => searchable(html.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&"));
 
 // What to show as the matched text: the question snippet if the text matched;
 // else the answer-line window, but only when the match sits in a part of the
@@ -123,7 +125,7 @@ export function Search() {
   const scope: "public" | "all" = params.get("scope") === "all" ? "all" : "public";
   const { user } = useAuth();
   // The query without its quotes, for checking whether a match is visible.
-  const bare = q.replace(/^"(.*)"$/, "$1").trim().toLowerCase();
+  const bare = searchable(q.replace(/^"(.*)"$/, "$1").trim());
 
   const [input, setInput] = useState(q);
   const [typeSel, setTypeSel] = useState<SearchType>(type);

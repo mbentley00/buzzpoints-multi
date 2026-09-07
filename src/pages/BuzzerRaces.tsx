@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { BuzzerRace } from "../types";
-import { CategoryTag, Html, num, roundLabel, primaryAnswer } from "../util";
+import { CategoryTag, Html, num, roundLabel, primaryAnswer, searchable } from "../util";
 import { DataTable, Column } from "../components/DataTable";
 import { PageHeader, Loading, ErrorBox, RoundFilter, SearchInput } from "../components/Common";
 
@@ -33,8 +33,8 @@ export function BuzzerRaces() {
     if (minPct !== "") r = r.filter((x) => x.pctThrough >= minPct);
     if (maxPct !== "") r = r.filter((x) => x.pctThrough <= maxPct);
     if (q.trim()) {
-      const n = q.toLowerCase();
-      r = r.filter((x) => x.hot.toLowerCase().includes(n) || x.before.toLowerCase().includes(n) || x.after.toLowerCase().includes(n) || x.category.toLowerCase().includes(n));
+      const n = searchable(q);
+      r = r.filter((x) => searchable(x.hot).includes(n) || searchable(x.before).includes(n) || searchable(x.after).includes(n) || searchable(x.category).includes(n));
     }
     return r;
   }, [data, round, q, minBuzz, minPct, maxPct]);

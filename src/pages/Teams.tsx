@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { TeamRow } from "../types";
-import { num } from "../util";
+import { num, searchable } from "../util";
 import { DataTable, Column } from "../components/DataTable";
 import { PageHeader, Loading, ErrorBox, SearchInput, EditionBadges } from "../components/Common";
 
@@ -14,7 +14,7 @@ export function Teams() {
 
   const rows = useMemo(() => {
     let r = data ?? [];
-    if (q.trim()) r = r.filter((t) => t.name.toLowerCase().includes(q.toLowerCase()));
+    if (q.trim()) r = r.filter((t) => searchable(t.name).includes(searchable(q)));
     return r;
   }, [data, q]);
 

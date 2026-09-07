@@ -101,6 +101,26 @@ export function pct(v: number | null | undefined): string {
 export function num(v: number | null | undefined, digits = 1): string {
   return v === null || v === undefined ? "—" : v.toFixed(digits);
 }
+// Accent-blind matching, mirroring fold in api/_lib/searchIndex.ts so a filter
+// box here and the cross-tournament search agree: "bartok" finds "Bartók", and
+// typing the accents finds it too. Latin only — Greek and Cyrillic keep their
+// marks. Feed both the text and the query through searchable().
+const FOLDABLE = /[\u00C0-\u024F\u0300-\u036F\u1E00-\u1EFF]/;
+const FOLDABLE_G = new RegExp(FOLDABLE.source, "g");
+const MARKS = /[\u0300-\u036F]/g;
+// Letters carrying a stroke or a bar rather than an accent: nothing to decompose.
+const STROKES: Record<string, string> = { "ø": "o", "Ø": "O", "đ": "d", "Đ": "D", "ð": "d", "Ð": "D", "ł": "l", "Ł": "L", "ħ": "h", "Ħ": "H", "ŧ": "t", "Ŧ": "T", "ı": "i", "ſ": "s" };
+export function fold(s: string): string {
+  if (!s || !FOLDABLE.test(s)) return s;
+  return s.replace(FOLDABLE_G, (ch) => {
+    if (STROKES[ch]) return STROKES[ch];
+    const bare = ch.normalize("NFD").replace(MARKS, "");
+    return bare.length <= 1 ? bare : ch;
+  });
+}
+// What a search box compares: case- and accent-insensitive.
+export const searchable = (s: string) => fold((s || "").toLowerCase().normalize("NFC"));
+
 export function plain(html: string): string {
   const tmp = document.createElement("div");
   tmp.innerHTML = html;

@@ -46,7 +46,37 @@ export interface SearchDoc { v: number; tossups: SearchTossup[]; bonuses: Search
 
 export const stripHtml = (s: string) =>
   (s || "").replace(/<[^>]+>/g, "").replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
-const low = (s: unknown) => stripHtml(String(s ?? "")).toLowerCase();
+// Composed form, so an accent is one character rather than a letter followed by
+// a combining mark — which is what makes the fold below a character-for-character
+// swap, and so a match found in folded text still points at the same offset in
+// the original.
+const low = (s: unknown) => stripHtml(String(s ?? "")).toLowerCase().normalize("NFC");
+
+// Accent-blind matching: "bartok" finds "Bartók", "elias" finds "Éliás", and a
+// searcher who *does* type the accents still finds them, because both sides get
+// folded. Latin only — Greek and Cyrillic keep their marks, since stripping
+// those changes the word rather than its spelling.
+//
+// Every replacement is a single character, so the folded string lines up with
+// the original position for position and a snippet can be cut from the text as
+// written. (The one exception is a stray combining mark, which drops out; that
+// only happens in text that wasn't composed, and it moves a snippet window by a
+// character or two at most.) Letters that fold to two — ß, æ, œ — are left
+// alone rather than break that alignment.
+const FOLDABLE = /[\u00C0-\u024F\u0300-\u036F\u1E00-\u1EFF]/;
+const FOLDABLE_G = new RegExp(FOLDABLE.source, "g");
+const MARKS = /[\u0300-\u036F]/g;
+// Letters carrying a stroke or a bar instead of an accent: no decomposition to
+// undo, so they're spelled out here.
+const STROKES: Record<string, string> = { "ø": "o", "Ø": "O", "đ": "d", "Đ": "D", "ð": "d", "Ð": "D", "ł": "l", "Ł": "L", "ħ": "h", "Ħ": "H", "ŧ": "t", "Ŧ": "T", "ı": "i", "ſ": "s" };
+export function fold(s: string): string {
+  if (!s || !FOLDABLE.test(s)) return s;
+  return s.replace(FOLDABLE_G, (ch) => {
+    if (STROKES[ch]) return STROKES[ch];
+    const bare = ch.normalize("NFD").replace(MARKS, "");
+    return bare.length <= 1 ? bare : ch;
+  });
+}
 
 // From the aggregation's output files (or the same files read back from the store).
 export function buildSearchDoc(files: Record<string, any>): SearchDoc {

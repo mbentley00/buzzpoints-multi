@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { PlayerRow } from "../types";
-import { num } from "../util";
+import { num, searchable } from "../util";
 import { DataTable, Column } from "../components/DataTable";
 import { PageHeader, Loading, ErrorBox, SearchInput, EditionBadges } from "../components/Common";
 
@@ -15,8 +15,8 @@ export function Players() {
   const rows = useMemo(() => {
     let r = data ?? [];
     if (q.trim()) {
-      const n = q.toLowerCase();
-      r = r.filter((p) => p.name.toLowerCase().includes(n) || p.team.toLowerCase().includes(n));
+      const n = searchable(q);
+      r = r.filter((p) => searchable(p.name).includes(n) || searchable(p.team).includes(n));
     }
     return r;
   }, [data, q]);

@@ -6,7 +6,7 @@ import { currentUser, canModerate } from "./_lib/auth.js";
 import { SetEntry, canList, canViewContent, sanitizeEntry, effectiveVisibility, TOURNAMENT_LEVELS } from "./_lib/sets.js";
 import { sendEmail, emailEnabled, feedbackBody } from "./_lib/email.js";
 import { isCategoryBucket, CategoryBucket } from "./_lib/categories.js";
-import { getSearchDoc } from "./_lib/searchIndex.js";
+import { getSearchDoc, fold } from "./_lib/searchIndex.js";
 import { readForum, unreadFor } from "./_lib/forum.js";
 
 const MAX_SETS = 80;   // cap how many accessible sets a single query scans
@@ -35,11 +35,15 @@ export interface SearchOpts {
 // How a query matches: a bare query matches anywhere in the text ("nabok"
 // finds Nabokov); one in quotes matches only as whole words ("art" no longer
 // finds Bartók or Descartes). Either way it's a phrase — the words must appear
-// together, in order. Returns the match position, or -1.
-type Matcher = { find: (plain: string) => number; len: number };
+// together, in order. Accents don't count on either side: the needle is folded
+// here, and every string it's tried against is folded before it gets here, so
+// "bartok", "Bartók" and "bartók" are one query. Returns the match position, or
+// -1 — an offset into the *unfolded* text too, since folding is position for
+// position (see fold in _lib/searchIndex.ts).
+type Matcher = { find: (folded: string) => number; len: number };
 function matcherFor(q: string): Matcher {
   const quoted = /^"(.+)"$/.exec(q.trim());
-  const needle = (quoted ? quoted[1] : q).trim().toLowerCase();
+  const needle = fold((quoted ? quoted[1] : q).trim().toLowerCase().normalize("NFC"));
   if (!quoted) return { find: (s) => (s || "").indexOf(needle), len: needle.length };
   // Whole words: no letter or digit may touch either end of the phrase.
   const re = new RegExp(`(^|[^\\p{L}\\p{N}])${needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "u");
@@ -48,9 +52,10 @@ function matcherFor(q: string): Matcher {
 
 // A short window of (already plain, lowercase) text around the first match, so
 // a text hit shows WHY it matched instead of just an answer line that doesn't
-// contain the query.
-function snippet(plain: string, m: Matcher, width = 70): string | null {
-  const i = m.find(plain);
+// contain the query. Found in the folded text, cut from the original, so the
+// window still reads as the question spells it.
+function snippet(plain: string, folded: string, m: Matcher, width = 70): string | null {
+  const i = m.find(folded);
   if (i < 0) return null;
   const from = Math.max(0, i - width), to = Math.min(plain.length, i + m.len + width);
   return `${from > 0 ? "…" : ""}${plain.slice(from, to)}${to < plain.length ? "…" : ""}`;
@@ -86,7 +91,7 @@ async function search(user: string | null, q: string, type: "players" | "questio
   const field = opts.field ?? "all";
   const inAnswer = field !== "text";
   const inText = field !== "answer";
-  const hit = (s: string) => m.find(s) >= 0;
+  const hit = (s: string) => m.find(fold(s)) >= 0;
   const wantCats = opts.cats?.length ? new Set<string>(opts.cats) : null;
   const inCats = (buckets: string[]) => !wantCats || buckets.some((b) => wantCats.has(b));
 
@@ -103,12 +108,13 @@ async function search(user: string | null, q: string, type: "players" | "questio
       }
       if (kind !== "bonus")
         for (const r of doc.tossups) {
-          const byAnswer = inAnswer && hit(r.a);
-          const byText = inText && !byAnswer ? snippet(r.t, m) : null;
+          const af = inAnswer ? fold(r.a) : "";
+          const byAnswer = inAnswer && m.find(af) >= 0;
+          const byText = inText && !byAnswer ? snippet(r.t, fold(r.t), m) : null;
           if (!byAnswer && !byText) continue;
           // Where in the answer line it matched — an "accept"/"prompt" clause
           // the result's answer doesn't show, as often as not.
-          const aSnip = byAnswer ? snippet(r.a, m, 40) : null;
+          const aSnip = byAnswer ? snippet(r.a, af, m, 40) : null;
           if (!inCats(r.buckets)) continue;
           results.push({
             ...setFacts(s), kind: "tossup", id: r.id, round: r.round, num: r.num, answer: r.answer, category: r.category,
@@ -119,9 +125,9 @@ async function search(user: string | null, q: string, type: "players" | "questio
       if (kind !== "tossup")
         for (const r of doc.bonuses) {
           const ai = inAnswer ? r.a.findIndex(hit) : -1;
-          const byText = inText && ai < 0 ? snippet(r.t, m) : null;
+          const byText = inText && ai < 0 ? snippet(r.t, fold(r.t), m) : null;
           if (ai < 0 && !byText) continue;
-          const aSnip = ai >= 0 ? snippet(r.a[ai], m, 40) : null;
+          const aSnip = ai >= 0 ? snippet(r.a[ai], fold(r.a[ai]), m, 40) : null;
           if (!inCats(r.buckets)) continue;
           results.push({
             ...setFacts(s), kind: "bonus", id: r.id, round: r.round, num: r.num,

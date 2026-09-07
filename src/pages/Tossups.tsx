@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { TossupRow } from "../types";
-import { CategoryTag, Html, pct, num, plain, catMatches, roundLabel, primaryAnswer } from "../util";
+import { CategoryTag, Html, pct, num, plain, catMatches, roundLabel, primaryAnswer, searchable } from "../util";
 import { DataTable, Column } from "../components/DataTable";
 import { PageHeader, Loading, ErrorBox, RoundFilter, MinHeardFilter, SearchInput } from "../components/Common";
 import { useCategoryFilter, CategoryFilterChip } from "../components/CategoryFilter";
@@ -26,8 +26,8 @@ export function Tossups() {
     if (cat.values.length) r = r.filter((t) => cat.values.some((v) => catMatches(t.subcategory, v)));
     if (tag) r = r.filter((t) => (t.tags || []).includes(tag));
     if (q.trim()) {
-      const n = q.toLowerCase();
-      r = r.filter((t) => plain(t.answer).toLowerCase().includes(n) || t.subcategory.toLowerCase().includes(n));
+      const n = searchable(q);
+      r = r.filter((t) => searchable(plain(t.answer)).includes(n) || searchable(t.subcategory).includes(n));
     }
     return r;
   }, [data, round, minHeard, q, cat.values, tag]);

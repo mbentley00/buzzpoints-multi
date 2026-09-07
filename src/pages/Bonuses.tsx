@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { BonusRow } from "../types";
-import { CategoryTag, Html, pct, num, plain, catMatches, roundLabel, primaryAnswer } from "../util";
+import { CategoryTag, Html, pct, num, plain, catMatches, roundLabel, primaryAnswer, searchable } from "../util";
 import { DataTable, Column } from "../components/DataTable";
 import { PageHeader, Loading, ErrorBox, RoundFilter, SearchInput } from "../components/Common";
 import { useCategoryFilter, CategoryFilterChip } from "../components/CategoryFilter";
@@ -23,8 +23,8 @@ export function Bonuses() {
     if (cat.values.length) r = r.filter((b) => cat.values.some((v) => catMatches(b.subcategory, v)));
     if (tag) r = r.filter((b) => (b.tags || []).includes(tag));
     if (q.trim()) {
-      const n = q.toLowerCase();
-      r = r.filter((b) => b.subcategory.toLowerCase().includes(n) || [b.easyAnswer, b.medAnswer, b.hardAnswer].some((a) => a && plain(a).toLowerCase().includes(n)));
+      const n = searchable(q);
+      r = r.filter((b) => searchable(b.subcategory).includes(n) || [b.easyAnswer, b.medAnswer, b.hardAnswer].some((a) => a && searchable(plain(a)).includes(n)));
     }
     return r;
   }, [data, round, q, cat.values, tag]);

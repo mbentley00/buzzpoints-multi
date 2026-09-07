@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { FirstSentenceTossup, Buzz } from "../types";
-import { CategoryTag, Html, roundLabel, primaryAnswer } from "../util";
+import { CategoryTag, Html, roundLabel, primaryAnswer, searchable } from "../util";
 import { PageHeader, Loading, ErrorBox, RoundFilter, SearchInput } from "../components/Common";
 
 function valueClass(v: number): string {
@@ -66,8 +66,8 @@ export function FirstSentence() {
     if (round !== "all") r = r.filter((x) => x.round === round);
     if (minBuzz > 0) r = r.filter((x) => x.buzzCount >= minBuzz);
     if (q.trim()) {
-      const n = q.toLowerCase();
-      r = r.filter((x) => x.sentenceWords.join(" ").toLowerCase().includes(n) || x.category.toLowerCase().includes(n) || x.buzzers.some((b) => b.player.toLowerCase().includes(n) || b.team.toLowerCase().includes(n)));
+      const n = searchable(q);
+      r = r.filter((x) => searchable(x.sentenceWords.join(" ")).includes(n) || searchable(x.category).includes(n) || x.buzzers.some((b) => searchable(b.player).includes(n) || searchable(b.team).includes(n)));
     }
     return r;
   }, [data, round, q, minBuzz, correctOnly]);

@@ -4,7 +4,7 @@ import { useIndex } from "../data";
 import { useAuth } from "../auth";
 import { SetEntry, TOURNAMENT_LEVELS, levelLabel, difficultyLabel } from "../types";
 import { Loading, ErrorBox, AuthNav, SearchInput } from "../components/Common";
-import { formatDate, relativeTime } from "../util";
+import { formatDate, relativeTime, searchable } from "../util";
 
 // Access groups for the listing, ordered top → bottom.
 // "Restricted", not "Invite-only": this group is about the VIEWER's access, and
@@ -76,9 +76,9 @@ export function Landing() {
   const levelOpts = useMemo(() => TOURNAMENT_LEVELS.filter((l) => sets.some((s) => s.level === l.id)), [sets]);
 
   const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
+    const needle = searchable(q.trim());
     let r = sets.filter((s) => {
-      if (needle && !s.name.toLowerCase().includes(needle)) return false;
+      if (needle && !searchable(s.name).includes(needle)) return false;
       if (scoring !== "all" && s.scoring !== scoring) return false;
       if (vis !== "all" && (s.visibility ?? "public") !== vis) return false;
       if (lvl !== "all" && s.level !== lvl) return false;
