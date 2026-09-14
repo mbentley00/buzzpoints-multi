@@ -199,8 +199,8 @@ export function Editions() {
               <FileDrop accept=".json" value={packets} onChange={setPackets} hint="One JSON per round" />
             </div>
             <div className="field">
-              <span>Game files (QBJ)</span>
-              <FileDrop accept=".json,.qbj" value={games} onChange={setGames} hint="QBJ match files" />
+              <span>Game files (.qbj or .json)</span>
+              <FileDrop accept=".json,.qbj" value={games} onChange={setGames} hint="QBJ files or MODAQ saved games (.qbj / .json)" />
             </div>
             {addErr && <div className="error-box">{addErr}</div>}
             {addStatus && <div className="caveat">{addStatus}</div>}

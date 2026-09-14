@@ -10,7 +10,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { put } from "@vercel/blob";
 import { currentUser, getRole } from "./_lib/auth.js";
 import { readBlobJson } from "./_lib/blob.js";
-import { readIndex, writeIndex, readSource, aggregateAndWrite, readCorrections, effectiveVisibility, ownerEmails, SetEntry } from "./_lib/sets.js";
+import { readIndex, writeIndex, readSource, aggregateAndWrite, readCorrections, effectiveVisibility, ownerEmails, SetEntry, isTournamentDate } from "./_lib/sets.js";
 import { sendEmail, appUrl, publishReminderBody } from "./_lib/email.js";
 import { cleanDifficulty, CreateError } from "./_lib/publish.js";
 
@@ -158,6 +158,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch (e) {
         errors.push({ slug, error: e instanceof CreateError ? e.message : (e as Error).message });
       }
+    }
+    if (done.length) await writeIndex(index);
+    return res.status(200).json({ ok: true, done, errors });
+  }
+
+  // ---- bulk tournament dates (admin only) ----
+  // POST { op: "set-dates", items: [{ slug, date }] } — stamp when each tournament
+  // was first played (YYYY-MM-DD). An empty date clears it. Used to backfill sets
+  // whose date is known from the Tournament Database; nothing else is touched.
+  if (req.method === "POST" && (req.body || {}).op === "set-dates") {
+    if (role !== "admin") return res.status(403).json({ error: "Admin access required." });
+    const items = Array.isArray((req.body || {}).items) ? ((req.body as any).items as { slug?: unknown; date?: unknown }[]) : [];
+    const index = await readIndex();
+    const done: { slug: string; date: string | null }[] = [];
+    const errors: { slug: string; error: string }[] = [];
+    for (const it of items) {
+      const slug = String(it?.slug || "");
+      const entry = index.sets.find((s) => s.slug === slug);
+      if (!entry) { errors.push({ slug, error: "No such set." }); continue; }
+      const date = String(it?.date ?? "").trim();
+      if (date && !isTournamentDate(date)) { errors.push({ slug, error: `Not a YYYY-MM-DD date: ${date}` }); continue; }
+      if (date) entry.tournamentDate = date; else delete entry.tournamentDate;
+      done.push({ slug, date: date || null });
     }
     if (done.length) await writeIndex(index);
     return res.status(200).json({ ok: true, done, errors });

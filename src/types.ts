@@ -106,6 +106,7 @@ export interface SetEntry {
   level?: string; // tournament type (see TOURNAMENT_LEVELS)
   tdLink?: string; // optional hsquizbowl Tournament Database link
   difficulty?: string; // question difficulty on the level's scale (see difficultyOptions)
+  tournamentDate?: string; // YYYY-MM-DD the tournament was first played (not when it was added here)
   forum?: boolean; // the set's discussion is open (off by default)
   forumUnread?: number; // forum posts this viewer hasn't seen (signed-in viewers only)
   // An individual shootout (IPNCT-style): players compete for themselves, so

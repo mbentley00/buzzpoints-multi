@@ -53,7 +53,20 @@ const SCORING_LABELS: Record<string, string> = {
 };
 const scoringLabel = (id: string) => SCORING_LABELS[id] ?? id;
 
-type Sort = "new" | "old" | "name" | "games";
+type Sort = "new" | "old" | "played-new" | "played-old" | "name" | "games";
+
+// A tournament date is a calendar day with no time zone; read it as local so
+// "2024-03-02" doesn't show as March 1 west of Greenwich.
+const playedLabel = (d: string) => {
+  const [y, m, day] = d.split("-").map(Number);
+  return new Date(y, m - 1, day).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+};
+// Sets with no known date sort after every dated one, whichever way it runs.
+const byPlayed = (a: SetEntry, b: SetEntry, dir: 1 | -1) => {
+  const x = a.tournamentDate || "", y = b.tournamentDate || "";
+  if (!x || !y) return x ? -1 : y ? 1 : 0;
+  return dir * x.localeCompare(y);
+};
 
 export function Landing() {
   const { data, error, loading } = useIndex();
@@ -90,6 +103,8 @@ export function Landing() {
       switch (sort) {
         case "name": return a.name.localeCompare(b.name);
         case "games": return b.numGames - a.numGames;
+        case "played-new": return byPlayed(a, b, -1) || (b.createdAt || "").localeCompare(a.createdAt || "");
+        case "played-old": return byPlayed(a, b, 1) || (a.createdAt || "").localeCompare(b.createdAt || "");
         case "old": return (a.createdAt || "").localeCompare(b.createdAt || "");
         case "new":
         default: return (b.createdAt || "").localeCompare(a.createdAt || "");
@@ -122,7 +137,7 @@ export function Landing() {
         <div className="hero">
           <h1>Buzzpoints</h1>
           <p>
-            Upload packets and QBJ scoresheets to generate a quiz-bowl stats site for any tournament.{" "}
+            Upload packets and game files (.qbj or .json) to generate a quiz-bowl stats site for any tournament.{" "}
             <Link to="/about" className="link">Learn more</Link>.
           </p>
         </div>
@@ -181,8 +196,10 @@ export function Landing() {
             <label className="filter">
               Sort:{" "}
               <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
-                <option value="new">Newest</option>
-                <option value="old">Oldest</option>
+                <option value="new">Recently added</option>
+                <option value="old">First added</option>
+                <option value="played-new">Tournament date (newest)</option>
+                <option value="played-old">Tournament date (oldest)</option>
                 <option value="name">Name</option>
                 <option value="games">Most games</option>
               </select>
@@ -221,6 +238,7 @@ export function Landing() {
                 {!!s.forumUnread && <span className="badge-new" title={`${s.forumUnread} new forum post${s.forumUnread === 1 ? "" : "s"}`}>{s.forumUnread} new</span>}
               </span>
               <span className="set-row-meta">
+                {s.tournamentDate && <span className="set-row-level" title="When the tournament was first played">{playedLabel(s.tournamentDate)}</span>}
                 {s.level && <span className="set-row-level">{levelLabel(s.level)}</span>}
                 {difficultyLabel(s.level, s.difficulty) && <span className="set-row-level" title="Question difficulty">{difficultyLabel(s.level, s.difficulty)}</span>}
                 {s.individual

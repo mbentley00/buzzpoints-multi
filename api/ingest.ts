@@ -331,7 +331,7 @@ import { sendEmail, appUrl, submissionPendingBody, publishRequestBody } from "./
 interface Body {
   name?: string; scoring?: string; hasBonuses?: boolean; packets?: FileRef[]; games?: FileRef[];
   individual?: boolean; // an individual shootout (players compete for themselves)
-  visibility?: string; autoPublicAt?: string | null; editionOf?: string; edition?: string;
+  visibility?: string; autoPublicAt?: string | null; editionOf?: string; edition?: string; tournamentDate?: string;
   editionId?: string; // when set with editionOf: append files to this existing edition
   replaceRound?: boolean; // with editionId: swap out the rounds these files cover instead of appending
   yf?: any; // optional companion YellowFruit (.yft) JSON for corrected re-export
@@ -428,7 +428,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // other path requires both.
   if (!editionAppend) {
     if (!body.packets?.length) return res.status(400).json({ error: "At least one packet is required." });
-    if (!body.games?.length) return res.status(400).json({ error: "At least one game (QBJ) is required." });
+    if (!body.games?.length) return res.status(400).json({ error: "At least one game file (.qbj or .json) is required." });
   } else if (!body.packets?.length && !body.games?.length) {
     return res.status(400).json({ error: "Choose packet and/or game files to add." });
   }
@@ -533,6 +533,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         name, scoring: body.scoring!, hasBonuses: !!body.hasBonuses, ...(body.individual ? { individual: true } : {}),
         visibility: body.visibility, autoPublicAt: body.autoPublicAt ?? null,
         edition: body.edition, level, ...(tdLink ? { tdLink } : {}), ...(body.difficulty ? { difficulty: body.difficulty } : {}),
+        ...(body.tournamentDate ? { tournamentDate: body.tournamentDate } : {}),
         packets: body.packets!.map((r) => ({ name: r.name, json: r.json })),
         games: body.games!.map((r) => ({ name: r.name, json: r.json })),
         ...(body.yf ? { yf: body.yf } : {}),

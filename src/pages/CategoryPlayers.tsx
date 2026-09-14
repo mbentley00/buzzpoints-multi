@@ -13,7 +13,8 @@ export function CategoryPlayersPage() {
 
   const columns: Column<CategoryPlayerRow>[] = [
     { key: "name", label: "Player", sortVal: (p) => p.name.toLowerCase(), render: (p) => (p.playerId ? <Link className="link" to={`/set/${slug}/player/${p.playerId}`}>{p.name}</Link> : p.name) },
-    { key: "team", label: "Team", sortVal: (p) => p.team.toLowerCase(), render: (p) => (p.teamId ? <Link className="link" to={`/set/${slug}/team/${p.teamId}`}>{p.team}</Link> : p.team) },
+    // In a shootout the "team" is the player again — nothing to show.
+    ...(meta.individual ? [] : [{ key: "team", label: "Team", sortVal: (p: CategoryPlayerRow) => p.team.toLowerCase(), render: (p: CategoryPlayerRow) => (p.teamId ? <Link className="link" to={`/set/${slug}/team/${p.teamId}`}>{p.team}</Link> : p.team) }]),
     ...(meta.hasPower ? [{ key: "pwr", label: "Pwr", align: "right" as const, sortVal: (p: CategoryPlayerRow) => p.powers, render: (p: CategoryPlayerRow) => p.powers, title: "Powers" }] : []),
     { key: "gets", label: "Get", align: "right", sortVal: (p) => p.gets, render: (p) => p.gets },
     { key: "inc", label: "Inc", align: "right", sortVal: (p) => p.incorrect, render: (p) => p.incorrect, title: "Incorrect buzzes" },

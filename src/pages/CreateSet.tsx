@@ -55,6 +55,7 @@ export function CreateSet() {
   const nameSuggestion = useMemo(() => yearFirstSuggestion(name), [name]);
   const [level, setLevel] = useState("");
   const [tdLink, setTdLink] = useState("");
+  const [tournamentDate, setTournamentDate] = useState("");
   const [difficulty, setDifficulty] = useState("");
   const [scoring, setScoring] = useState("mACF");
   const [detected, setDetected] = useState<string | null>(null);
@@ -151,7 +152,7 @@ export function CreateSet() {
     if (!name.trim()) return setError("Enter a tournament name.");
     if (!level) return setError("Choose a tournament type.");
     if (!packets?.length) return setError("Choose at least one packet file.");
-    if (!games?.length) return setError("Choose at least one QBJ game file.");
+    if (!games?.length) return setError("Choose at least one game file (.qbj or .json).");
 
     setBusy(true);
     try {
@@ -173,7 +174,7 @@ export function CreateSet() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          name: name.trim(), level, tdLink: tdLink.trim() || undefined, difficulty: difficulty || undefined, scoring, hasBonuses, individual, visibility, autoPublicAt,
+          name: name.trim(), level, tdLink: tdLink.trim() || undefined, difficulty: difficulty || undefined, tournamentDate: tournamentDate || undefined, scoring, hasBonuses, individual, visibility, autoPublicAt,
           packets: packetRefs, games: gameRefs, ...(yf ? { yf } : {}),
         }),
       });
@@ -329,7 +330,7 @@ export function CreateSet() {
           <label className="field">
             <span>How do you want to add this tournament?</span>
             <select value={mode} onChange={(e) => setMode(e.target.value as "upload" | "import")}>
-              <option value="upload">Upload packets &amp; QBJ scoresheets</option>
+              <option value="upload">Upload packets &amp; game files (.qbj / .json)</option>
               <option value="import">Import from an existing Buzzpoints site</option>
             </select>
             <small className="muted">
@@ -401,6 +402,11 @@ export function CreateSet() {
           )}
 
           <label className="field">
+            <span>Tournament date (optional)</span>
+            <input type="date" value={tournamentDate} onChange={(e) => setTournamentDate(e.target.value)} style={{ maxWidth: 200 }} />
+            <small className="muted">When it was first played. Sorting the tournament list by date uses this.</small>
+          </label>
+          <label className="field">
             <span>Tournament Database link (optional)</span>
             <input type="url" value={tdLink} onChange={(e) => setTdLink(e.target.value)} placeholder="https://hsquizbowl.org/db/tournaments/…" />
             <small className="muted">Link to this tournament's entry on the hsquizbowl Tournament Database, if it has one.</small>
@@ -445,8 +451,8 @@ export function CreateSet() {
           </div>
 
           <div className="field">
-            <span>Game files (QBJ scoresheets)</span>
-            <FileDrop accept=".json,.qbj" value={games} onChange={onGames} hint="QBJ match files (.json / .qbj)" />
+            <span>Game files (.qbj or .json)</span>
+            <FileDrop accept=".json,.qbj" value={games} onChange={onGames} hint="QBJ files or MODAQ saved games (.qbj / .json)" />
           </div>
 
           <div className="field">

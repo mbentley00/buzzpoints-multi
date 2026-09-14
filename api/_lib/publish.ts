@@ -5,9 +5,10 @@ import { PacketFile, GameFile } from "./aggregate.js";
 import { SCORINGS } from "./scoring.js";
 import {
   readIndex, writeIndex, writeSource, writeCorrections, writeRequests, readCorrections,
-  aggregateAndWrite, SetSource, SetEntry, Visibility, writeYf, TOURNAMENT_LEVELS, isSetOwner, practiceVisibility, difficultiesFor,
+  aggregateAndWrite, SetSource, SetEntry, Visibility, writeYf, TOURNAMENT_LEVELS, isSetOwner, practiceVisibility, difficultiesFor, isTournamentDate,
 } from "./sets.js";
 import { parseYellowFruit } from "./yellowfruit.js";
+import { isModaqGame, modaqToQbj } from "./modaqGame.js";
 
 // A file payload: either inline JSON (legacy / small uploads) or a reference to
 // a blob the client uploaded directly (resolved to `json` before aggregation).
@@ -19,6 +20,7 @@ export interface CreateBody {
   yf?: any; // optional companion YellowFruit (.yft) for corrected re-export
   level?: string; tdLink?: string; // tournament type + optional Tournament Database link
   difficulty?: string; // question difficulty on the level's scale (see difficultiesFor)
+  tournamentDate?: string; // YYYY-MM-DD it was first played (optional)
 }
 
 // Validate the tournament level (required) and normalize an optional TD link.
@@ -36,6 +38,12 @@ export function cleanDifficulty(level: string, d: unknown): string | undefined {
   const opts = difficultiesFor(level);
   if (!opts.length) return undefined;
   if (!opts.includes(s)) throw new CreateError(400, "Choose a difficulty from the list.");
+  return s;
+}
+export function cleanTournamentDate(d: unknown): string | undefined {
+  const s = String(d ?? "").trim();
+  if (!s) return undefined;
+  if (!isTournamentDate(s)) throw new CreateError(400, "Enter the tournament date as a real calendar date.");
   return s;
 }
 export function cleanTdLink(link: unknown): string | undefined {
@@ -69,7 +77,16 @@ export const roundFromName = (name: string) => {
 
 export function parseFiles(body: { packets?: FileRef[]; games?: FileRef[] }): { packets: PacketFile[]; games: GameFile[] } {
   const packets = (body.packets || []).map((p) => { const d = p.json || {}; return { round: roundFromName(p.name) ?? 0, tossups: d.tossups || [], bonuses: d.bonuses || [] }; });
-  const games = (body.games || []).map((g) => { const d = g.json || {}; return { ...d, round: d._round ?? roundFromName(g.name) ?? 0 } as GameFile; });
+  const games = (body.games || []).map((g) => {
+    // A MODAQ saved game is converted to the QBJ MODAQ would have exported.
+    // Anything else without questions (a packet dropped in the wrong box, a
+    // tournament export) is refused, rather than filed as a game that adds nothing.
+    let d = g.json || {};
+    if (isModaqGame(d)) d = modaqToQbj(d);
+    else if (!Array.isArray(d.match_questions))
+      throw new CreateError(400, `"${g.name}" isn't a game file. Upload a QBJ from MODAQ (.qbj or .json) or a MODAQ saved game.`);
+    return { ...d, round: d._round ?? roundFromName(g.name) ?? 0 } as GameFile;
+  });
   return { packets, games };
 }
 
@@ -84,10 +101,11 @@ export async function createTournament(body: CreateBody, owner: string): Promise
   if (!name) throw new CreateError(400, "Tournament name is required.");
   if (!body.scoring || !(body.scoring in SCORINGS)) throw new CreateError(400, "Unknown scoring format.");
   if (!body.packets?.length) throw new CreateError(400, "At least one packet is required.");
-  if (!body.games?.length) throw new CreateError(400, "At least one game (QBJ) is required.");
+  if (!body.games?.length) throw new CreateError(400, "At least one game file (.qbj or .json) is required.");
   const level = validLevel(body.level);
   const tdLink = cleanTdLink(body.tdLink);
   const difficulty = cleanDifficulty(level, body.difficulty);
+  const tournamentDate = cleanTournamentDate(body.tournamentDate);
 
   const { packets, games } = parseFiles(body);
   const hasBonuses = !!body.hasBonuses;
@@ -127,6 +145,7 @@ export async function createTournament(body: CreateBody, owner: string): Promise
   const entry: SetEntry = {
     slug, name, scoring: body.scoring!, hasBonuses, ...(individual ? { individual } : {}), owner, editions, origin: "upload",
     visibility, invites: [], autoPublicAt, ...(hasYf ? { hasYf } : {}), level, ...(tdLink ? { tdLink } : {}), ...(difficulty ? { difficulty } : {}),
+    ...(tournamentDate ? { tournamentDate } : {}),
     numGames: meta.numGames, numTeams: meta.numTeams, numPlayers: meta.numPlayers,
     numTossups: meta.numTossups, rounds: meta.rounds.length, createdAt,
   };

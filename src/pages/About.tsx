@@ -38,7 +38,7 @@ export function About() {
 
           <h2>How it works</h2>
           <p>
-            Upload your packets (one per round) and QBJ match files from MODAQ, then choose a scoring format.
+            Upload your packets (one per round) and match files from MODAQ (.qbj or .json), then choose a scoring format.
             You can then manage access and invites to the tournament and upload new stats for later mirrors.
           </p>
 

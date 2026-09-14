@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, Navigate } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { TeamDetail, RosterPlayer, CatBonusRow, CatBonusSub, CatTeamTossupRow, CatTeamTossupSub } from "../types";
 import { num, pct } from "../util";
@@ -34,6 +34,9 @@ export function TeamDetailPage() {
   if (loading) return <Loading />;
   if (error) return <ErrorBox error={error} />;
   if (!d) return <ErrorBox error="Team not found." />;
+  // In a shootout a team is one player, and there's no Teams tab: an old link to
+  // a team page lands on that player instead.
+  if (meta.individual && d.roster[0]) return <Navigate to={`/set/${slug}/player/${d.roster[0].id}`} replace />;
 
   const tossupCols: CatColumn<CatTeamTossupRow, CatTeamTossupSub>[] = [
     ...(meta.hasPower ? [{ label: "Pwr", align: "right" as const, main: (g: CatTeamTossupRow) => g.powers, sub: (s: CatTeamTossupSub) => s.powers }] : []),

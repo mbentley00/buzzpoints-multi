@@ -113,6 +113,12 @@ export const accessGrantedBody = (setName: string, url: string) =>
 export const coOwnerBody = (setName: string, url: string) =>
   wrap(`<p>You've been added as a co-owner of <strong>${esc(setName)}</strong> on Buzzpoints.</p><p>You can now upload files, fix buzzes, approve edit requests, and change the tournament's settings — everything except deleting it or changing who co-owns it, which stay with the tournament's owner.</p>${btn(url, "Open tournament")}`);
 
+// Sent instead when the person being added has no Buzzpoints account yet. They're
+// already on the co-owner list; signing up and verifying this address is all it
+// takes, so the email names the address they have to use.
+export const coOwnerInviteBody = (inviter: string, setName: string, email: string, signupUrl: string) =>
+  wrap(`<p><strong>${esc(inviter)}</strong> added you as a co-owner of <strong>${esc(setName)}</strong> on Buzzpoints.</p><p>Co-owners upload files, fix buzzes, approve edit requests, and change the tournament's settings. To start, create a free account with this email address, <strong>${esc(email)}</strong> — once you've verified it, the tournament is yours to manage too.</p>${btn(signupUrl, "Create your account")}<p style="font-size:12px;color:#888">If you weren't expecting this, you can ignore it.</p>`);
+
 // Sent once, six months after a tournament was uploaded, if it still isn't
 // public — a nudge, not a deadline, so it says plainly that doing nothing is fine.
 export const publishReminderBody = (setName: string, uploaded: string, url: string) =>

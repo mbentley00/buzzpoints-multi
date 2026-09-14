@@ -15,10 +15,11 @@ import {
   editionsOf, canonicalizeEditions, Edition, SetSource, AccessRequest, readRenames, writeRenames, renameKey,
   readMetaMap, writeMetaMap, readTagEdits, writeTagEdits, readBonusDiffs, writeBonusDiffs,
   isSetOwner, isPrimaryOwner, ownerEmails, requestsAllowed, needsPublishApproval, isPractice, practiceVisibility,
+  isTournamentDate,
 } from "./_lib/sets.js";
 import { VirtualCategory, scanRoundAlignment, metaFields, MetaMap, MetaField, BonusDiffs } from "./_lib/aggregate.js";
 import { LETTER_ROUND_BASE, cleanDifficulty } from "./_lib/publish.js";
-import { sendEmail, appUrl, accessRequestBody, accessGrantedBody, coOwnerBody, publishRequestBody } from "./_lib/email.js";
+import { sendEmail, appUrl, accessRequestBody, accessGrantedBody, coOwnerBody, coOwnerInviteBody, publishRequestBody } from "./_lib/email.js";
 import { readModConfig, findBlocked } from "./_lib/moderation.js";
 
 const VIS = new Set<Visibility>(["public", "listed", "private"]);
@@ -289,6 +290,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         invites: entry.invites ?? [],
         owner: entry.owner,
         coOwners: entry.coOwners ?? [],
+        // Co-owners who were invited before they had an account and haven't
+        // signed up yet.
+        coOwnersPending: await (async () => { const users = await loadUsers(); return (entry.coOwners ?? []).filter((e) => !users[e]); })(),
         // Only the creator may edit the co-owner list or delete the set, so the
         // UI needs to know which kind of owner is looking.
         isPrimaryOwner: await creatorOnly(),
@@ -296,6 +300,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         level: entry.level ?? "",
         tdLink: entry.tdLink ?? "",
         difficulty: entry.difficulty ?? "",
+        tournamentDate: entry.tournamentDate ?? "",
         forum: !!entry.forum,
         individual: !!entry.individual,
         accessRequests: access.filter((a) => a.status === "pending"),
@@ -377,8 +382,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!isEmail(email)) return res.status(400).json({ error: "Enter a valid email." });
       if (email === entry.owner) return res.status(400).json({ error: "That's the tournament's owner already." });
       const set = new Set(entry.coOwners ?? []);
+      const users = await loadUsers();
       if (op === "coowner") {
-        if (!(await loadUsers())[email]) return res.status(400).json({ error: "No Buzzpoints account uses that email — ask them to sign up first." });
+        // No account is fine. Co-ownership is keyed by email and an account can't
+        // sign in until its address is verified, so only whoever holds this
+        // address can ever act on it — they just sign up first.
         set.add(email);
         // A co-owner can already see everything; keeping them on the invite list
         // too would double-list them in the access UI.
@@ -386,9 +394,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } else set.delete(email);
       entry.coOwners = [...set].sort();
       await writeIndex(index);
-      if (op === "coowner")
-        await sendEmail({ to: email, subject: `You can now manage ${entry.name}`, html: coOwnerBody(entry.name, setUrl(slug)) });
-      return res.status(200).json({ ok: true, coOwners: entry.coOwners, invites: entry.invites ?? [] });
+      let invited = false;
+      if (op === "coowner") {
+        if (users[email]) {
+          await sendEmail({ to: email, subject: `You can now manage ${entry.name}`, html: coOwnerBody(entry.name, setUrl(slug)) });
+        } else {
+          const signupUrl = `${appUrl()}/login?mode=signup&reason=coowner&next=${encodeURIComponent(`/set/${slug}`)}`;
+          invited = await sendEmail({
+            to: email, replyTo: user!,
+            subject: `You're invited to co-own ${entry.name} on Buzzpoints`,
+            html: coOwnerInviteBody(users[user!]?.name || user!, entry.name, email, signupUrl),
+          });
+        }
+      }
+      return res.status(200).json({
+        ok: true, coOwners: entry.coOwners, invites: entry.invites ?? [],
+        coOwnersPending: entry.coOwners.filter((e) => !users[e]),
+        ...(op === "coowner" && !users[email] ? { invited } : {}),
+      });
     } else if (op === "approve-access" || op === "deny-access") {
       const email = normEmail(body.email);
       const access = await readAccess(slug);
@@ -829,6 +852,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try { difficulty = cleanDifficulty(lvl, body.difficulty); }
       catch (e) { return res.status(400).json({ error: (e as Error).message }); }
       if (difficulty) entry.difficulty = difficulty; else delete entry.difficulty;
+      // When it was first played; left alone when the form didn't send it.
+      if (body.tournamentDate !== undefined) {
+        const date = String(body.tournamentDate || "").trim();
+        if (date && !isTournamentDate(date)) return res.status(400).json({ error: "Enter the tournament date as a real calendar date." });
+        if (date) entry.tournamentDate = date; else delete entry.tournamentDate;
+      }
       // Switching between a team tournament and an individual shootout changes
       // how every game is read, so the stats are rebuilt on the spot.
       let rebuilt = false;
@@ -852,7 +881,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const stillGated = needsPublishApproval(entry) && !(await canModerate(user));
       await writeIndex(index);
       return res.status(200).json({
-        ok: true, level: entry.level, tdLink: entry.tdLink ?? "", difficulty: entry.difficulty ?? "", visibility: entry.visibility, individual: !!entry.individual, rebuilt,
+        ok: true, level: entry.level, tdLink: entry.tdLink ?? "", difficulty: entry.difficulty ?? "", tournamentDate: entry.tournamentDate ?? "", visibility: entry.visibility, individual: !!entry.individual, rebuilt,
         autoPublicAt: entry.autoPublicAt ?? null, publicPending: !!entry.publicPending, publicNeedsApproval: stillGated,
       });
     } else {

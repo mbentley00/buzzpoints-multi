@@ -4,6 +4,7 @@ import { put, del } from "@vercel/blob";
 import { readBlobJson } from "./blob.js";
 import { aggregate, bonusFilesFromImported, ImportedBonus, PacketFile, GameFile, Correction, BonusCorrection, bnCorrKeyOf, VirtualCategory, Rename, renameKind, MetaMap, TagEdits, BonusDiffs, AggregateConfig } from "./aggregate.js";
 import { getScoring } from "./scoring.js";
+import { isModaqGame, modaqToQbj } from "./modaqGame.js";
 import { buildSearchDoc, invalidateSearchDoc, SEARCH_FILE } from "./searchIndex.js";
 
 export interface Edition {
@@ -25,10 +26,19 @@ export interface SetSource {
   games?: GameFile[];       // legacy
 }
 // Normalize a source to its editions (legacy single-edition sources become one
-// "Original" edition).
+// "Original" edition). A MODAQ saved game stored before uploads converted them
+// is swapped for its QBJ in place, so every reader (stats, Settings, exports)
+// sees its teams and questions, and the next source write keeps the conversion.
 export function editionsOf(s: SetSource): Edition[] {
-  if (s.editions && s.editions.length) return s.editions;
-  return [{ id: "e0", label: "Original", packets: s.packets || [], games: s.games || [] }];
+  const eds = s.editions && s.editions.length ? s.editions : [{ id: "e0", label: "Original", packets: s.packets || [], games: s.games || [] }];
+  for (const e of eds) {
+    const games = e.games || [];
+    for (let i = 0; i < games.length; i++) {
+      const g = games[i];
+      if (isModaqGame(g)) games[i] = { ...modaqToQbj(g), round: g.round, ...(g.editionId ? { editionId: g.editionId } : {}) } as GameFile;
+    }
+  }
+  return eds;
 }
 export interface EditionSummary { id: string; label: string; numGames: number; numTeams: number; numPlayers: number; numTossups: number; rounds: number; }
 export type Visibility = "public" | "listed" | "private";
@@ -44,6 +54,13 @@ export const TOURNAMENT_LEVELS = ["hs", "college", "open", "popculture", "side",
 // how hard their questions were.
 export const HS_DIFFICULTIES = ["novice", "regs", "regs+", "nationals"] as const;
 export const DOT_DIFFICULTIES = ["1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5", "5"] as const;
+// A tournament date is a calendar day, YYYY-MM-DD, that actually exists.
+export function isTournamentDate(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d && y >= 1950 && y <= 2100;
+}
 export function difficultiesFor(level: string | undefined): readonly string[] {
   if (level === "hs") return HS_DIFFICULTIES;
   if (level === "college" || level === "open") return DOT_DIFFICULTIES;
@@ -104,6 +121,9 @@ export interface SetEntry {
   // Question difficulty on the level's own scale (see difficultiesFor). Absent
   // when not set, or when the level has no scale.
   difficulty?: string;
+  // When the tournament was first played, as YYYY-MM-DD — the earliest mirror,
+  // not when it was added here (createdAt). Absent when unknown.
+  tournamentDate?: string;
   // Whether the set's discussion (see _lib/forum.ts) is open. Off by default.
   forum?: boolean;
   numGames: number;

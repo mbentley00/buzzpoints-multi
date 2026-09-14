@@ -71,8 +71,8 @@ export function AddFilesForm({ slug, editions }: { slug: string; editions: { id:
         <FileDrop accept=".json" value={packets} onChange={setPackets} hint="One JSON per round" />
       </div>
       <div className="field">
-        <span>Game files (QBJ) <span className="muted">(optional)</span></span>
-        <FileDrop accept=".json,.qbj" value={games} onChange={setGames} hint="QBJ match files" />
+        <span>Game files (.qbj or .json) <span className="muted">(optional)</span></span>
+        <FileDrop accept=".json,.qbj" value={games} onChange={setGames} hint="QBJ files or MODAQ saved games (.qbj / .json)" />
       </div>
       <label className="field-inline" style={{ alignItems: "flex-start" }}>
         <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} />

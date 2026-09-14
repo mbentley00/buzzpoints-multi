@@ -45,6 +45,8 @@ export function Settings() {
   const [newInvite, setNewInvite] = useState("");
   const [coOwners, setCoOwners] = useState<string[]>([]);
   const [newCoOwner, setNewCoOwner] = useState("");
+  // Co-owners who were invited before they had an account and haven't signed up.
+  const [coOwnersPending, setCoOwnersPending] = useState<string[]>([]);
   // The creator alone may edit the co-owner list and delete the set; a co-owner
   // looking at this page gets everything else.
   const [isPrimary, setIsPrimary] = useState(false);
@@ -53,6 +55,7 @@ export function Settings() {
   const [individual, setIndividual] = useState(false);
   const [forum, setForum] = useState(false);
   const [tdLink, setTdLink] = useState("");
+  const [tournamentDate, setTournamentDate] = useState("");
   const [difficulty, setDifficulty] = useState("");
   const [accessRequests, setAccessRequests] = useState<{ email: string; name: string; at: string; role?: string; team?: string }[]>([]);
   const [resolved, setResolved] = useState<{ email: string; name: string; status: string; via?: string; resolvedAt?: string }[]>([]);
@@ -90,12 +93,14 @@ export function Settings() {
         setDate(toDateInput(d.autoPublicAt) || new Date(Date.now() + 2 * 365 * 864e5).toISOString().slice(0, 10));
         setInvites(d.invites || []);
         setCoOwners(d.coOwners || []);
+        setCoOwnersPending(d.coOwnersPending || []);
         setIsPrimary(!!d.isPrimaryOwner);
         setHasYf(!!d.hasYf);
         setLevel(d.level || "");
         setIndividual(!!d.individual);
         setForum(!!d.forum);
         setTdLink(d.tdLink || "");
+        setTournamentDate(d.tournamentDate || "");
         setDifficulty(d.difficulty || "");
         setPublicPending(!!d.publicPending);
         setPublicNeedsApproval(!!d.publicNeedsApproval);
@@ -156,7 +161,8 @@ export function Settings() {
     setErr(null); setMsg(null); setBusy(true);
     try {
       if (!level) throw new Error("Choose a tournament type.");
-      const d = await postJson("/api/manage", { slug, op: "details", level, tdLink: tdLink.trim(), difficulty, individual });
+      const d = await postJson("/api/manage", { slug, op: "details", level, tdLink: tdLink.trim(), difficulty, tournamentDate, individual });
+      setTournamentDate(d.tournamentDate || "");
       setDifficulty(d.difficulty || "");
       // Reclassifying can change whether going public needs approval (practice
       // tournaments don't), and may have granted a pending request outright.
@@ -236,10 +242,16 @@ export function Settings() {
     try {
       const d = await postJson("/api/manage", { slug, op, email });
       setCoOwners(d.coOwners || []);
+      setCoOwnersPending(d.coOwnersPending || []);
       // Adding a co-owner drops them from the invite list — they can see
       // everything now, so listing them twice would be confusing.
       setInvites(d.invites || []);
-      if (op === "coowner") { setNewCoOwner(""); setMsg(`${email} can now manage this tournament.`); }
+      if (op === "coowner") {
+        setNewCoOwner("");
+        if (d.invited === undefined) setMsg(`${email} can now manage this tournament.`);
+        else if (d.invited) setMsg(`${email} doesn't have a Buzzpoints account yet, so we've emailed them an invitation to create one. They'll be a co-owner as soon as they sign up with that address.`);
+        else setMsg(`${email} is on the co-owner list, but the invitation email couldn't be sent. Ask them to sign up at Buzzpoints with that address — they'll be a co-owner as soon as they do.`);
+      }
       refreshIndex();
     } catch (e) {
       setErr(String((e as Error).message || e));
@@ -400,6 +412,11 @@ export function Settings() {
             )}
           </label>
         )}
+        <label className="field">
+          <span>Tournament date (optional)</span>
+          <input type="date" value={tournamentDate} onChange={(e) => setTournamentDate(e.target.value)} style={{ maxWidth: 200 }} />
+          <small className="muted">When it was first played — the earliest mirror, not when it was added here.</small>
+        </label>
         <label className="field">
           <span>Tournament Database link (optional)</span>
           <input type="url" value={tdLink} onChange={(e) => setTdLink(e.target.value)} placeholder="https://hsquizbowl.org/db/tournaments/…" />
@@ -635,7 +652,7 @@ export function Settings() {
       <p className="muted">
         Co-owners manage this tournament alongside you: uploading files, fixing buzzes, approving edit and access
         requests, and changing these settings. Only you can delete the tournament or change who co-owns it.
-        They need a Buzzpoints account before you can add them.
+        If they don't have a Buzzpoints account yet, they'll get an email inviting them to create one.
       </p>
       {isPrimary && (
         <div className="buzz-edit" style={{ marginBottom: 12 }}>
@@ -657,7 +674,8 @@ export function Settings() {
         <ul className="invite-list">
           {coOwners.map((e) => (
             <li key={e}>
-              <span>{e}</span>
+              <span>{e}{coOwnersPending.includes(e) && <span className="muted"> · invited — no account yet</span>}</span>
+              {isPrimary && coOwnersPending.includes(e) && <button className="btn-link" disabled={busy} onClick={() => coOwner("coowner", e)}>Resend invite</button>}
               {isPrimary && <button className="btn-link" disabled={busy} onClick={() => coOwner("uncoowner", e)}>Remove</button>}
             </li>
           ))}

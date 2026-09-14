@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { TeamRow } from "../types";
 import { num, searchable } from "../util";
@@ -51,6 +51,10 @@ export function Teams() {
     { key: "first", label: "1st", align: "right", sortVal: (t) => t.firstBuzzes, render: (t) => t.firstBuzzes, title: "Fastest correct buzz on a tossup" },
     { key: "top3", label: "Top3", align: "right", sortVal: (t) => t.top3Buzzes, render: (t) => t.top3Buzzes },
   ];
+
+  // A shootout has no teams worth listing (each is one player) and no Teams tab;
+  // an old link lands on the players instead.
+  if (meta.individual) return <Navigate to={`/set/${slug}/player`} replace />;
 
   return (
     <div>

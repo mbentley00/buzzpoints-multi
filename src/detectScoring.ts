@@ -3,6 +3,14 @@
 export function detectScoring(games: { json: any }[]): string | null {
   const vals = new Set<number>();
   for (const g of games) {
+    // A MODAQ saved game has no scored buzzes to read, but it states its format.
+    const gf = Array.isArray(g.json?.cycles) ? g.json?.gameFormat : undefined;
+    if (gf) {
+      vals.add(10);
+      for (const p of gf.powers || []) if (typeof p?.points === "number") vals.add(p.points);
+      if (typeof gf.negValue === "number" && gf.negValue !== 0) vals.add(gf.negValue);
+      continue;
+    }
     for (const mq of g.json?.match_questions || []) {
       for (const bz of mq.buzzes || []) {
         const v = bz?.result?.value;

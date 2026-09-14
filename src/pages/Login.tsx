@@ -130,6 +130,15 @@ export function Login() {
             </div>
           </div>
         )}
+        {reason === "coowner" && mode !== "forgot" && (
+          <div className="caveat">
+            <strong>You've been added as a co-owner of a tournament.</strong>
+            <div>
+              {mode === "signup" ? "Create an account" : "Log in"} with the email address the invitation was sent to. Once
+              it's verified, you'll be taken to the tournament and can manage it.
+            </div>
+          </div>
+        )}
         {user ? (
           <p className="caveat">
             You are signed in as <strong>{user}</strong>.{" "}
