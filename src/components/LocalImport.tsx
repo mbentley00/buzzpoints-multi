@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { refreshIndex } from "../data";
 import { uploadFiles } from "../upload";
 import { TOURNAMENT_LEVELS, Visibility } from "../types";
+import { roundFromFileName } from "../util";
 
 // Admin-only: import tournaments from a local quizbowlstats data export folder
 // (question_sets/<set>/.../packet_files + tournaments/<mirror>/game_files/*.qbj).
@@ -166,8 +167,12 @@ export function LocalImport() {
         for (const gf of games) {
           let g: any;
           try { g = JSON.parse(await gf.text()); } catch { continue; }
-          const r = Number(g._round);
-          if (Number.isInteger(r) && g.packets && !roundPacket.has(r)) roundPacket.set(r, String(g.packets));
+          // Most exports stamp `_round` inside the QBJ, but some only put it in the
+          // file name ("Round_10_…qbj"). The server falls back to the file name
+          // when it files the game, so the packet has to be keyed the same way —
+          // otherwise every round without `_round` gets its games but no packet.
+          const r = g._round != null && Number.isInteger(Number(g._round)) ? Number(g._round) : roundFromFileName(gf.name);
+          if (r != null && Number.isInteger(r) && g.packets && !roundPacket.has(r)) roundPacket.set(r, String(g.packets));
           for (const mq of g.match_questions || []) for (const bz of mq.buzzes || []) { const v = bz?.result?.value; if (typeof v === "number") vals.add(v); }
         }
         if (!roundPacket.size) { noGames++; continue; } // no games / no round info
