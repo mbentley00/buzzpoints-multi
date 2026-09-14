@@ -15,7 +15,7 @@ import {
   readIndex, writeIndex, readSource, writeSource, writeCorrections, readCorrections,
   aggregateAndWrite, editionsOf, SetSource, isSetOwner,
 } from "./_lib/sets.js";
-import { createTournament, createFromSource, updateFromSource, parseFiles, validLevel, cleanTdLink, normVisibility, CreateError, FileRef } from "./_lib/publish.js";
+import { createTournament, createFromSource, updateFromSource, parseFiles, validLevel, cleanTdLink, cleanTournamentDate, normVisibility, CreateError, FileRef } from "./_lib/publish.js";
 import { parseYellowFruit } from "./_lib/yellowfruit.js";
 import { scrapeEdition, scrapeBonusResults, applyBonusResults, applyBonusText, listEditions, listSets, setEditions, parseTarget, slugToName, scoringFor, setNameFrom } from "./_lib/importBuzzpoints.js";
 import { detectStaticSite, scrapeStaticEdition } from "./_lib/importStatic.js";
@@ -350,19 +350,33 @@ interface Body {
 // Resolve a list of file refs to inline JSON. A ref uploaded directly to Blob
 // carries a `pathname` (under uploads/) we read and then mark for cleanup;
 // legacy inline `json` refs pass through unchanged.
+// Read the uploaded files back, in order. Each read is its own round trip to the
+// store, so a tournament's worth of games (2025 ACF Nationals: 413) read one at a
+// time ran past the function's 60 seconds; read them a batch at a time instead.
+const READ_CONCURRENCY = 16;
 async function resolveRefs(refs: FileRef[] | undefined, tempPaths: string[]): Promise<FileRef[]> {
-  const out: FileRef[] = [];
-  for (const r of refs || []) {
-    if (r && typeof r.pathname === "string" && r.pathname) {
-      if (!r.pathname.startsWith("uploads/")) throw new CreateError(400, "Invalid file reference.");
-      const json = await readBlobJson<any>(r.pathname, false);
-      if (json === null) throw new CreateError(400, `Uploaded file "${r.name}" could not be read.`);
-      out.push({ name: r.name, json });
-      tempPaths.push(r.pathname);
-    } else {
-      out.push({ name: r.name, json: r.json });
+  const list = refs || [];
+  for (const r of list)
+    if (r && typeof r.pathname === "string" && r.pathname && !r.pathname.startsWith("uploads/"))
+      throw new CreateError(400, "Invalid file reference.");
+  const out: FileRef[] = new Array(list.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < list.length) {
+      const i = next++;
+      const r = list[i];
+      if (r && typeof r.pathname === "string" && r.pathname) {
+        const json = await readBlobJson<any>(r.pathname, false);
+        if (json === null) throw new CreateError(400, `Uploaded file "${r.name}" could not be read.`);
+        out[i] = { name: r.name, json };
+      } else {
+        out[i] = { name: r?.name, json: r?.json };
+      }
     }
-  }
+  };
+  // Every uploaded path is recorded up front, so a failed read still cleans up.
+  for (const r of list) if (r && typeof r.pathname === "string" && r.pathname) tempPaths.push(r.pathname);
+  await Promise.all(Array.from({ length: Math.min(READ_CONCURRENCY, list.length) }, worker));
   return out;
 }
 const cleanupTemp = (paths: string[]) => (paths.length ? del(paths).catch(() => {}) : Promise.resolve());
@@ -517,7 +531,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Validate the tournament type + optional TD link now, so a queued first post
     // doesn't fail only at approval time.
     let level: string, tdLink: string | undefined;
-    try { level = validLevel(body.level); tdLink = cleanTdLink(body.tdLink); }
+    // A newly posted tournament has to say when it was played. Only checked here,
+    // for new posts: imports and submissions already queued before dates existed
+    // go through createTournament without one.
+    if (!String(body.tournamentDate ?? "").trim())
+      return res.status(400).json({ error: "Enter the date the tournament was played." });
+    try { level = validLevel(body.level); tdLink = cleanTdLink(body.tdLink); body.tournamentDate = cleanTournamentDate(body.tournamentDate); }
     catch (e) { if (e instanceof CreateError) return res.status(e.status).json({ error: e.message }); throw e; }
 
     // First-post gate: queue for review unless this account has posted before or

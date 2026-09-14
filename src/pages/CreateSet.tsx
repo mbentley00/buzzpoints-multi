@@ -55,7 +55,12 @@ export function CreateSet() {
   const nameSuggestion = useMemo(() => yearFirstSuggestion(name), [name]);
   const [level, setLevel] = useState("");
   const [tdLink, setTdLink] = useState("");
-  const [tournamentDate, setTournamentDate] = useState("");
+  // Required for new tournaments; most are posted the day they're played, so
+  // start from today (the viewer's own calendar day, not UTC's).
+  const [tournamentDate, setTournamentDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
   const [difficulty, setDifficulty] = useState("");
   const [scoring, setScoring] = useState("mACF");
   const [detected, setDetected] = useState<string | null>(null);
@@ -153,6 +158,7 @@ export function CreateSet() {
     if (!level) return setError("Choose a tournament type.");
     if (!packets?.length) return setError("Choose at least one packet file.");
     if (!games?.length) return setError("Choose at least one game file (.qbj or .json).");
+    if (!tournamentDate) return setError("Enter the date the tournament was played.");
 
     setBusy(true);
     try {
@@ -402,9 +408,9 @@ export function CreateSet() {
           )}
 
           <label className="field">
-            <span>Tournament date (optional)</span>
-            <input type="date" value={tournamentDate} onChange={(e) => setTournamentDate(e.target.value)} style={{ maxWidth: 200 }} />
-            <small className="muted">When it was first played. Sorting the tournament list by date uses this.</small>
+            <span>Tournament date</span>
+            <input type="date" required value={tournamentDate} onChange={(e) => setTournamentDate(e.target.value)} style={{ maxWidth: 200 }} />
+            <small className="muted">When it was first played (the earliest mirror). Defaults to today — change it if it was played earlier.</small>
           </label>
           <label className="field">
             <span>Tournament Database link (optional)</span>

@@ -259,8 +259,12 @@ export function LocalImport() {
             else noPacket++;
           }
           if (noPacket) addLog(`      ⚠ ${noPacket} of ${m.roundPacket.size} rounds had no packet file`);
-          const packetRefs = await uploadFiles(packetFiles);
-          const gameRefs = await uploadFiles(m.games);
+          // Uploading hundreds of files takes a while; say so as it goes, or the log
+          // sits on the edition line and looks stuck.
+          const progress = (what: string) => (d: number, t: number) => { if (d === t || d % 50 === 0) addLog(`      uploaded ${d}/${t} ${what}`); };
+          const packetRefs = await uploadFiles(packetFiles, progress("packets"));
+          const gameRefs = await uploadFiles(m.games, progress("games"));
+          addLog(`      reading them back and building the edition…`);
           await postRetry({ op: "local-edition", jobId: start.jobId, index: edCount, label: m.label, packets: packetRefs, games: gameRefs }, waitLog);
           edCount++;
         }
