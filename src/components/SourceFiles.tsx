@@ -199,7 +199,7 @@ export function RenamesEditor({ slug }: { slug: string }) {
   if (err && !renames) return <div className="error-box">{err}</div>;
   if (!renames) return <p className="muted">Loading renames…</p>;
   if (!renames.length)
-    return <p className="muted">Nothing has been renamed. Use “Rename player” on a player’s page, or “Rename team” on a team’s.</p>;
+    return <p className="muted">Nothing has been renamed yet.</p>;
 
   return (
     <div className="srcfiles">

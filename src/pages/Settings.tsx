@@ -9,6 +9,7 @@ import { RoundAlignEditor, GameFilesEditor, UploadCleanup, RenamesEditor } from 
 import { MetaMapEditor } from "../components/MetaMapEditor";
 import { BonusDifficultyEditor } from "../components/BonusDifficulty";
 import { ForumMembers } from "../components/ForumMembers";
+import { RenamePicker } from "../components/Rename";
 import { byLabel, hasYearFirst, yearFirstSuggestion } from "../util";
 import { AddFilesForm } from "../components/AddFiles";
 
@@ -551,12 +552,15 @@ export function Settings() {
           </p>
           <GameFilesEditor slug={slug} />
 
-          <h2 id="renames" style={{ marginTop: 28 }}>Renamed players and teams</h2>
+          <h2 id="renames" style={{ marginTop: 28 }}>Rename players and teams</h2>
           <p className="muted">
-            A rename folds every buzz, box score and roster entry for a player or a team onto one spelling — useful when
-            the source spells the same person or school two ways and splits their stats. Start one from a player’s or a
-            team’s page; viewers can suggest one there too, and it lands on the <Link to={`/set/${slug}/requests`} className="link">Corrections</Link> page for approval.
+            A rename folds every buzz, box score and roster entry for a player or a team onto one spelling — fixing a
+            typo, or joining two spellings of the same person or school that split their stats. Pick one below (or use
+            the Rename link on a player’s or team’s page). Viewers can suggest a rename too; it lands on the{" "}
+            <Link to={`/set/${slug}/requests`} className="link">Corrections</Link> page for approval.
           </p>
+          <RenamePicker slug={slug} individual={!!meta.individual} returnTo={`${loc.pathname}#renames`} />
+          <h3 style={{ marginTop: 18 }}>Applied renames</h3>
           <RenamesEditor slug={slug} />
         </>
       )}
