@@ -199,6 +199,57 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     return res.status(200).json({ ok: true });
   }
 
+  // Fill bonus lead-ins and part prompts from text parsed out of the packets
+  // themselves (docx/pdf), for a scraped set whose source site no longer serves
+  // its per-bonus pages. Only the text moves: each entry must name a stored
+  // bonus by (round, num) AND carry that bonus's answer keys in order, or it is
+  // skipped — so a packet paired with the wrong round can't overwrite anything,
+  // and answers, conversion and corrections are left exactly as they were.
+  if (body.op === "bonus-text-fill") {
+    const slug = String(body.slug || "");
+    const index = await readIndex();
+    const entry = index.sets.find((s) => s.slug === slug);
+    if (!entry) return res.status(404).json({ error: "Tournament not found." });
+    if (!isSetOwner(entry, owner) && !(await canModerate(owner))) return res.status(403).json({ error: "Owner only." });
+    const source = await readSource(slug);
+    if (!source) return res.status(400).json({ error: "Source data not found." });
+    const fills: { round: number; num: number; leadin?: string; parts?: string[]; answers?: string[] }[] = Array.isArray(body.bonuses) ? body.bonuses : [];
+    if (!fills.length) return res.status(400).json({ error: "No bonuses in that file." });
+
+    const answerKey = (a: string) =>
+      String(a || "").replace(/<[^>]+>/g, "")
+        .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+        .split(/[[(]/)[0].normalize("NFKD").replace(/[^\x00-\x7f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    // Packet text is shown as HTML, so keep only the inline formatting a packet uses.
+    const safe = (h: unknown) => String(h ?? "").replace(/<(?!\/?(?:b|i|u|em|strong|sub|sup)>)[^>]*>/gi, "").trim();
+
+    const eds = editionsOf(source);
+    const skipped: string[] = [];
+    let applied = 0;
+    for (const f of fills) {
+      let hit = false;
+      for (const ed of eds) {
+        const b = (ed.packets || []).find((p) => p.round === Number(f.round))?.bonuses?.[Number(f.num) - 1] as any;
+        if (!b) continue;
+        const stored = (b.answers || []).map(answerKey);
+        const given = (f.answers || []).map(String);
+        if (stored.length !== given.length || stored.some((k: string, i: number) => k !== given[i])) continue;
+        const parts = (f.parts || []).map(safe);
+        if (parts.length !== stored.length || parts.some((p) => !p)) continue;
+        b.leadin = safe(f.leadin);
+        b.parts = parts;
+        hit = true;
+      }
+      if (hit) applied++; else skipped.push(`${f.round}-${f.num}`);
+    }
+    if (applied) {
+      const next = { ...source, editions: eds };
+      await writeSource(slug, next);
+      await aggregateAndWrite(slug, next, await readCorrections(slug));
+    }
+    return res.status(200).json({ applied, skipped });
+  }
+
   if (body.op === "import-start") {
     let base: string, eds: { slug: string; name: string }[];
     let flavor: "rsc" | "static" = "rsc";

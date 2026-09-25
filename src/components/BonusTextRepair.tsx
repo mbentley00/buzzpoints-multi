@@ -176,6 +176,66 @@ export function BonusTextRepair() {
       )}
 
       {log.length > 0 && <div className="bulk-log">{log.map((l, i) => <div key={i}>{l}</div>)}</div>}
+
+      <PacketTextFill />
     </div>
+  );
+}
+
+// When the source site is gone, the text can still come from the packets: a
+// fill file (bonus text parsed out of the docx/pdf packets, keyed to this
+// site's rounds and checked against its answer lines) is applied here. The
+// server re-checks every answer line and skips anything that doesn't match.
+interface FillFile { slug: string; bonuses: { round: number; num: number }[] }
+
+function PacketTextFill() {
+  const { data: index } = useIndex();
+  const [fill, setFill] = useState<FillFile | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const target = fill ? index?.sets.find((s) => s.slug === fill.slug) : undefined;
+
+  async function pick(file: File | undefined) {
+    setFill(null); setMsg(null); setErr(null);
+    if (!file) return;
+    try {
+      const d = JSON.parse(await file.text());
+      if (typeof d?.slug !== "string" || !Array.isArray(d?.bonuses)) throw new Error("Not a bonus-text fill file.");
+      setFill(d);
+    } catch (e) { setErr((e as Error).message); }
+  }
+
+  async function apply() {
+    if (!fill) return;
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      const d = await post({ op: "bonus-text-fill", slug: fill.slug, bonuses: fill.bonuses });
+      clearSetCache(fill.slug);
+      const skipped: string[] = d.skipped || [];
+      setMsg(`Filled ${d.applied} of ${fill.bonuses.length} bonuses and rebuilt the stats.` +
+        (skipped.length ? ` Skipped (answer lines didn't match): ${skipped.join(", ")}.` : ""));
+    } catch (e) { setErr(String((e as Error).message || e)); } finally { setBusy(false); }
+  }
+
+  return (
+    <>
+      <h3 style={{ marginTop: 20 }}>Fill from the packets</h3>
+      <p className="muted">
+        If the source site no longer serves its bonus pages, pick a fill file made from the tournament's own packets.
+        Only lead-ins and part text change; each bonus is checked against its stored answer lines first.
+      </p>
+      <div className="cat-toolbar">
+        <input type="file" accept=".json,application/json" disabled={busy} onChange={(e) => pick(e.target.files?.[0])} />
+        {fill && (
+          <button className="btn-primary btn-sm" disabled={busy || !target} onClick={apply}>
+            {busy ? "Filling…" : `Fill ${fill.bonuses.length} bonuses in ${target?.name ?? fill.slug}`}
+          </button>
+        )}
+      </div>
+      {fill && !target && index && <p className="warn-text">No tournament here has the slug “{fill.slug}”.</p>}
+      {msg && <p className="muted">{msg}</p>}
+      {err && <div className="error-box">{err}</div>}
+    </>
   );
 }
