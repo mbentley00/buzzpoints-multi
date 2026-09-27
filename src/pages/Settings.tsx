@@ -12,6 +12,7 @@ import { ForumMembers } from "../components/ForumMembers";
 import { RenamePicker } from "../components/Rename";
 import { byLabel, hasYearFirst, yearFirstSuggestion } from "../util";
 import { AddFilesForm } from "../components/AddFiles";
+import { PacketTextFill } from "../components/BonusTextRepair";
 
 const VIS_OPTIONS: { id: Visibility; label: string; desc: string }[] = [
   { id: "listed", label: "Listed (login + invite)", desc: "Shown in the list; only invited, logged-in people can view." },
@@ -511,6 +512,15 @@ export function Settings() {
                 and the stats are rebuilt — the packet file itself is left alone.
               </p>
               <BonusDifficultyEditor slug={slug} warnings={meta?.bonusDiffWarnings ?? []} />
+
+              <h2 id="bonustext" style={{ marginTop: 28 }}>Fill bonus text from the packets</h2>
+              <p className="muted">
+                A tournament imported from another Buzzpoints site can arrive with bonus answers and conversion but
+                blank lead-ins and parts. If that site no longer has the text, pick a fill file made from this
+                tournament's packets. It applies only to this tournament: only lead-ins and part text change, and each
+                bonus is checked against its stored answer lines first.
+              </p>
+              <PacketTextFill slug={slug} name={meta?.setName ?? slug} />
             </>
           )}
 

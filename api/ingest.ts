@@ -213,6 +213,9 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     if (!isSetOwner(entry, owner) && !(await canModerate(owner))) return res.status(403).json({ error: "Owner only." });
     const source = await readSource(slug);
     if (!source) return res.status(400).json({ error: "Source data not found." });
+    // The set being fixed is the one the owner is on; the file names the set it
+    // was built for, and the two must agree or nothing is touched.
+    if (String(body.fileSlug || "") !== slug) return res.status(400).json({ error: "That file was made for a different tournament." });
     const fills: { round: number; num: number; leadin?: string; parts?: string[]; answers?: string[] }[] = Array.isArray(body.bonuses) ? body.bonuses : [];
     if (!fills.length) return res.status(400).json({ error: "No bonuses in that file." });
 
