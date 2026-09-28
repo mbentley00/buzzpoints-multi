@@ -86,13 +86,19 @@ export function BonusTextRepair() {
   async function repair(s: Scan) {
     for (const ed of s.editions) {
       if (!ed.missing) continue;
-      let guard = 0;
+      let guard = 0, last = Infinity, flat = 0;
+      const where = `${s.name}${s.editions.length > 1 ? ` · ${ed.label}` : ""}`;
       for (;;) {
-        if (guard++ > 60) { say(`${s.name}: gave up after 60 chunks`); break; }
+        if (guard++ > 60) { say(`${where}: gave up after 60 chunks`); break; }
         const d = await post({ op: "bonus-text-chunk", slug: s.slug, edition: ed.index, importUrl: url.trim() });
-        setStatus(`${s.name}${s.editions.length > 1 ? ` · ${ed.label}` : ""}: ${d.remaining} bonuses left…`);
-        if (d.stalled) { say(`${s.name}: the source returned no bonus pages — ${d.remaining} still missing`); break; }
+        setStatus(`${where}: ${d.remaining} bonuses left…`);
+        if (d.stalled) { say(`${where}: the source returned no bonus pages — ${d.remaining} still missing`); break; }
         if (d.done) break;
+        // A chunk that fetched text but didn't lower the count is going in
+        // circles; say so rather than spin quietly until the guard trips.
+        flat = d.remaining < last ? 0 : flat + 1;
+        last = d.remaining;
+        if (flat >= 2) { say(`${where}: no progress — stuck at ${d.remaining} missing; moving on`); break; }
       }
     }
     await post({ op: "bonus-text-finish", slug: s.slug });

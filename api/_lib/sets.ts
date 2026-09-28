@@ -269,7 +269,11 @@ export const readIndex = () => readBlobJson<{ sets: SetEntry[] }>("sets/index.js
 export const writeIndex = (idx: { sets: SetEntry[] }) => writeJson("sets/index.json", idx);
 export const getSetEntry = (slug: string) => readIndex().then((idx) => idx.sets.find((s) => s.slug === slug) || null);
 
-export const readSource = (slug: string) => readBlobJson<SetSource>(`sets/${slug}/_source.json`);
+// Always read fresh, like corrections: nearly every caller reads, changes and
+// rewrites the source, and a cached read hands back the copy from before the last
+// write. That silently undid each step of a chunked job — the bonus-text repair
+// refetched the same 45 bonuses forever, stuck on "135 left".
+export const readSource = (slug: string) => readBlobJson<SetSource>(`sets/${slug}/_source.json`, false);
 export const writeSource = (slug: string, s: SetSource) => writeJson(`sets/${slug}/_source.json`, s);
 
 export const readCorrections = (slug: string) => readBlobJson<Correction[]>(`sets/${slug}/_corrections.json`, false).then((c) => c || []);
