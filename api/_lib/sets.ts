@@ -532,7 +532,7 @@ function combinedPackets(editions: Edition[]): PacketFile[] {
 // the given scope (all rounds, or a filtered subset for a phase tag). Returns []
 // for tournaments whose bonuses came from per-game QBJ data (those keep the
 // game-derived bonus files from aggregate()).
-function collectImportedBonuses(editions: Edition[], bonusDiffs: BonusDiffs, roundFilter?: Set<number>): ImportedBonus[] {
+function collectImportedBonuses(editions: Edition[], bonusDiffs: BonusDiffs, roundFilter?: Set<number>, tagEdits?: TagEdits | null): ImportedBonus[] {
   const out: ImportedBonus[] = [];
   for (const e of editions)
     for (const p of e.packets || []) {
@@ -546,6 +546,7 @@ function collectImportedBonuses(editions: Edition[], bonusDiffs: BonusDiffs, rou
         const mods: string[] = b.difficultyModifiers || [];
         out.push({
           round: p.round, num: i + 1, category: b.metadata || "",
+          categoryOverride: tagEdits?.bonuses?.[`${p.round}-${i + 1}`]?.category,
           parts: b.parts || [], answers, difficultyModifiers: fix && fix.length
             ? Array.from({ length: Math.max(mods.length, answers.length) || fix.length }, (_, k) => (k < fix.length ? fix[k] || "" : mods[k] || ""))
             : mods,
@@ -787,7 +788,7 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
     if (!hasImportedBonuses) return;
     const b = out["bonuses.json"] as { heard?: number }[] | undefined;
     if (b && b.some((r) => (r.heard || 0) > 0)) return; // real per-game bonus data present; keep it
-    Object.assign(out, bonusFilesFromImported(collectImportedBonuses(eds, bonusDiffs, roundFilter), virtualCats, metaMap));
+    Object.assign(out, bonusFilesFromImported(collectImportedBonuses(eds, bonusDiffs, roundFilter, tagEdits), virtualCats, metaMap));
   };
 
   const editionSummaries: EditionSummary[] = [];

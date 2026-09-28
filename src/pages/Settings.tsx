@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useSetCtx } from "../components/Layout";
 import { clearSetCache, refreshIndex } from "../data";
 import { Visibility, TOURNAMENT_LEVELS, difficultyOptions } from "../types";
@@ -13,6 +13,7 @@ import { RenamePicker } from "../components/Rename";
 import { byLabel, hasYearFirst, yearFirstSuggestion } from "../util";
 import { AddFilesForm } from "../components/AddFiles";
 import { PacketTextFill } from "../components/BonusTextRepair";
+import { QuestionEditor } from "../components/QuestionEditor";
 
 const VIS_OPTIONS: { id: Visibility; label: string; desc: string }[] = [
   { id: "listed", label: "Listed (login + invite)", desc: "Shown in the list; only invited, logged-in people can view." },
@@ -28,8 +29,24 @@ async function postJson(url: string, body: unknown) {
 }
 const toDateInput = (iso: string | null) => (iso ? new Date(iso).toISOString().slice(0, 10) : "");
 
+// Settings is split into tabs, each its own URL (settings/<tab>). Older links
+// point at a section by its #id (the warning banners do), so an id alone still
+// opens the tab that holds it.
+const SETTINGS_TABS = [
+  { id: "general", label: "General" },
+  { id: "access", label: "Access & sharing" },
+  { id: "questions", label: "Questions & categories", sourceOnly: true },
+  { id: "files", label: "Rounds & files", sourceOnly: true },
+  { id: "renames", label: "Players & teams", sourceOnly: true },
+] as const;
+type SettingsTab = (typeof SETTINGS_TABS)[number]["id"];
+const TAB_OF_SECTION: Record<string, SettingsTab> = {
+  rename: "general", categories: "questions", bonusdiff: "questions", bonustext: "questions", questionedits: "questions",
+  rounds: "files", addrounds: "files", uploads: "files", games: "files", renames: "renames", discussion: "access",
+};
+
 export function Settings() {
-  const { slug = "" } = useParams();
+  const { slug = "", tab: tabParam } = useParams();
   const { isOwner, meta, user, editions } = useSetCtx();
   const loc = useLocation();
   const navigate = useNavigate();
@@ -127,6 +144,10 @@ export function Settings() {
     const t = setTimeout(() => el.scrollIntoView({ block: "start", behavior: "smooth" }), 0);
     return () => clearTimeout(t);
   }, [loading, loc.hash]);
+
+  const tabs = SETTINGS_TABS.filter((t) => !("sourceOnly" in t) || meta?.kind !== "results");
+  const hashTab = loc.hash ? TAB_OF_SECTION[loc.hash.slice(1)] : undefined;
+  const tab: SettingsTab = (tabs.find((t) => t.id === tabParam)?.id) ?? hashTab ?? "general";
 
   if (!user)
     return (
@@ -350,6 +371,19 @@ export function Settings() {
         <div className="caveat" style={{ marginBottom: 28 }}>{accessSection}</div>
       )}
 
+      <nav className="admin-tabs" aria-label="Settings sections">
+        {tabs.map((t) => (
+          <NavLink key={t.id} to={t.id === "general" ? `/set/${slug}/settings` : `/set/${slug}/settings/${t.id}`} end
+            className={() => "admin-tab" + (tab === t.id ? " active" : "")}>
+            {t.label}
+          </NavLink>
+        ))}
+      </nav>
+
+      {/* Every tab stays mounted and is only hidden, so an upload or repair in one
+          keeps going while you look at another. */}
+      <section hidden={tab !== "general"}>
+
       <h2 id="rename">Name</h2>
       <p className="muted">
         Renaming changes what this tournament is called everywhere its stats are published. Its web address stays as
@@ -477,6 +511,9 @@ export function Settings() {
         <button className="btn-primary" disabled={busy} onClick={saveSettings}>Save settings</button>
       </div>
 
+      </section>
+
+      <section hidden={tab !== "questions"}>
       {meta?.kind !== "results" && (meta?.rounds?.length ?? 0) > 0 && (
         <>
           <h2 style={{ marginTop: 28 }}>Round phases / tags</h2>
@@ -499,6 +536,14 @@ export function Settings() {
             filter and compare on, like the writer.
           </p>
           <MetaMapEditor slug={slug} />
+
+          <h2 id="questionedits" style={{ marginTop: 28 }}>Edit individual questions</h2>
+          <p className="muted">
+            When a set tags its rounds inconsistently, the same subject lands under several categories. Filter to the
+            questions you mean, tick them, and file them under one category, or add or drop a tag. Your edits sit on
+            top of the packet's metadata, so re-uploading or remapping keeps them; "Reset to packet's" undoes one.
+          </p>
+          <QuestionEditor slug={slug} hasBonuses={!!meta?.hasBonuses} />
 
           {meta?.hasBonuses && (
             <>
@@ -524,6 +569,13 @@ export function Settings() {
             </>
           )}
 
+        </>
+      )}
+      </section>
+
+      <section hidden={tab !== "files"}>
+      {meta?.kind !== "results" && (
+        <>
           <h2 id="rounds" style={{ marginTop: 28 }}>Round alignment</h2>
           <p className="muted">
             Each packet's round is taken from its <strong>filename</strong> when you upload it ("Round_3.json" → round
@@ -562,6 +614,13 @@ export function Settings() {
           </p>
           <GameFilesEditor slug={slug} />
 
+        </>
+      )}
+      </section>
+
+      <section hidden={tab !== "renames"}>
+      {meta?.kind !== "results" && (
+        <>
           <h2 id="renames" style={{ marginTop: 28 }}>Rename players and teams</h2>
           <p className="muted">
             A rename folds every buzz, box score and roster entry for a player or a team onto one spelling — fixing a
@@ -574,7 +633,9 @@ export function Settings() {
           <RenamesEditor slug={slug} />
         </>
       )}
+      </section>
 
+      <section hidden={tab !== "general"}>
       {hasYf && (
         <>
           <h2 style={{ marginTop: 28 }}>YellowFruit export</h2>
@@ -588,6 +649,9 @@ export function Settings() {
         </>
       )}
 
+      </section>
+
+      <section hidden={tab !== "access"}>
       <h2 id="discussion" style={{ marginTop: 28 }}>Discussion</h2>
       <div className="create-form" style={{ maxWidth: 640 }}>
         <label className="field-inline">
@@ -607,10 +671,16 @@ export function Settings() {
         {forum && <ForumMembers slug={slug} enabled={forum} />}
       </div>
 
+      </section>
+
+      <section hidden={tab !== "general"}>
       <h2 style={{ marginTop: 28 }}>Maintenance</h2>
       <p className="muted">Recompute all stats from the uploaded files (use this to pick up new stats pages or fixes).</p>
       <button className="btn-primary" disabled={busy} onClick={rebuild}>Rebuild stats</button>
 
+      </section>
+
+      <section hidden={tab !== "access"}>
       {visibility !== "public" && (
         <>
           {!reviewingAccess && accessSection}
@@ -697,6 +767,9 @@ export function Settings() {
       )}
       {!isPrimary && <p className="muted">You're a co-owner here — only the tournament's owner can change this list.</p>}
 
+      </section>
+
+      <section hidden={tab !== "general"}>
       {isPrimary && (
         <>
       <h2 style={{ marginTop: 28 }}>Delete this tournament</h2>
@@ -727,6 +800,7 @@ export function Settings() {
       </div>
         </>
       )}
+      </section>
     </div>
   );
 }

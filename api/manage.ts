@@ -241,6 +241,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Applied player and team renames, so the owner can see and undo them (undo itself
       // goes through /api/correct, which owns the renames file).
       if (req.query.op === "renames") return res.status(200).json({ renames: await readRenames(slug) });
+      // Hand edits to questions' categories and tags, so the editor can mark them.
+      if (req.query.op === "tagedits") return res.status(200).json({ tagEdits: await readTagEdits(slug) });
       // Difficulty marks the owner has already corrected. The bonuses that still
       // NEED correcting come from meta.bonusDiffWarnings, which the client
       // already has — this is only so a fix can be reviewed and put back.
@@ -472,11 +474,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!add || !remove) return res.status(400).json({ error: "Invalid tags." });
       const edits = await readTagEdits(slug);
       const bucket = { ...(edits[kind] || {}) };
-      if (!add.length && !remove.length) delete bucket[id];
-      else bucket[id] = { ...(add.length ? { add } : {}), ...(remove.length ? { remove } : {}) };
+      // Keep a hand-set category; this op only speaks for the tags.
+      const category = bucket[id]?.category;
+      if (!add.length && !remove.length && !category) delete bucket[id];
+      else bucket[id] = { ...(add.length ? { add } : {}), ...(remove.length ? { remove } : {}), ...(category ? { category } : {}) };
       const next = { ...edits, [kind]: bucket };
       const source = await readSource(slug);
       if (!source) return res.status(500).json({ error: "Source data not found." });
+      await writeTagEdits(slug, next);
+      await aggregateAndWrite(slug, source, await readCorrections(slug));
+      return res.status(200).json({ ok: true, tagEdits: next });
+    } else if (op === "question-edits") {
+      // Bulk version for sets tagged inconsistently across rounds: set (or clear)
+      // the category of many questions at once, and/or add or drop one tag on
+      // them. Stored in the same overlay as the single-question tag edits, so
+      // re-reading the metadata or re-uploading never undoes it.
+      if (entry.kind === "results") return res.status(400).json({ error: "Question edits apply to buzz tournaments only." });
+      const kind = body.kind === "bonuses" ? "bonuses" : "tossups";
+      const ids: string[] = Array.isArray(body.ids) ? body.ids.map(String) : [];
+      if (!ids.length) return res.status(400).json({ error: "No questions selected." });
+      if (ids.length > 2000 || ids.some((id) => !/^\d+-\d+$/.test(id))) return res.status(400).json({ error: "Unknown question." });
+      // undefined = leave alone; "" or null = back to what the metadata says.
+      let category: string | null | undefined;
+      if (body.category === null || body.category === "") category = null;
+      else if (typeof body.category === "string") {
+        category = body.category.split("-").map((x: string) => x.trim()).filter(Boolean).join(" - ").slice(0, 120);
+        if (!category) category = null;
+      }
+      const addTags = cleanTagList(body.addTags), removeTags = cleanTagList(body.removeTags);
+      if (!addTags || !removeTags) return res.status(400).json({ error: "Invalid tags." });
+      if (category === undefined && !addTags.length && !removeTags.length) return res.status(400).json({ error: "Nothing to change." });
+      const source = await readSource(slug);
+      if (!source) return res.status(500).json({ error: "Source data not found." });
+      const edits = await readTagEdits(slug);
+      const bucket = { ...(edits[kind] || {}) };
+      for (const id of ids) {
+        const cur = bucket[id] || {};
+        const add = new Set(cur.add || []), remove = new Set(cur.remove || []);
+        for (const t of addTags) { add.add(t); remove.delete(t); }
+        for (const t of removeTags) { remove.add(t); add.delete(t); }
+        const cat = category === undefined ? cur.category : category ?? undefined;
+        const e = { ...(add.size ? { add: [...add] } : {}), ...(remove.size ? { remove: [...remove] } : {}), ...(cat ? { category: cat } : {}) };
+        if (Object.keys(e).length) bucket[id] = e; else delete bucket[id];
+      }
+      const next = { ...edits, [kind]: bucket };
       await writeTagEdits(slug, next);
       await aggregateAndWrite(slug, source, await readCorrections(slug));
       return res.status(200).json({ ok: true, tagEdits: next });

@@ -68,8 +68,12 @@ export interface AggregateConfig {
   individual?: boolean;
 }
 
-// Hand edits layered over the tags derived from metadata.
-export interface TagEdit { add?: string[]; remove?: string[] }
+// Hand edits layered over what the metadata says about one question: tags added
+// or dropped, and optionally the category itself ("Main" or "Main - Sub - Leaf"),
+// for sets whose packets were tagged inconsistently from round to round.
+export interface TagEdit { add?: string[]; remove?: string[]; category?: string }
+const withCategory = (rm: ResolvedMeta, e?: TagEdit): ResolvedMeta =>
+  e?.category ? { ...rm, main: e.category.split(" - ")[0].trim(), full: e.category } : rm;
 export interface TagEdits { tossups?: Record<string, TagEdit>; bonuses?: Record<string, TagEdit> }
 
 // One bonus's corrected difficulty marks, keyed "<round>-<num>". `from` is what
@@ -957,7 +961,7 @@ export function aggregate(
     (p.tossups || []).forEach((t, i) => {
       const num = i + 1;
       noteAmbiguous(t.metadata);
-      const rm = resolveMeta(t.metadata, cfg.metaMap ?? null);
+      const rm = withCategory(resolveMeta(t.metadata, cfg.metaMap ?? null), cfg.tagEdits?.tossups?.[`${r}-${num}`]);
       const tok = tokenize(t.question);
       tossups.set(`${r}-${num}`, {
         round: r, num, questionHtml: t.question, answer: t.answer,
@@ -970,7 +974,7 @@ export function aggregate(
       (p.bonuses || []).forEach((b, i) => {
         const num = i + 1;
         noteAmbiguous(b.metadata);
-        const rmb = resolveMeta(b.metadata, cfg.metaMap ?? null);
+        const rmb = withCategory(resolveMeta(b.metadata, cfg.metaMap ?? null), cfg.tagEdits?.bonuses?.[`${r}-${num}`]);
         bonuses.set(`${r}-${num}`, {
           round: r, num, leadin: b.leadin || "", parts: b.parts || [], answers: b.answers || [],
           difficultyModifiers: applyDiffFix(b.difficultyModifiers || [], b.answers || [], cfg.bonusDiffs?.[`${r}-${num}`]?.mods),
@@ -1937,6 +1941,8 @@ export interface ImportedBonus {
   heard: number;
   got: number[];               // per part: hearings that earned it
   points: number;              // total bonus points across all hearings
+  // An owner's hand-set category, which wins over the metadata string.
+  categoryOverride?: string;
 }
 
 // Build bonuses.json / bonuses_detail.json / categories_bonus.json from
@@ -1961,7 +1967,9 @@ export function bonusFilesFromImported(list: ImportedBonus[], virtualCats: Virtu
   const orderRows: BonusOrderInput[] = [];
   for (const [id, b] of [...merged.entries()].sort()) {
     // Imported bonus stats carry their category as a raw metadata string.
-    const { main, full: sub } = resolveMeta(b.category, metaMap ?? null);
+    const { main, full: sub } = b.categoryOverride
+      ? { main: b.categoryOverride.split(" - ")[0].trim(), full: b.categoryOverride }
+      : resolveMeta(b.category, metaMap ?? null);
     const heard = b.heard;
     const totalPts = b.points;
     const ppb = heard ? Math.round((100 * totalPts) / heard) / 100 : 0;

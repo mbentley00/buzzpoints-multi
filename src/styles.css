@@ -1349,3 +1349,8 @@ a.auth-user:hover { color: #fff; text-decoration: underline; }
 .admin-tab .edition-count { margin-left: 6px; }
 .admin-h2-gap { margin-top: 32px; }
 .admin-filter { padding: 5px 8px; border: 1px solid var(--field-border); border-radius: 4px; min-width: 260px; font: inherit; background: var(--bg); color: var(--ink); }
+
+/* Settings: bulk question editor */
+.question-editor-actions { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+.question-editor-table { max-height: 520px; overflow: auto; }
+.question-editor-table tr.row-picked td { background: var(--info-bg); }

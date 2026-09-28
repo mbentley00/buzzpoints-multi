@@ -72,6 +72,7 @@ export default function App() {
         <Route path="discussion" element={<Discussion />} />
         <Route path="discussion/:thread" element={<Discussion />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="settings/:tab" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
