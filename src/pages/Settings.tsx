@@ -14,6 +14,7 @@ import { byLabel, hasYearFirst, yearFirstSuggestion } from "../util";
 import { AddFilesForm } from "../components/AddFiles";
 import { PacketTextFill } from "../components/BonusTextRepair";
 import { QuestionEditor } from "../components/QuestionEditor";
+import { DupeFinder } from "../components/DupeFinder";
 
 const VIS_OPTIONS: { id: Visibility; label: string; desc: string }[] = [
   { id: "listed", label: "Listed (login + invite)", desc: "Shown in the list; only invited, logged-in people can view." },
@@ -42,7 +43,7 @@ const SETTINGS_TABS = [
 type SettingsTab = (typeof SETTINGS_TABS)[number]["id"];
 const TAB_OF_SECTION: Record<string, SettingsTab> = {
   rename: "general", categories: "questions", bonusdiff: "questions", bonustext: "questions", questionedits: "questions",
-  rounds: "files", addrounds: "files", uploads: "files", games: "files", renames: "renames", discussion: "access",
+  rounds: "files", addrounds: "files", uploads: "files", games: "files", renames: "renames", dupes: "renames", discussion: "access",
 };
 
 export function Settings() {
@@ -629,6 +630,15 @@ export function Settings() {
             <Link to={`/set/${slug}/requests`} className="link">Corrections</Link> page for approval.
           </p>
           <RenamePicker slug={slug} individual={!!meta.individual} returnTo={`${loc.pathname}#renames`} />
+
+          <h2 id="dupes" style={{ marginTop: 28 }}>Possible duplicates</h2>
+          <p className="muted">
+            Hand-entered scoresheets spell the same team or person slightly differently from room to room, and each
+            spelling gets its own row. These pairs look like the same one — never suggested for two teams that met or
+            played the same round, or two players who appeared in one game. Tick the real ones and merge; each merge is a
+            rename you can undo below.
+          </p>
+          <DupeFinder slug={slug} individual={!!meta.individual} />
           <h3 style={{ marginTop: 18 }}>Applied renames</h3>
           <RenamesEditor slug={slug} />
         </>
