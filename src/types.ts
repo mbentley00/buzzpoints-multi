@@ -565,6 +565,10 @@ export interface TeamRow {
   // unread by an early correct buzz, per tossup heard. null when nothing was
   // heard. See api/_lib/aggregate.ts and https://www.qbwiki.com/wiki/BPA.
   bpa: number | null;
+  // [bonuses heard, PPB] per main category and per second-level subcategory
+  // (keyed by its full path). Present once a set with per-team bonus data has
+  // been rebuilt.
+  bonusCats?: Record<string, [number, number]>;
 }
 
 export interface RosterPlayer {

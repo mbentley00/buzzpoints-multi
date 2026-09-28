@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { TeamRow } from "../types";
 import { num, searchable } from "../util";
@@ -11,6 +11,25 @@ export function Teams() {
   const { slug = "" } = useParams();
   const { data, error, loading } = useScopedJson<TeamRow[]>("teams.json");
   const [q, setQ] = useState("");
+  // Rank by PPB in one subject: a main category or one of its subcategories.
+  // Kept in the URL so a ranking can be linked to.
+  const [params, setParams] = useSearchParams();
+  const subject = params.get("subject") || "";
+  const setSubject = (v: string) =>
+    setParams((p) => { const n = new URLSearchParams(p); if (v) n.set("subject", v); else n.delete("subject"); return n; }, { replace: true });
+
+  // Every subject some team heard a bonus in, each main followed by its subs.
+  const subjects = useMemo(() => {
+    const keys = new Set<string>();
+    for (const t of data ?? []) for (const k of Object.keys(t.bonusCats || {})) keys.add(k);
+    const mains = [...keys].filter((k) => !k.includes(" - ")).sort((a, b) => a.localeCompare(b));
+    return mains.flatMap((m) => [
+      { key: m, label: m },
+      ...[...keys].filter((k) => k.startsWith(m + " - ")).sort((a, b) => a.localeCompare(b))
+        .map((k) => ({ key: k, label: "\u00a0\u00a0" + k.split(" - ").slice(1).join(" › ") })),
+    ]);
+  }, [data]);
+  const subjectLabel = subject.split(" - ").slice(-1)[0];
 
   const rows = useMemo(() => {
     let r = data ?? [];
@@ -48,6 +67,16 @@ export function Teams() {
     ...(meta.hasBonuses && meta.hasTeamBonuses !== false
       ? [{ key: "ppb", label: "PPB", align: "right" as const, sortVal: (t: TeamRow) => t.ppb, render: (t: TeamRow) => num(t.ppb, 2) }]
       : []),
+    ...(subject
+      ? [
+          { key: "subjHeard", label: "Heard", align: "right" as const, title: `Bonuses heard in ${subject}`,
+            sortVal: (t: TeamRow) => t.bonusCats?.[subject]?.[0] ?? 0, render: (t: TeamRow) => t.bonusCats?.[subject]?.[0] ?? 0 },
+          { key: "subjPpb", label: `${subjectLabel} PPB`, align: "right" as const, title: `Points per bonus in ${subject}`,
+            // A team that heard none sorts below every team that did, either way.
+            sortVal: (t: TeamRow) => (t.bonusCats?.[subject]?.[0] ? t.bonusCats[subject][1] : -1),
+            render: (t: TeamRow) => (t.bonusCats?.[subject]?.[0] ? num(t.bonusCats[subject][1], 2) : "—") },
+        ]
+      : []),
     { key: "first", label: "1st", align: "right", sortVal: (t) => t.firstBuzzes, render: (t) => t.firstBuzzes, title: "Fastest correct buzz on a tossup" },
     { key: "top3", label: "Top3", align: "right", sortVal: (t) => t.top3Buzzes, render: (t) => t.top3Buzzes },
   ];
@@ -59,11 +88,18 @@ export function Teams() {
   return (
     <div>
       <PageHeader title="Teams" subtitle={`${rows.length} teams`}>
+        {subjects.length > 0 && (
+          <select className="subject-select" value={subject} onChange={(e) => setSubject(e.target.value)} aria-label="Rank by PPB in a subject">
+            <option value="">PPB by subject…</option>
+            {subjects.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+          </select>
+        )}
         <SearchInput value={q} onChange={setQ} placeholder="Search team" />
       </PageHeader>
       {loading && <Loading />}
       {error && <ErrorBox error={error} />}
-      {data && <DataTable rows={rows} columns={columns} initialSort="ppg" initialDir="desc" rowKey={(t) => t.id} />}
+      {/* Remounted per subject so choosing one sorts by it. */}
+      {data && <DataTable key={subject} rows={rows} columns={columns} initialSort={subject ? "subjPpb" : "ppg"} initialDir="desc" rowKey={(t) => t.id} />}
     </div>
   );
 }

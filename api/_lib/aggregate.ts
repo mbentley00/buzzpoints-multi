@@ -1632,12 +1632,24 @@ export function aggregate(
       .map((p) => ({ id: p.id, name: p.name, games: p.games, pts: p.pts, ppg: p.ppg, powers: p.powers, gets: p.gets, incorrect: p.incorrect }));
     const bnCatMap = new Map<string, CatBnAcc>();
     for (const [sub, v] of tmBonusCat.get(name) || new Map<string, BnCat>()) bnCatMap.set(sub, { main: v.main, heard: v.heard, pts: v.pts, parts: v.parts });
+    const bonusCategories = cfg.hasBonuses ? buildCategoryTree<CatBnAcc>(bnCatMap, bnNew, bnAdd, bnFin) : [];
     tmDetail[tid] = {
       ...row,
       categories: buildCategoryTree<TuCat>(tmTuCat.get(name) || new Map(), tutNew, tutAdd, tutFin(s.tuPts)),
-      bonusCategories: cfg.hasBonuses ? buildCategoryTree<CatBnAcc>(bnCatMap, bnNew, bnAdd, bnFin) : [],
+      bonusCategories,
       roster,
     };
+    // The Teams list ranks by PPB in one subject, so each row carries [heard, ppb]
+    // per main category and per second-level subcategory. A main's "(general)"
+    // sub shares the main's key, so it's left to the main.
+    if (bonusCategories.length) {
+      const by: Record<string, [number, number]> = {};
+      for (const m of bonusCategories as Record<string, any>[]) {
+        by[m.category] = [m.heard, m.ppb];
+        for (const sub of m.subs as Record<string, any>[]) if (sub.subcategory !== m.category) by[sub.subcategory] = [sub.heard, sub.ppb];
+      }
+      (row as Record<string, unknown>).bonusCats = by;
+    }
   }
   // Rank each team within every category node by total points, so a team's
   // category breakdown can show "rank of N" against the other teams that played
