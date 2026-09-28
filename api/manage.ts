@@ -446,6 +446,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (link) link.revoked = true;
       await writeLinks(slug, links);
       return res.status(200).json({ ok: true, links });
+    } else if (op === "revoke-all-access") {
+      // Take the tournament back to its owners: nobody but the owner and
+      // co-owners can see its content afterwards. That means closing every way
+      // in — the invite list, every invite link, pending requests (declined
+      // quietly, no email), and public viewing, including an auto-publish date or
+      // a pending request to go public that would reopen it later. A listed or
+      // private tournament keeps its visibility; only a public one has to change,
+      // to listed unless the owner asked for private.
+      const removed = (entry.invites ?? []).length;
+      entry.invites = [];
+      const links = await readLinks(slug);
+      const revokedLinks = links.filter((l) => !l.revoked).length;
+      for (const l of links) l.revoked = true;
+      await writeLinks(slug, links);
+      const access = await readAccess(slug);
+      const now = new Date().toISOString();
+      let declined = 0;
+      for (const a of access) if (a.status === "pending") { a.status = "denied"; a.via = "owner"; a.resolvedAt = now; declined++; }
+      await writeAccess(slug, access);
+      if (entry.visibility !== "listed" && entry.visibility !== "private")
+        entry.visibility = body.visibility === "private" ? "private" : "listed";
+      entry.autoPublicAt = null;
+      delete entry.publicPending;
+      await writeIndex(index);
+      return res.status(200).json({
+        ok: true, visibility: entry.visibility, autoPublicAt: null, invites: [], links,
+        accessRequests: [], resolvedRequests: resolvedList(access), removed, revokedLinks, declined,
+      });
     } else if (op === "categories") {
       if (entry.kind === "results") return res.status(400).json({ error: "Category groups apply to buzz tournaments only." });
       const clean = sanitizeVirtualCats(body.virtualCategories);

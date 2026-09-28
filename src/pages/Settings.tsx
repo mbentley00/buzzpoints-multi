@@ -43,7 +43,7 @@ const SETTINGS_TABS = [
 type SettingsTab = (typeof SETTINGS_TABS)[number]["id"];
 const TAB_OF_SECTION: Record<string, SettingsTab> = {
   rename: "general", categories: "questions", bonusdiff: "questions", bonustext: "questions", questionedits: "questions",
-  rounds: "files", addrounds: "files", uploads: "files", games: "files", renames: "renames", dupes: "renames", discussion: "access",
+  rounds: "files", addrounds: "files", uploads: "files", games: "files", renames: "renames", dupes: "renames", discussion: "access", revoke: "access",
 };
 
 export function Settings() {
@@ -80,6 +80,10 @@ export function Settings() {
   const [accessRequests, setAccessRequests] = useState<{ email: string; name: string; at: string; role?: string; team?: string }[]>([]);
   const [resolved, setResolved] = useState<{ email: string; name: string; status: string; via?: string; resolvedAt?: string }[]>([]);
   const [links, setLinks] = useState<{ id: string; label: string; at: string; revoked?: boolean; uses: number }[]>([]);
+  // "Revoke all access": a two-step confirm, and — only for a public set —
+  // whether it ends up listed or private.
+  const [revokeConfirm, setRevokeConfirm] = useState(false);
+  const [revokeTo, setRevokeTo] = useState<"listed" | "private">("listed");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   // A queued request to make this set public, awaiting a moderator (fresh
   // uploads need approval), and whether picking Public would queue one.
@@ -290,6 +294,26 @@ export function Settings() {
       if (d.resolvedRequests) setResolved(d.resolvedRequests);
       if (approve) setInvites((prev) => [...new Set([...prev, email])].sort());
     } catch (e) { setErr(String((e as Error).message || e)); } finally { setBusy(false); }
+  }
+
+  async function revokeAll() {
+    setErr(null); setMsg(null); setBusy(true);
+    try {
+      const d = await postJson("/api/manage", { slug, op: "revoke-all-access", visibility: revokeTo });
+      setInvites([]);
+      setLinks(d.links || []);
+      setAccessRequests([]);
+      if (d.resolvedRequests) setResolved(d.resolvedRequests);
+      setVisibility(d.visibility);
+      setAutoPublish(false);
+      setPublicPending(false);
+      setRevokeConfirm(false);
+      refreshIndex();
+      const n = (k: number, one: string) => `${k} ${one}${k === 1 ? "" : "s"}`;
+      setMsg(`Access revoked: removed ${n(d.removed, "invited person")}, revoked ${n(d.revokedLinks, "invite link")}, declined ${n(d.declined, "pending request")}. Only you and your co-owners can see this tournament now; it's ${d.visibility}.`);
+    } catch (e) {
+      setErr(String((e as Error).message || e));
+    } finally { setBusy(false); }
   }
 
   const linkUrl = (id: string) => `${window.location.origin}/join/${slug}?key=${id}`;
@@ -776,6 +800,36 @@ export function Settings() {
         </ul>
       )}
       {!isPrimary && <p className="muted">You're a co-owner here — only the tournament's owner can change this list.</p>}
+
+      <h2 id="revoke" style={{ marginTop: 28 }}>Revoke all access</h2>
+      <div className="danger-zone">
+        <p style={{ margin: 0 }}>
+          Take this tournament back to its owners. Everyone you've invited is removed, every invite link stops working,
+          and pending access requests are declined without emailing anyone. Any auto-publish date or pending request to
+          go public is cancelled. You and your co-owners keep access; nobody else can see the questions or stats until
+          you let them back in.
+          {visibility === "public" ? " It's public now, so it can't stay that way:" : ` It stays ${visibility}.`}
+        </p>
+        {visibility === "public" && (
+          <label className="field" style={{ marginTop: 10, maxWidth: 420 }}>
+            <select value={revokeTo} onChange={(e) => setRevokeTo(e.target.value as "listed" | "private")} disabled={busy}>
+              <option value="listed">Listed: still in the tournament list, content hidden</option>
+              <option value="private">Private: hidden from the list too</option>
+            </select>
+          </label>
+        )}
+        <div style={{ marginTop: 12, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          {!revokeConfirm ? (
+            <button className="btn-primary btn-sm danger-btn" disabled={busy} onClick={() => setRevokeConfirm(true)}>Revoke all access…</button>
+          ) : (
+            <>
+              <span>Remove everyone but the owners?</span>
+              <button className="btn-primary btn-sm danger-btn" disabled={busy} onClick={revokeAll}>{busy ? "Revoking…" : "Yes, revoke all access"}</button>
+              <button className="btn-link" disabled={busy} onClick={() => setRevokeConfirm(false)}>Cancel</button>
+            </>
+          )}
+        </div>
+      </div>
 
       </section>
 
