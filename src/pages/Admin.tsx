@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, NavLink, Navigate, useParams } from "react-router-dom";
 import { useAuth, Role } from "../auth";
 import { refreshIndex } from "../data";
 import { Visibility } from "../types";
@@ -8,7 +8,7 @@ import { BulkImport } from "../components/BulkImport";
 import { LocalImport } from "../components/LocalImport";
 import { BonusTextRepair } from "../components/BonusTextRepair";
 import { BackupPanel } from "../components/BackupPanel";
-import { formatDate } from "../util";
+import { formatDate, searchable } from "../util";
 import { buildModaqExport, SetSourceLike } from "../modaqExport";
 
 interface AdminSet {
@@ -35,6 +35,18 @@ const VIS_DESC: Record<Visibility, string> = {
 };
 const ROLES: Role[] = ["user", "moderator", "admin"];
 
+// The admin area is split into tabs, each its own URL (/admin/<tab>). Moderators
+// get the first two; the rest are admin-only. /admin alone opens the review
+// queue, which is where the approval emails point.
+const TABS = [
+  { id: "review", label: "Review queue", adminOnly: false },
+  { id: "tournaments", label: "Tournaments", adminOnly: false },
+  { id: "import", label: "Import & repair", adminOnly: true },
+  { id: "backup", label: "Backup", adminOnly: true },
+  { id: "users", label: "Users", adminOnly: true },
+] as const;
+type TabId = (typeof TABS)[number]["id"];
+
 export function Admin() {
   const { user, isAdmin, isModerator, loading: authLoading } = useAuth();
   const [sets, setSets] = useState<AdminSet[] | null>(null);
@@ -46,6 +58,14 @@ export function Admin() {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [rebuildProg, setRebuildProg] = useState<string | null>(null);
+  const [setQuery, setSetQuery] = useState("");
+  const { tab: tabParam } = useParams();
+  const tabs = TABS.filter((t) => isAdmin || !t.adminOnly);
+  const tab: TabId | null = !tabParam ? "review" : (tabs.find((t) => t.id === tabParam)?.id ?? null);
+  const shownSets = useMemo(
+    () => (sets ?? []).filter((s) => !setQuery.trim() || searchable(`${s.name} ${s.slug} ${s.owner ?? ""}`).includes(searchable(setQuery))),
+    [sets, setQuery]
+  );
 
   async function load() {
     setErr(null);
@@ -157,9 +177,26 @@ export function Admin() {
           <Loading />
         ) : !isModerator ? (
           <p className="caveat">You don't have moderator access.</p>
+        ) : !tab ? (
+          <Navigate to="/admin" replace />
         ) : (
           <>
+            <nav className="admin-tabs" aria-label="Admin sections">
+              {tabs.map((t) => {
+                const count = t.id === "review" ? pending.length + publishReqs.length : 0;
+                return (
+                  <NavLink key={t.id} to={t.id === "review" ? "/admin" : `/admin/${t.id}`} end
+                    className={() => "admin-tab" + (tab === t.id ? " active" : "")}>
+                    {t.label}{count > 0 && <span className="edition-count">{count}</span>}
+                  </NavLink>
+                );
+              })}
+            </nav>
             {err && <div className="error-box">{err}</div>}
+
+            {/* Every tab stays mounted and is only hidden, so an import or rebuild
+                keeps running (and keeps its log) while you look at another tab. */}
+            <section hidden={tab !== "review"}>
 
             {/* ---- pending first-post submissions ---- */}
             <h2>Pending submissions {pending.length > 0 && <span className="edition-count">{pending.length}</span>}</h2>
@@ -190,7 +227,7 @@ export function Admin() {
             )}
 
             {/* ---- pending public-viewing requests ---- */}
-            <h2>Public requests {publishReqs.length > 0 && <span className="edition-count">{publishReqs.length}</span>}</h2>
+            <h2 className="admin-h2-gap">Public requests {publishReqs.length > 0 && <span className="edition-count">{publishReqs.length}</span>}</h2>
             <p className="muted">Owners of tournaments uploaded less than three months ago asking to make them public. Approving opens the set to everyone; declining leaves it as it is.</p>
             {publishReqs.length === 0 ? (
               <p className="muted">Nothing awaiting review.</p>
@@ -217,11 +254,15 @@ export function Admin() {
               </div>
             )}
 
-            {/* ---- tournaments ---- */}
-            <h2>Tournaments</h2>
+            </section>
+
+            <section hidden={tab !== "tournaments"}>
+            <h2>Tournaments {sets && <span className="edition-count">{sets.length}</span>}</h2>
             <p className="muted">Question content stays hidden when you open a non-public set{isAdmin ? " until you reveal it" : ""}.</p>
             {sets && sets.length > 0 && (
               <div className="cat-toolbar">
+                <input className="admin-filter" value={setQuery} onChange={(e) => setSetQuery(e.target.value)}
+                  placeholder="Filter by name, slug or owner" aria-label="Filter tournaments" />
                 <button className="btn-secondary btn-sm" disabled={!!busy} onClick={rebuildAll}>
                   {busy === "rebuild-all" ? "Rebuilding…" : "Rebuild all stats"}
                 </button>
@@ -239,7 +280,7 @@ export function Admin() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sets.map((s) => (
+                    {shownSets.map((s) => (
                       <tr key={s.slug}>
                         <td>
                           <Link className="link" to={`/set/${s.slug}`}>{s.name}</Link>
@@ -263,33 +304,38 @@ export function Admin() {
                         </td>
                       </tr>
                     ))}
-                    {sets.length === 0 && <tr><td colSpan={7} className="muted">No tournaments.</td></tr>}
+                    {shownSets.length === 0 && <tr><td colSpan={7} className="muted">{sets.length ? "No tournaments match." : "No tournaments."}</td></tr>}
                   </tbody>
                 </table>
               </div>
             )}
 
-            {/* ---- bulk import (admin only) ---- */}
+            </section>
+
             {isAdmin && (
               <>
-                <h2 style={{ marginTop: 28 }}>Import from local files (recommended)</h2>
-                <LocalImport />
+                <section hidden={tab !== "import"}>
+                  <p className="muted">
+                    Bring tournaments in from elsewhere, or refresh ones already here. Prefer local files when you have
+                    the export: they carry everything. Scraping reads another Buzzpoints site page by page.
+                  </p>
+                  <h2>Import from local files (recommended)</h2>
+                  <LocalImport />
 
-                <h2 style={{ marginTop: 28 }}>Bulk import (scrape from a Buzzpoints site)</h2>
-                <BulkImport />
+                  <h2 className="admin-h2-gap">Scrape from a Buzzpoints site</h2>
+                  <BulkImport />
 
-                <h2 style={{ marginTop: 28 }}>Missing bonus text</h2>
-                <BonusTextRepair />
+                  <h2 className="admin-h2-gap">Missing bonus text</h2>
+                  <BonusTextRepair />
+                </section>
 
-                <h2 style={{ marginTop: 28 }}>Backup &amp; restore</h2>
-                <BackupPanel sets={(sets ?? []).map((s) => ({ slug: s.slug, name: s.name }))} />
-              </>
-            )}
+                <section hidden={tab !== "backup"}>
+                  <h2>Backup &amp; restore</h2>
+                  <BackupPanel sets={(sets ?? []).map((s) => ({ slug: s.slug, name: s.name }))} />
+                </section>
 
-            {/* ---- users (admin only) ---- */}
-            {isAdmin && (
-              <>
-                <h2>Users</h2>
+                <section hidden={tab !== "users"}>
+                <h2>Users {users && <span className="edition-count">{users.length}</span>}</h2>
                 <p className="muted">Grant moderator/admin roles or delete accounts. Built-in admins (set via ADMIN_EMAILS) can't be changed here.</p>
                 {users === null ? <Loading /> : (
                   <div className="table-wrap">
@@ -320,8 +366,7 @@ export function Admin() {
                   </div>
                 )}
 
-                {/* ---- blocklist (admin only) ---- */}
-                <h2>Name blocklist</h2>
+                <h2 className="admin-h2-gap">Name blocklist</h2>
                 <p className="muted">One word per line. Tournament names or edition labels containing any of these (whole-word, case-insensitive) are rejected at submission.</p>
                 <textarea
                   className="blocklist-input"
@@ -335,6 +380,7 @@ export function Admin() {
                     {busy === "blocklist" ? "Saving…" : "Save blocklist"}
                   </button>
                 </div>
+                </section>
               </>
             )}
           </>

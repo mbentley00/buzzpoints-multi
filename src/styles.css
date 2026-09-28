@@ -1340,3 +1340,12 @@ a.auth-user:hover { color: #fff; text-decoration: underline; }
 .bb .bb-quote cite { display: block; font-style: normal; font-weight: 600; font-size: 12.5px; margin-bottom: 2px; }
 .bb .bb-code { background: var(--hover); border-radius: 6px; padding: 8px 10px; overflow-x: auto; font-size: 13px; }
 .bb ul, .bb ol { margin: 6px 0; padding-left: 24px; }
+
+/* Admin area: one tab per section, each its own URL. */
+.admin-tabs { display: flex; flex-wrap: wrap; gap: 4px 22px; border-bottom: 1px solid var(--line-strong); margin: 4px 0 18px; }
+.admin-tab { padding: 8px 0; margin-bottom: -1px; border-bottom: 2px solid transparent; color: var(--ink-soft); font-weight: 500; }
+.admin-tab:hover { color: var(--ink); text-decoration: none; }
+.admin-tab.active { color: var(--ink); border-bottom-color: var(--link); font-weight: 700; }
+.admin-tab .edition-count { margin-left: 6px; }
+.admin-h2-gap { margin-top: 32px; }
+.admin-filter { padding: 5px 8px; border: 1px solid var(--field-border); border-radius: 4px; min-width: 260px; font: inherit; background: var(--bg); color: var(--ink); }

@@ -45,6 +45,8 @@ interface Row {
 }
 
 const hostOf = (base: string) => { try { return new URL(base).host; } catch { return base; } };
+// Host plus any path the site lives under (quizbowlstats serves from /buzzpoints).
+const siteOf = (base: string) => { try { const u = new URL(base); return u.host + u.pathname.replace(/\/+$/, ""); } catch { return base; } };
 const importUrlOf = (r: Row) => `${r.base}/${r.kind}/${r.slug}`;
 
 // Admin-only: gather sets from one or more other Buzzpoints sites and import
@@ -78,6 +80,13 @@ export function BulkImport() {
   // existing tournament makes it a refresh, and renaming it away makes it new.
   const refreshSlugFor = (r: Row) => existing.get(r.name.trim().toLowerCase());
   const selected = rows.filter((r) => r.selected && r.name.trim());
+  // Say what the button will actually do: create, refresh, or both.
+  const nRefreshSel = selected.filter((r) => refreshSlugFor(r)).length;
+  const nNewSel = selected.length - nRefreshSel;
+  const actionLabel =
+    selected.length === 1 ? `${nRefreshSel ? "Refresh" : "Import"} ${selected[0].name.trim()}`
+    : !selected.length ? "Nothing selected"
+    : [nNewSel && `Import ${nNewSel} new`, nRefreshSel && `refresh ${nRefreshSel}`].filter(Boolean).join(" · ");
   const addLog = (m: string) => setLog((l) => [...l.slice(-400), m]);
   const patch = (key: string, up: Partial<Row>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...up } : r)));
 
@@ -93,26 +102,30 @@ export function BulkImport() {
       const here = new Map<string, string>((idx.sets ?? []).map((s: any) => [String(s.name || "").toLowerCase(), s.slug] as const));
       setExisting(here);
       const found: { slug: string; name: string; kind: "set" | "tournament" }[] = d.sets || [];
-      let added = 0, dupes = 0;
-      setRows((prev) => {
-        const seen = new Set(prev.map((r) => `${r.base}|${r.slug}`));
-        const next = [...prev];
-        for (const s of found) {
-          const key = `${d.base}|${s.slug}`;
-          if (seen.has(key)) { dupes++; continue; }
-          seen.add(key);
-          added++;
-          next.push({
-            key, base: d.base, slug: s.slug, kind: s.kind || "set",
-            sourceName: s.name, name: s.name, level, visibility,
-            // A name that already exists here would overwrite that tournament,
-            // so it never rides along on a bulk tick — it has to be chosen.
-            selected: !here.has(s.name.trim().toLowerCase()),
-          });
-        }
-        return next;
-      });
-      addLog(`Found ${found.length} at ${hostOf(d.base)} — added ${added}${dupes ? `, ${dupes} already queued` : ""}.`);
+      // Counted against the queue as it stands now — counting inside the state
+      // updater ran after the log line, so it always said "added 0".
+      const seen = new Set(rows.map((r) => `${r.base}|${r.slug}`));
+      const fresh: Row[] = [];
+      let dupes = 0;
+      for (const s of found) {
+        const key = `${d.base}|${s.slug}`;
+        if (seen.has(key)) { dupes++; continue; }
+        seen.add(key);
+        fresh.push({
+          key, base: d.base, slug: s.slug, kind: s.kind || "set",
+          sourceName: s.name, name: s.name, level, visibility,
+          // A name that already exists here would overwrite that tournament,
+          // so it never rides along on a bulk tick — it has to be chosen.
+          selected: !here.has(s.name.trim().toLowerCase()),
+        });
+      }
+      setRows((prev) => [...prev, ...fresh]);
+      const nExisting = fresh.filter((r) => here.has(r.name.trim().toLowerCase())).length;
+      addLog(
+        `Found ${found.length} at ${siteOf(d.base)}. Queued ${fresh.length}` +
+        (nExisting ? ` (${fresh.length - nExisting} new, ${nExisting} already here — tick those to refresh them)` : "") +
+        (dupes ? `; ${dupes} already in the queue` : "") + ". Nothing has been imported yet."
+      );
     } catch (e) { setErr(String((e as Error).message || e)); }
     finally { setDiscovering(false); }
   }
@@ -261,29 +274,29 @@ export function BulkImport() {
                       />
                       <div className="import-note muted">
                         {refresh ? (
-                          <span className="warn-text">Refreshes the existing “{r.name.trim()}” in place — its settings and corrections are kept, its data replaced.</span>
+                          <span className="warn-text">Already here — will <strong>refresh</strong> “{r.name.trim()}” in place: its data is replaced; its settings, visibility and corrections stay.</span>
                         ) : renamed ? (
-                          <>New tournament · from “{r.sourceName}”</>
+                          <>Will create a new tournament · from “{r.sourceName}”</>
                         ) : (
-                          <>New tournament</>
+                          <>Will create a new tournament</>
                         )}
                       </div>
                     </td>
                     <td className="muted import-src">
-                      {hostOf(r.base)}
+                      {siteOf(r.base)}
                       <div>/{r.kind}/{r.slug}</div>
                     </td>
                     {/* A refresh keeps the existing tournament's own type and
                         visibility — offering to set them here would be a lie. */}
                     <td>
-                      {refresh ? <span className="muted">kept</span> : (
+                      {refresh ? <span className="muted">unchanged</span> : (
                         <select value={r.level} disabled={busy} onChange={(e) => patch(r.key, { level: e.target.value })}>
                           {TOURNAMENT_LEVELS.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
                         </select>
                       )}
                     </td>
                     <td>
-                      {refresh ? <span className="muted">kept</span> : (
+                      {refresh ? <span className="muted">unchanged</span> : (
                         <select value={r.visibility} disabled={busy} onChange={(e) => patch(r.key, { visibility: e.target.value as Visibility })}>
                           <option value="listed">Listed</option>
                           <option value="public">Public</option>
@@ -303,11 +316,11 @@ export function BulkImport() {
 
           <label className="field-inline" style={{ marginTop: 10 }}>
             <input type="checkbox" checked={bonusResults} onChange={(e) => setBonusResults(e.target.checked)} disabled={busy} />
-            <span>Import full bonus data — question text + per-team results (slow; scrapes every bonus page, some may 504)</span>
+            <span>Import full bonus data — question text + per-team results, which team PPB needs (slower: reads every bonus page)</span>
           </label>
           <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10 }}>
             <button className="btn-primary" onClick={importAll} disabled={busy || selected.length === 0}>
-              {running ? "Importing…" : `Import ${selected.length} selected`}
+              {running ? "Working…" : actionLabel}
             </button>
             {running && <button className="btn-link danger" onClick={() => { stop.current = true; }}>Stop</button>}
           </div>
