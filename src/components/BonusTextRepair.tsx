@@ -220,7 +220,8 @@ export function PacketTextFill({ slug, name }: { slug: string; name: string }) {
       clearSetCache(slug);
       const skipped: string[] = d.skipped || [];
       setMsg(`Filled ${d.applied} of ${fill.bonuses.length} bonuses and rebuilt the stats.` +
-        (skipped.length ? ` Skipped (answer lines didn't match): ${skipped.join(", ")}.` : ""));
+        (skipped.length ? ` Skipped (answer lines didn't match): ${skipped.join(", ")}.` : "") +
+        (d.stillBlank ? ` ${d.stillBlank} stored ${d.stillBlank === 1 ? "copy is" : "copies are"} still without text (a mirror whose answer lines differ).` : ""));
     } catch (e) { setErr(String((e as Error).message || e)); } finally { setBusy(false); }
   }
 

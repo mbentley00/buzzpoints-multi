@@ -226,31 +226,43 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     // Packet text is shown as HTML, so keep only the inline formatting a packet uses.
     const safe = (h: unknown) => String(h ?? "").replace(/<(?!\/?(?:b|i|u|em|strong|sub|sup)>)[^>]*>/gi, "").trim();
 
+    // Find each bonus by its answer lines, in every mirror. A multi-mirror set's
+    // round numbers on the site are canonical ones (mirrors that read packets in
+    // different orders are renumbered to line up), so they needn't match any
+    // mirror's own files; the answers do, and they also reach every mirror that
+    // read the same bonus.
     const eds = editionsOf(source);
+    const byAnswers = new Map<string, any[]>();
+    for (const ed of eds)
+      for (const p of ed.packets || [])
+        for (const b of (p.bonuses || []) as any[]) {
+          if (!b || !(b.answers || []).length) continue;
+          const k = (b.answers as string[]).map(answerKey).join("|");
+          const list = byAnswers.get(k) || [];
+          list.push(b);
+          byAnswers.set(k, list);
+        }
     const skipped: string[] = [];
-    let applied = 0;
+    let applied = 0, filledCopies = 0;
     for (const f of fills) {
-      let hit = false;
-      for (const ed of eds) {
-        const b = (ed.packets || []).find((p) => p.round === Number(f.round))?.bonuses?.[Number(f.num) - 1] as any;
-        if (!b) continue;
-        const stored = (b.answers || []).map(answerKey);
-        const given = (f.answers || []).map(String);
-        if (stored.length !== given.length || stored.some((k: string, i: number) => k !== given[i])) continue;
-        const parts = (f.parts || []).map(safe);
-        if (parts.length !== stored.length || parts.some((p) => !p)) continue;
-        b.leadin = safe(f.leadin);
-        b.parts = parts;
-        hit = true;
-      }
-      if (hit) applied++; else skipped.push(`${f.round}-${f.num}`);
+      const given = (f.answers || []).map(String);
+      const parts = (f.parts || []).map(safe);
+      const targets = given.length ? byAnswers.get(given.join("|")) || [] : [];
+      if (!targets.length || parts.length !== given.length || parts.some((p) => !p)) { skipped.push(`${f.round}-${f.num}`); continue; }
+      for (const b of targets) { b.leadin = safe(f.leadin); b.parts = parts; filledCopies++; }
+      applied++;
     }
     if (applied) {
       const next = { ...source, editions: eds };
       await writeSource(slug, next);
       await aggregateAndWrite(slug, next, await readCorrections(slug));
     }
-    return res.status(200).json({ applied, skipped });
+    // Bonuses in the stored mirrors that still have no text, so the owner can see
+    // whether anything is left over.
+    let stillBlank = 0;
+    for (const ed of eds) for (const p of ed.packets || []) for (const b of (p.bonuses || []) as any[])
+      if (b && !String(b.leadin || "").trim() && !(b.parts || []).some((x: string) => String(x || "").trim())) stillBlank++;
+    return res.status(200).json({ applied, skipped, filledCopies, stillBlank });
   }
 
   if (body.op === "import-start") {
