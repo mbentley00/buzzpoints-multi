@@ -8,9 +8,12 @@
 //        six-month-old non-public tournaments (add &dry=1 to preview)
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { put } from "@vercel/blob";
+import fs from "node:fs";
+import path from "node:path";
 import { currentUser, getRole } from "./_lib/auth.js";
 import { readBlobJson } from "./_lib/blob.js";
-import { readIndex, writeIndex, readSource, aggregateAndWrite, readCorrections, effectiveVisibility, ownerEmails, SetEntry, isTournamentDate } from "./_lib/sets.js";
+import { applyBonusFills, BonusFill } from "./_lib/bonusFill.js";
+import { readIndex, writeIndex, readSource, writeSource, aggregateAndWrite, readCorrections, effectiveVisibility, ownerEmails, SetEntry, isTournamentDate } from "./_lib/sets.js";
 import { sendEmail, appUrl, publishReminderBody } from "./_lib/email.js";
 import { cleanDifficulty, CreateError } from "./_lib/publish.js";
 
@@ -112,6 +115,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return publishReminders(req, res, role === "admin");
 
   if (role === "user") return res.status(200).json({ role: "user", isAdmin: false, sets: [] });
+
+  // ---- TEMPORARY: bundled bonus-text fills (admin only; remove once applied) ----
+  // Fill files built from the packets for sets imported without bonus text ship
+  // under api/_fills/. GET lists them; POST applies one set's per call (each
+  // re-aggregates, the slow part), so the Admin button walks them in turn.
+  if (req.query.op === "bundled-fills") {
+    if (role !== "admin") return res.status(403).json({ error: "Admin access required." });
+    const dir = path.join(process.cwd(), "api", "_fills");
+    const available = fs.existsSync(dir)
+      ? fs.readdirSync(dir).map((f) => f.match(/^fill_([a-z0-9-]+)\.json$/)?.[1]).filter((s): s is string => !!s).sort()
+      : [];
+    if (req.method === "GET") return res.status(200).json({ slugs: available });
+    if (req.method !== "POST") return res.status(405).json({ error: "GET or POST only." });
+    const slug = String((req.body || {}).slug || "");
+    if (!available.includes(slug)) return res.status(404).json({ error: `No bundled fill for ${slug}.` });
+    const fill = JSON.parse(fs.readFileSync(path.join(dir, `fill_${slug}.json`), "utf8")) as { slug: string; bonuses: BonusFill[] };
+    if (fill.slug !== slug) return res.status(400).json({ error: "Fill file is for a different set." });
+    const source = await readSource(slug);
+    if (!source) return res.status(404).json({ error: "Source data not found." });
+    const { next, applied, skipped, filledCopies, stillBlank } = applyBonusFills(source, fill.bonuses);
+    if (applied) {
+      await writeSource(slug, next);
+      await aggregateAndWrite(slug, next, await readCorrections(slug));
+    }
+    return res.status(200).json({ slug, fills: fill.bonuses.length, applied, skipped, filledCopies, stillBlank });
+  }
 
   // ---- backup / restore (admin only) ----
   if (req.method === "GET" && req.query.op === "backup") {

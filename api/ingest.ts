@@ -19,6 +19,7 @@ import { createTournament, createFromSource, updateFromSource, parseFiles, valid
 import { parseYellowFruit } from "./_lib/yellowfruit.js";
 import { scrapeEdition, scrapeBonusResults, applyBonusResults, applyBonusText, listEditions, listSets, setEditions, parseTarget, slugToName, scoringFor, setNameFrom } from "./_lib/importBuzzpoints.js";
 import { detectStaticSite, scrapeStaticEdition } from "./_lib/importStatic.js";
+import { applyBonusFills, BonusFill } from "./_lib/bonusFill.js";
 import {
   readModConfig, findBlocked, readPending, writePending, writePendingPayload, PendingSubmission,
 } from "./_lib/moderation.js";
@@ -216,52 +217,13 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     // The set being fixed is the one the owner is on; the file names the set it
     // was built for, and the two must agree or nothing is touched.
     if (String(body.fileSlug || "") !== slug) return res.status(400).json({ error: "That file was made for a different tournament." });
-    const fills: { round: number; num: number; leadin?: string; parts?: string[]; answers?: string[] }[] = Array.isArray(body.bonuses) ? body.bonuses : [];
+    const fills: BonusFill[] = Array.isArray(body.bonuses) ? body.bonuses : [];
     if (!fills.length) return res.status(400).json({ error: "No bonuses in that file." });
-
-    const answerKey = (a: string) =>
-      String(a || "").replace(/<[^>]+>/g, "")
-        .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-        .split(/[[(]/)[0].normalize("NFKD").replace(/[^\x00-\x7f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
-    // Packet text is shown as HTML, so keep only the inline formatting a packet uses.
-    const safe = (h: unknown) => String(h ?? "").replace(/<(?!\/?(?:b|i|u|em|strong|sub|sup)>)[^>]*>/gi, "").trim();
-
-    // Find each bonus by its answer lines, in every mirror. A multi-mirror set's
-    // round numbers on the site are canonical ones (mirrors that read packets in
-    // different orders are renumbered to line up), so they needn't match any
-    // mirror's own files; the answers do, and they also reach every mirror that
-    // read the same bonus.
-    const eds = editionsOf(source);
-    const byAnswers = new Map<string, any[]>();
-    for (const ed of eds)
-      for (const p of ed.packets || [])
-        for (const b of (p.bonuses || []) as any[]) {
-          if (!b || !(b.answers || []).length) continue;
-          const k = (b.answers as string[]).map(answerKey).join("|");
-          const list = byAnswers.get(k) || [];
-          list.push(b);
-          byAnswers.set(k, list);
-        }
-    const skipped: string[] = [];
-    let applied = 0, filledCopies = 0;
-    for (const f of fills) {
-      const given = (f.answers || []).map(String);
-      const parts = (f.parts || []).map(safe);
-      const targets = given.length ? byAnswers.get(given.join("|")) || [] : [];
-      if (!targets.length || parts.length !== given.length || parts.some((p) => !p)) { skipped.push(`${f.round}-${f.num}`); continue; }
-      for (const b of targets) { b.leadin = safe(f.leadin); b.parts = parts; filledCopies++; }
-      applied++;
-    }
+    const { next, applied, skipped, filledCopies, stillBlank } = applyBonusFills(source, fills);
     if (applied) {
-      const next = { ...source, editions: eds };
       await writeSource(slug, next);
       await aggregateAndWrite(slug, next, await readCorrections(slug));
     }
-    // Bonuses in the stored mirrors that still have no text, so the owner can see
-    // whether anything is left over.
-    let stillBlank = 0;
-    for (const ed of eds) for (const p of ed.packets || []) for (const b of (p.bonuses || []) as any[])
-      if (b && !String(b.leadin || "").trim() && !(b.parts || []).some((x: string) => String(x || "").trim())) stillBlank++;
     return res.status(200).json({ applied, skipped, filledCopies, stillBlank });
   }
 

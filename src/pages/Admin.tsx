@@ -7,6 +7,7 @@ import { Loading, AuthNav } from "../components/Common";
 import { BulkImport } from "../components/BulkImport";
 import { LocalImport } from "../components/LocalImport";
 import { BonusTextRepair } from "../components/BonusTextRepair";
+import { BundledFills } from "../components/BundledFills";
 import { BackupPanel } from "../components/BackupPanel";
 import { formatDate, searchable } from "../util";
 import { buildModaqExport, SetSourceLike } from "../modaqExport";
@@ -326,6 +327,7 @@ export function Admin() {
                   <BulkImport />
 
                   <h2 className="admin-h2-gap">Missing bonus text</h2>
+                  <BundledFills />
                   <BonusTextRepair />
                 </section>
 
