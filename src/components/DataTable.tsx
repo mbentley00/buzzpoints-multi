@@ -8,6 +8,8 @@ export interface Column<T> {
   render: (row: T) => ReactNode;
   align?: "left" | "right" | "center";
   title?: string;
+  /** The column a table is mostly read for (PPG on the players list): set off in bold on a light band. */
+  emphasis?: boolean;
 }
 
 interface Props<T> {
@@ -74,7 +76,7 @@ export function DataTable<T>({
                 onClick={() => clickHeader(col)}
                 className={`${col.sortVal ? "sortable" : ""} ${
                   col.align === "right" ? "right" : col.align === "center" ? "center" : ""
-                }`}
+                }${col.emphasis ? " col-emph" : ""}`}
               >
                 {col.label}
                 {sortKey === col.key && (
@@ -94,7 +96,7 @@ export function DataTable<T>({
                     <td
                       key={col.key}
                       className={
-                        col.align === "right" ? "right" : col.align === "center" ? "center" : ""
+                        (col.align === "right" ? "right" : col.align === "center" ? "center" : "") + (col.emphasis ? " col-emph" : "")
                       }
                     >
                       {col.render(row)}

@@ -26,6 +26,7 @@
   --danger-bg: #fbf0f1; --danger-ink: #b3261e;
   --ok-bg: #d8f5dc;     --ok-ink: #2e7d32;
   --info-bg: #eef5ff;
+  --emph-bg: #f3f7fd;
   --accent2-bg: #f3e8ff; --accent2-ink: #7c3aed;
   --neutral-chip: #eef1f5; --neutral-chip-ink: #475569;
   --track: #eeeeee;     --track-fill: #b9c2cc;
@@ -93,6 +94,7 @@
   --danger-bg: #34211f; --danger-ink: #f0a49b;
   --ok-bg: #1e3324;     --ok-ink: #8fd39c;
   --info-bg: #1c2a3d;
+  --emph-bg: #1a2433;
   --accent2-bg: #2b2340; --accent2-ink: #c7a8f5;
   --neutral-chip: #262c34; --neutral-chip-ink: #b3bdc8;
   --track: #2b3037;     --track-fill: #57616d;
@@ -144,6 +146,7 @@
   --danger-bg: #34211f; --danger-ink: #f0a49b;
   --ok-bg: #1e3324;     --ok-ink: #8fd39c;
   --info-bg: #1c2a3d;
+  --emph-bg: #1a2433;
   --accent2-bg: #2b2340; --accent2-ink: #c7a8f5;
   --neutral-chip: #262c34; --neutral-chip-ink: #b3bdc8;
   --track: #2b3037;     --track-fill: #57616d;
@@ -1354,3 +1357,7 @@ a.auth-user:hover { color: #fff; text-decoration: underline; }
 .question-editor-actions { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
 .question-editor-table { max-height: 520px; overflow: auto; }
 .question-editor-table tr.row-picked td { background: var(--info-bg); }
+
+/* The headline column of a stats table (PPG on the players list). */
+.data-table td.col-emph { font-weight: 700; font-size: 1.06em; color: var(--ink); background: var(--emph-bg); }
+.data-table th.col-emph { color: var(--ink); background: var(--emph-bg); }

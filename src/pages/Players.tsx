@@ -41,7 +41,7 @@ export function Players() {
     { key: "gets", label: "Correct", align: "right", sortVal: (p) => p.gets, render: (p) => p.gets },
     { key: "inc", label: meta.hasNeg ? "Neg" : "Inc", align: "right", sortVal: (p) => p.incorrect, render: (p) => p.incorrect, title: "Incorrect buzzes" },
     { key: "pts", label: "Pts", align: "right", sortVal: (p) => p.pts, render: (p) => p.pts },
-    { key: "ppg", label: "PPG", align: "right", sortVal: (p) => p.ppg, render: (p) => num(p.ppg) },
+    { key: "ppg", label: "PPG", align: "right", emphasis: true, sortVal: (p) => p.ppg, render: (p) => num(p.ppg) },
     { key: "ptuh", label: "Pts/TUH", align: "right", sortVal: (p) => p.pPerTuh, render: (p) => num(p.pPerTuh, 2) },
     { key: "bpa", label: "BPA", align: "right", sortVal: (p) => p.bpa ?? -1, render: (p) => num(p.bpa),
       title: "Buzz point area-under-the-curve: how much of each question went unread thanks to early correct buzzes, per tossup heard. Higher is faster." },
