@@ -15,8 +15,11 @@ import {
   editionsOf, canonicalizeEditions, Edition, SetSource, AccessRequest, readRenames, writeRenames, renameKey,
   readMetaMap, writeMetaMap, readTagEdits, writeTagEdits, readBonusDiffs, writeBonusDiffs,
   isSetOwner, isPrimaryOwner, ownerEmails, requestsAllowed, needsPublishApproval, isPractice, practiceVisibility,
-  isTournamentDate,
+  isTournamentDate, readReplacements, writeReplacements,
 } from "./_lib/sets.js";
+import {
+  applyReplacements, scanMissingQuestions, replacementCandidates, suggestReplacement, replacementKey, QuestionReplacement,
+} from "./_lib/replacements.js";
 import { VirtualCategory, scanRoundAlignment, metaFields, MetaMap, MetaField, BonusDiffs } from "./_lib/aggregate.js";
 import { LETTER_ROUND_BASE, cleanDifficulty } from "./_lib/publish.js";
 import { sendEmail, appUrl, accessRequestBody, accessGrantedBody, coOwnerBody, coOwnerInviteBody, publishRequestBody } from "./_lib/email.js";
@@ -271,6 +274,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .map(([fieldCount, c]) => ({ fieldCount, questions: c.rows, examples: c.examples, samples: c.samples.map((v) => v.slice(0, 12)), distinct: c.samples.map((v) => v.length) }))
           .sort((a, b) => b.questions - a.questions);
         return res.status(200).json({ total, shapes, metaMap: await readMetaMap(slug), tagEdits: await readTagEdits(slug) });
+      }
+      // Tossups and bonuses games read that their packets don't have (tiebreakers,
+      // replacements), what's been mapped already, and every packet question
+      // they could be mapped to.
+      if (req.query.op === "replacements") {
+        const source = await readSource(slug);
+        if (!source) return res.status(500).json({ error: "Source data not found." });
+        const eds = editionsOf(source);
+        const rules = await readReplacements(slug);
+        const missing = scanMissingQuestions(applyReplacements(eds, rules), source.hasBonuses);
+        return res.status(200).json({
+          replacements: rules,
+          missing: missing.map((m) => ({ ...m, suggested: suggestReplacement(m, eds) })),
+          editions: replacementCandidates(eds).map((c) => ({ ...c, label: eds.find((e) => e.id === c.id)?.label || c.id })),
+        });
       }
       if (req.query.op === "rounds" || req.query.op === "games") {
         const source = await readSource(slug);
@@ -627,6 +645,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       entry.tags = tags;
       await writeIndex(index);
       return res.status(200).json({ ok: true, roundTags: next, tags });
+    } else if (op === "replacements") {
+      // Map tiebreakers / replacement tossups and bonuses to packet questions, or
+      // undo a mapping. body.set: rules to add or replace (matched by kind,
+      // edition, round, number and game); body.remove: replacementKey()s to drop.
+      if (entry.kind === "results") return res.status(400).json({ error: "This applies to buzz tournaments only." });
+      const source = await readSource(slug);
+      if (!source) return res.status(500).json({ error: "Source data not found." });
+      const eds = editionsOf(source);
+      const set: unknown[] = Array.isArray(body.set) ? body.set : [];
+      const remove: string[] = Array.isArray(body.remove) ? body.remove.map(String) : [];
+      if (!set.length && !remove.length) return res.status(400).json({ error: "Nothing to change." });
+      if (set.length > 500) return res.status(400).json({ error: "Too many mappings at once." });
+      const posInt = (v: unknown) => Number.isInteger(v) && (v as number) >= 0;
+      const at = new Date().toISOString();
+      const incoming: QuestionReplacement[] = [];
+      for (const raw of set as any[]) {
+        const t = raw?.target;
+        const kind = raw?.kind === "bonuses" ? "bonuses" : raw?.kind === undefined || raw?.kind === "tossups" ? "tossups" : null;
+        if (!kind || (kind === "bonuses" && !source.hasBonuses)) return res.status(400).json({ error: "Invalid mapping." });
+        if (!raw || typeof raw.editionId !== "string" || !posInt(raw.round) || !posInt(raw.num) || raw.num < 1
+          || !(raw.game === null || (typeof raw.game === "string" && raw.game.length <= 2000))
+          || !t || typeof t.editionId !== "string" || !posInt(t.round) || !posInt(t.num) || t.num < 1)
+          return res.status(400).json({ error: "Invalid mapping." });
+        if (!eds.some((e) => e.id === raw.editionId)) return res.status(404).json({ error: "Edition not found." });
+        const te = eds.find((e) => e.id === t.editionId);
+        const pkt = te && [...(te.packets || [])].reverse().find((p) => p.round === t.round);
+        if (!pkt?.[kind]?.[t.num - 1]) return res.status(400).json({ error: `There's no ${kind === "tossups" ? "tossup" : "bonus"} ${t.num} in that packet.` });
+        incoming.push({
+          kind, editionId: raw.editionId, round: raw.round, num: raw.num, game: raw.game,
+          target: { editionId: t.editionId, round: t.round, num: t.num }, by: user, at,
+        });
+      }
+      const drop = new Set([...remove, ...incoming.map(replacementKey)]);
+      const next = [...(await readReplacements(slug)).filter((r) => !drop.has(replacementKey(r))), ...incoming];
+      await writeReplacements(slug, next);
+      const { meta } = await aggregateAndWrite(slug, source, await readCorrections(slug));
+      Object.assign(entry, { numTossups: meta.numTossups, rounds: meta.rounds.length });
+      await writeIndex(index);
+      return res.status(200).json({ ok: true, replacements: next });
     } else if (op === "remap-rounds" || op === "remap-games" || op === "remove-files" || op === "remove-uploads") {
       if (entry.kind === "results") return res.status(400).json({ error: "This applies to buzz tournaments only." });
       const source = await readSource(slug);

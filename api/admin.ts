@@ -23,7 +23,7 @@ import { cleanDifficulty, CreateError } from "./_lib/publish.js";
 // they're derived, they're the bulk of the bytes, and a restore rebuilds them.
 const SET_FILES = [
   "_source.json", "_corrections.json", "_bonuscorrections.json", "_bonusdiffs.json",
-  "_renames.json", "_metamap.json", "_tagedits.json",
+  "_renames.json", "_metamap.json", "_tagedits.json", "_replacements.json",
   "_virtualcats.json", "_roundtags.json", "_access.json", "_links.json", "_requests.json", "_yf.json",
 ] as const;
 const CORE_FILES = ["users.json", "moderation.json"] as const;

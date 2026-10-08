@@ -15,6 +15,7 @@ import { AddFilesForm } from "../components/AddFiles";
 import { PacketTextFill } from "../components/BonusTextRepair";
 import { QuestionEditor } from "../components/QuestionEditor";
 import { DupeFinder } from "../components/DupeFinder";
+import { ReplacementEditor } from "../components/Replacements";
 
 const VIS_OPTIONS: { id: Visibility; label: string; desc: string }[] = [
   { id: "listed", label: "Listed (login + invite)", desc: "Shown in the list; only invited, logged-in people can view." },
@@ -43,7 +44,7 @@ const SETTINGS_TABS = [
 type SettingsTab = (typeof SETTINGS_TABS)[number]["id"];
 const TAB_OF_SECTION: Record<string, SettingsTab> = {
   rename: "general", categories: "questions", bonusdiff: "questions", bonustext: "questions", questionedits: "questions",
-  rounds: "files", addrounds: "files", uploads: "files", games: "files", renames: "renames", dupes: "renames", discussion: "access", revoke: "access",
+  rounds: "files", addrounds: "files", uploads: "files", games: "files", replacements: "files", renames: "renames", dupes: "renames", discussion: "access", revoke: "access",
 };
 
 export function Settings() {
@@ -643,6 +644,17 @@ export function Settings() {
             questions that were read, so the packet shows 0 heard while the teams' totals still look normal.
           </p>
           <GameFilesEditor slug={slug} />
+
+          <h2 id="replacements" style={{ marginTop: 28 }}>Tiebreakers &amp; replacement questions</h2>
+          <p className="muted">
+            Game files record only <em>which number</em> a room read — "round 7, tossup 22" or "bonus 21" — and the
+            question itself is looked up in that round's packet. When a room read a tiebreaker or a replacement the
+            packet doesn't have, those buzzes and bonus results don't count toward any question. Upload the tiebreaker packet as its own round (any
+            round no games were played in), then pick the question each one really was. Where rooms read different
+            questions under the same number, map them game by game. The game files are never changed, so Undo puts
+            everything back.
+          </p>
+          <ReplacementEditor slug={slug} />
 
         </>
       )}

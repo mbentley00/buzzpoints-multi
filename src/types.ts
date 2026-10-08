@@ -264,6 +264,11 @@ export interface Meta {
   // corrupt every easy/medium/hard figure built on them. Owner-facing; absent on
   // sets that haven't been rebuilt since this check was added.
   bonusDiffWarnings?: BonusDiffWarning[];
+  // Tossups and bonuses games read that their packets don't have — tiebreakers
+  // and replacements nobody has mapped to a question yet. `buzzes` counts buzzes
+  // on a tossup, or times a bonus was heard. Owner-facing; `kind` is absent on
+  // sets built before bonuses were checked (tossups).
+  missingQuestions?: { kind?: "tossups" | "bonuses"; editionId: string; round: number; num: number; games: number; buzzes: number }[];
   generatedAt: string;
 }
 

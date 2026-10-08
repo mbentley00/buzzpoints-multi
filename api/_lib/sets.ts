@@ -6,6 +6,7 @@ import { aggregate, bonusFilesFromImported, ImportedBonus, PacketFile, GameFile,
 import { getScoring } from "./scoring.js";
 import { isModaqGame, modaqToQbj } from "./modaqGame.js";
 import { buildSearchDoc, invalidateSearchDoc, SEARCH_FILE } from "./searchIndex.js";
+import { applyReplacements, scanMissingQuestions, QuestionReplacement } from "./replacements.js";
 
 export interface Edition {
   id: string;
@@ -414,6 +415,12 @@ export const readTagEdits = (slug: string) =>
   readBlobJson<TagEdits>(`sets/${slug}/_tagedits.json`, false).then((t) => t || {});
 export const writeTagEdits = (slug: string, t: TagEdits) => writeJson(`sets/${slug}/_tagedits.json`, t);
 
+// Tiebreakers and replacement tossups the owner mapped to a packet question
+// (see replacements.ts). Kept beside the source, like every other repair.
+export const readReplacements = (slug: string) =>
+  readBlobJson<QuestionReplacement[]>(`sets/${slug}/_replacements.json`, false).then((r) => (Array.isArray(r) ? r : []));
+export const writeReplacements = (slug: string, r: QuestionReplacement[]) => writeJson(`sets/${slug}/_replacements.json`, r);
+
 // Bonus difficulty marks the owner corrected by hand, keyed "<round>-<num>". Kept
 // beside the source rather than written into it, like every other repair here, so
 // re-uploading the packets doesn't quietly undo them.
@@ -773,7 +780,12 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   const cfg: AggregateConfig = { name: source.name, slug, scoring: getScoring(source.scoring), hasBonuses: source.hasBonuses, individual: !!source.individual };
   // Align mirrors that read the packets in different round orders onto a common
   // packet numbering, so combined stats key each question consistently.
-  const editions = canonicalizeEditions(editionsOf(source));
+  // Tiebreakers and replacements go first: they put questions into the rounds
+  // they were read in, which everything after (mirror alignment included)
+  // should see as ordinary packet questions.
+  const replaced = applyReplacements(editionsOf(source), await readReplacements(slug));
+  const missing = scanMissingQuestions(replaced, source.hasBonuses);
+  const editions = canonicalizeEditions(replaced);
   const multi = editions.length > 1;
   const virtualCats = await readVirtualCats(slug);
   const renames = await readRenames(slug);
@@ -828,6 +840,12 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   const out = aggregate(combined, combinedGames, cfg, corrections, virtualCats, renames, bonusCorrections, editionPackets);
   overrideBonuses(out, editions);
   (out["meta.json"] as any).editions = editionSummaries;
+  // Advisory: tossups and bonuses games read that no packet has (unmapped
+  // tiebreakers and replacements). Owners get a banner and a mapper in Settings.
+  (out["meta.json"] as any).missingQuestions = missing.map((m) => ({
+    kind: m.kind, editionId: m.editionId, round: m.round, num: m.num, games: m.games.length,
+    buzzes: m.games.reduce((n, g) => n + (m.kind === "tossups" ? g.buzzes.length : g.bonuses.length), 0),
+  }));
   if (multi) {
     attachVersions(out, editions);
     // Tag combined team/player rows (list + detail) with the editions they

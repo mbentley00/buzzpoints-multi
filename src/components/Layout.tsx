@@ -5,7 +5,7 @@ import { Meta, SetCtx } from "../types";
 import { useAuth } from "../auth";
 import { Loading, ErrorBox, AuthNav } from "./Common";
 import { warningText } from "./SourceFiles";
-import { byLabel } from "../util";
+import { byLabel, roundLabel } from "../util";
 
 // Child pages read the set context (meta + ownership + scope) through this hook.
 export function useSetCtx(): SetCtx {
@@ -191,6 +191,32 @@ export function SetLayout() {
             </ul>
             <div className="cat-warn-actions">
               <Link className="btn-primary" to={`${base}/settings#rounds`}>Fix round alignment</Link>
+            </div>
+          </div>
+        )}
+        {isOwner && (meta?.missingQuestions?.length ?? 0) > 0 && (
+          <div className="cat-warn round-warn" role="status">
+            <strong>
+              {meta!.missingQuestions!.length === 1
+                ? "A question was read that isn't in the packets."
+                : `${meta!.missingQuestions!.length} questions were read that aren't in the packets.`}
+            </strong>
+            <p className="muted">
+              Usually tiebreakers or replacements: the game files say which number was read, but the packet for that
+              round stops short of it, so those buzzes and bonus results don't count toward any question. Map each one to the question
+              that was actually read.
+            </p>
+            <ul className="cat-warn-list">
+              {meta!.missingQuestions!.slice(0, 6).map((m, i) => (
+                <li key={i}>
+                  Round {roundLabel(m.round)}, {m.kind === "bonuses" ? "bonus" : "tossup"} #{m.num} — {m.games} game{m.games === 1 ? "" : "s"}
+                  {m.kind !== "bonuses" && `, ${m.buzzes} buzz${m.buzzes === 1 ? "" : "es"}`}
+                </li>
+              ))}
+              {meta!.missingQuestions!.length > 6 && <li>…and {meta!.missingQuestions!.length - 6} more</li>}
+            </ul>
+            <div className="cat-warn-actions">
+              <Link className="btn-primary" to={`${base}/settings#replacements`}>Map these questions</Link>
             </div>
           </div>
         )}
