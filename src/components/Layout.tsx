@@ -28,8 +28,8 @@ export function useScopedJson<T>(file: string, nonce = 0) {
 
 // The pages under a set, in header order. The set's landing page lists the
 // same ones as cards, so the two can't drift apart.
-export interface SetTab { to: string; label: string; desc: string; badge?: number }
-export function setTabs(meta: Meta, base: string, o: { hasEditions: boolean; isOwner: boolean; forum?: boolean; forumUnread?: number }): SetTab[] {
+export interface SetTab { to: string; label: string; desc: string; badge?: number; badgeTitle?: string }
+export function setTabs(meta: Meta, base: string, o: { hasEditions: boolean; isOwner: boolean; forum?: boolean; forumUnread?: number; pendingAccess?: number }): SetTab[] {
   const n = (k: number, one: string, many = one + "s") => `${k} ${k === 1 ? one : many}`;
   return [
     { to: `${base}/tossup`, label: "Tossups", desc: n(meta.numTossups, "question") },
@@ -48,10 +48,14 @@ export function setTabs(meta: Meta, base: string, o: { hasEditions: boolean; isO
     { to: `${base}/standard`, label: "YF Stats", desc: "Standings, individuals, scoreboard" },
     // Only once the owner has opened it (signed-in viewers see the tab; the
     // page itself asks anyone else to log in).
-    ...(o.forum ? [{ to: `${base}/discussion`, label: "Forums", desc: o.forumUnread ? `${o.forumUnread} new post${o.forumUnread === 1 ? "" : "s"}` : "Threads about this tournament", badge: o.forumUnread || 0 }] : []),
+    ...(o.forum ? [{ to: `${base}/discussion`, label: "Forums", desc: o.forumUnread ? `${o.forumUnread} new post${o.forumUnread === 1 ? "" : "s"}` : "Threads about this tournament", badge: o.forumUnread || 0, badgeTitle: n(o.forumUnread || 0, "new post") }] : []),
     ...(o.hasEditions || o.isOwner ? [{ to: `${base}/editions`, label: "Editions", desc: o.hasEditions ? "Compare mirrors" : "Add a mirror" }] : []),
     ...(o.isOwner ? [{ to: `${base}/requests`, label: "Corrections", desc: "Review proposed fixes" }] : []),
-    ...(o.isOwner ? [{ to: `${base}/settings`, label: "Settings", desc: "Visibility, details, repairs" }] : []),
+    ...(o.isOwner ? [{
+      to: `${base}/settings`, label: "Settings",
+      desc: o.pendingAccess ? `${n(o.pendingAccess, "access request")} waiting` : "Visibility, details, repairs",
+      badge: o.pendingAccess || 0, badgeTitle: `${n(o.pendingAccess || 0, "access request")} waiting`,
+    }] : []),
   ];
 }
 
@@ -81,7 +85,8 @@ export function SetLayout() {
   // The owner can close the correction queue; absent on older index entries,
   // which means it was never closed.
   const allowRequests = entry?.allowRequests !== false;
-  const ctx: SetCtx = { meta: meta as Meta, slug, scope, editions, owner, isOwner, user, allowRequests, level: entry?.level, tdLink: entry?.tdLink, difficulty: entry?.difficulty, forum: !!entry?.forum, forumUnread: entry?.forumUnread ?? 0 };
+  const pendingAccess = isOwner ? entry?.pendingAccess ?? 0 : 0;
+  const ctx: SetCtx = { meta: meta as Meta, slug, scope, editions, owner, isOwner, user, allowRequests, level: entry?.level, tdLink: entry?.tdLink, difficulty: entry?.difficulty, forum: !!entry?.forum, forumUnread: entry?.forumUnread ?? 0, pendingAccess };
   // A player's or a team's id is assigned per aggregation scope: ids are handed
   // out in name order over whoever appears in THAT scope, so p25 in the combined
   // file and p25 in one edition's file are simply different people (checked on a
@@ -133,7 +138,9 @@ export function SetLayout() {
   };
 
   const base = `/set/${slug}`;
-  const tabs = meta ? setTabs(meta, base, { hasEditions, isOwner, forum: !!entry?.forum, forumUnread: entry?.forumUnread }) : [];
+  const tabs = meta ? setTabs(meta, base, { hasEditions, isOwner, forum: !!entry?.forum, forumUnread: entry?.forumUnread, pendingAccess }) : [];
+  // Settings shows the list itself, so the banner would only repeat it there.
+  const onSettings = /\/settings(\/|$)/.test(loc.pathname);
 
   return (
     <div className="app">
@@ -153,7 +160,7 @@ export function SetLayout() {
             {meta &&
               tabs.map((t) => (
                 <NavLink key={t.to} to={t.to} className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}>
-                  {t.label}{!!t.badge && <span className="badge-new" title={`${t.badge} new post${t.badge === 1 ? "" : "s"}`}>{t.badge}</span>}
+                  {t.label}{!!t.badge && <span className="badge-new" title={t.badgeTitle}>{t.badge}</span>}
                 </NavLink>
               ))}
           </nav>
@@ -179,6 +186,16 @@ export function SetLayout() {
         </div>
       )}
       <main className="content">
+        {pendingAccess > 0 && !onSettings && (
+          <div className="cat-warn access-warn" role="status">
+            <strong>
+              {pendingAccess === 1 ? "Someone is waiting for access to this tournament." : `${pendingAccess} people are waiting for access to this tournament.`}
+            </strong>
+            <div className="cat-warn-actions">
+              <Link className="btn-primary" to={`${base}/settings?review=access`}>Review requests</Link>
+            </div>
+          </div>
+        )}
         {isOwner && (meta?.roundWarnings?.length ?? 0) > 0 && (
           <div className="cat-warn round-warn" role="status">
             <strong>Some packets aren't lined up with the games.</strong>
@@ -191,6 +208,26 @@ export function SetLayout() {
             </ul>
             <div className="cat-warn-actions">
               <Link className="btn-primary" to={`${base}/settings#rounds`}>Fix round alignment</Link>
+            </div>
+          </div>
+        )}
+        {isOwner && (meta?.crossMirrorTeams?.length ?? 0) > 0 && (
+          <div className="cat-warn round-warn" role="status">
+            <strong>
+              {meta!.crossMirrorTeams!.length === 1
+                ? "A team played in more than one edition."
+                : `${meta!.crossMirrorTeams!.length} teams played in more than one edition.`}
+            </strong>
+            <p className="muted">
+              A team normally plays a single mirror, so this usually means some games were uploaded into the wrong
+              edition, or into two of them — and are being counted twice.
+            </p>
+            <ul className="cat-warn-list">
+              {meta!.crossMirrorTeams!.slice(0, 6).map((t) => <li key={t.name}>{t.name} — {t.editions.join(", ")}</li>)}
+              {meta!.crossMirrorTeams!.length > 6 && <li>…and {meta!.crossMirrorTeams!.length - 6} more</li>}
+            </ul>
+            <div className="cat-warn-actions">
+              <Link className="btn-primary" to={`${base}/settings#games`}>Check the games</Link>
             </div>
           </div>
         )}

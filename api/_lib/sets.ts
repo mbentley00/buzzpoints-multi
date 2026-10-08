@@ -857,6 +857,15 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
     // Tag combined team/player rows (list + detail) with the editions they
     // appeared in, so the combined view can say which mirror was played.
     for (const t of out["teams.json"] as any[]) t.editionIds = teamEds.get(t.name) || [];
+    // Advisory: a team plays one mirror of a tournament, so one turning up in
+    // games from two is usually the same games uploaded into the wrong (or a
+    // second) edition, counting them twice. Owners get a banner; Settings ->
+    // Individual games marks the games involved.
+    const labelOf = new Map(editions.map((e) => [e.id, e.label]));
+    (out["meta.json"] as any).crossMirrorTeams = [...teamEds.entries()]
+      .filter(([, ids]) => new Set(ids).size > 1)
+      .map(([name, ids]) => ({ name, editions: [...new Set(ids)].map((id) => labelOf.get(id) || id) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
     const td = out["teams_detail.json"] as Record<string, any>;
     for (const id in td) td[id].editionIds = teamEds.get(td[id].name) || [];
     for (const p of out["players.json"] as any[]) p.editionIds = playerEds.get(playerKey(p)) || [];

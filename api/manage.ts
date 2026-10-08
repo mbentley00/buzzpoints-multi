@@ -309,8 +309,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const source = await readSource(slug);
         if (!source) return res.status(500).json({ error: "Source data not found (set predates source storage; re-create it)." });
         const eds = editionsOf(source);
-        if (req.query.op === "games")
-          return res.status(200).json({ editions: eds.map((e) => ({ id: e.id, label: e.label, games: gameRows(e) })) });
+        if (req.query.op === "games") {
+          // Teams that played in more than one mirror — they normally play one,
+          // so this is usually games uploaded into two editions.
+          const teamEds = new Map<string, Set<string>>();
+          for (const e of eds)
+            for (const g of e.games || [])
+              for (const t of g.match_teams || []) {
+                const n = t?.team?.name;
+                if (!n) continue;
+                if (!teamEds.has(n)) teamEds.set(n, new Set());
+                teamEds.get(n)!.add(e.id);
+              }
+          const crossTeams = [...teamEds.entries()].filter(([, s]) => s.size > 1)
+            .map(([name, s]) => ({ name, editions: [...s] })).sort((a, b) => a.name.localeCompare(b.name));
+          return res.status(200).json({ crossTeams, editions: eds.map((e) => ({ id: e.id, label: e.label, games: gameRows(e) })) });
+        }
         return res.status(200).json({ editions: eds.map(editionView) });
       }
       const access = await readAccess(slug);
@@ -715,7 +729,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // everything), and picking hundreds of game rows out of a table one at a
       // time is not a repair anyone completes. Scope is explicit rather than
       // inferred: "*" is every edition, and omitting `rounds` means every round.
-      if (op === "remove-uploads") {
+      // body.byEdition: { "<edition id>": [game indexes] } — games from several
+      // mirrors in one rebuild. Removing duplicates one mirror at a time reloaded
+      // the page after the first and dropped every other mirror's selection, so
+      // owners gave up and re-uploaded those mirrors instead.
+      if (op === "remove-files" && body.byEdition && typeof body.byEdition === "object" && !Array.isArray(body.byEdition)) {
+        const picks = new Map<string, number[]>();
+        for (const [edId, list] of Object.entries(body.byEdition as Record<string, unknown>)) {
+          const ed = eds.find((e) => e.id === edId);
+          if (!ed) return res.status(404).json({ error: "Edition not found." });
+          const drop = intList(list, (ed.games || []).length);
+          if (!drop) return res.status(400).json({ error: "Invalid file selection." });
+          if (drop.length) picks.set(edId, drop);
+        }
+        if (!picks.size) return res.status(400).json({ error: "Nothing selected to remove." });
+        nextEds = eds.map((e) => {
+          const drop = picks.get(e.id);
+          if (!drop) return e;
+          removed.games += drop.length;
+          return { ...e, games: (e.games || []).filter((_, i) => !drop.includes(i)) };
+        });
+        // fall through to the shared write below
+      } else if (op === "remove-uploads") {
         const everyEdition = body.editionId === "*";
         const targets = everyEdition ? eds : eds.filter((e) => e.id === String(body.editionId || ""));
         if (!targets.length) return res.status(404).json({ error: "Edition not found." });

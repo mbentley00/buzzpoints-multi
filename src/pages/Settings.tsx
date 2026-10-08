@@ -301,6 +301,7 @@ export function Settings() {
       setAccessRequests(d.accessRequests || accessRequests.filter((a) => a.email !== email));
       if (d.resolvedRequests) setResolved(d.resolvedRequests);
       if (approve) setInvites((prev) => [...new Set([...prev, email])].sort());
+      refreshIndex(); // the waiting-request badges count these
     } catch (e) { setErr(String((e as Error).message || e)); } finally { setBusy(false); }
   }
 
@@ -412,6 +413,9 @@ export function Settings() {
           <NavLink key={t.id} to={t.id === "general" ? `/set/${slug}/settings` : `/set/${slug}/settings/${t.id}`} end
             className={() => "admin-tab" + (tab === t.id ? " active" : "")}>
             {t.label}
+            {t.id === "access" && accessRequests.length > 0 && (
+              <span className="badge-new" title={`${accessRequests.length} access request${accessRequests.length === 1 ? "" : "s"} waiting`}>{accessRequests.length}</span>
+            )}
           </NavLink>
         ))}
       </nav>

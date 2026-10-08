@@ -21,7 +21,7 @@ import { roundLabel, parseRoundInput, byLabel } from "../util";
 
 interface PacketRow { index: number; round: number; tossups: number; bonuses: number; sample: string }
 interface EditionRounds { id: string; label: string; packets: PacketRow[]; gameRounds: { round: number; count: number }[]; warnings: RoundWarning[] }
-interface GameRow { index: number; round: number; teams: string[]; tossups: number; copy: number; copies: number }
+interface GameRow { index: number; round: number; teams: string[]; tossups: number; copy: number; copies: number; key: string }
 interface EditionGames { id: string; label: string; games: GameRow[] }
 
 async function post(body: unknown) {
@@ -436,6 +436,8 @@ export function UploadCleanup({ slug }: { slug: string }) {
 
 export function GameFilesEditor({ slug }: { slug: string }) {
   const [editions, setEditions] = useState<EditionGames[] | null>(null);
+  // Teams that played in more than one mirror (edition ids).
+  const [crossTeams, setCrossTeams] = useState<{ name: string; editions: string[] }[]>([]);
   const [picked, setPicked] = useState<Record<string, boolean>>({}); // `${editionId}:${index}`
   // The round the owner has typed for a game, keyed the same way.
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -443,10 +445,20 @@ export function GameFilesEditor({ slug }: { slug: string }) {
   const [err, setErr] = useState("");
 
   useEffect(() => {
-    load<{ editions: EditionGames[] }>(slug, "games")
-      .then((d) => setEditions(d.editions || []))
+    load<{ editions: EditionGames[]; crossTeams?: { name: string; editions: string[] }[] }>(slug, "games")
+      .then((d) => { setEditions(d.editions || []); setCrossTeams(d.crossTeams || []); })
       .catch((e) => setErr(String(e.message || e)));
   }, [slug]);
+
+  // The same matchup in the same round in another mirror: almost certainly the
+  // same game, uploaded twice. Keyed by matchup -> the editions holding it.
+  const elsewhere = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const ed of editions || []) for (const g of ed.games) { if (!m.has(g.key)) m.set(g.key, new Set()); m.get(g.key)!.add(ed.id); }
+    return m;
+  }, [editions]);
+  const edLabel = (id: string) => (editions || []).find((e) => e.id === id)?.label || id;
+  const otherEds = (edId: string, g: GameRow) => [...(elsewhere.get(g.key) || [])].filter((id) => id !== edId);
 
   const dupCount = useMemo(
     () => (editions || []).reduce((n, ed) => n + ed.games.filter((g) => g.copy > 1).length, 0),
@@ -484,6 +496,27 @@ export function GameFilesEditor({ slug }: { slug: string }) {
     } catch (e) { setErr(String((e as Error).message || e)); setBusy(false); }
   }
 
+  // Every extra copy of a matchup, across every mirror, in one rebuild. The
+  // per-mirror Remove button below only ever removes its own mirror's picks, so
+  // ticking duplicates everywhere and removing them mirror by mirror lost every
+  // other mirror's ticks at the first reload.
+  async function removeAllDupes() {
+    const byEdition: Record<string, number[]> = {};
+    for (const ed of editions || []) {
+      const extra = ed.games.filter((g) => g.copy > 1).map((g) => g.index);
+      if (extra.length) byEdition[ed.id] = extra;
+    }
+    const n = Object.values(byEdition).reduce((k, l) => k + l.length, 0);
+    if (!n) return;
+    const mirrors = Object.keys(byEdition).length;
+    if (!window.confirm(`Remove ${n} extra cop${n === 1 ? "y" : "ies"}${mirrors > 1 ? ` across ${mirrors} editions` : ""}, keeping the first copy of each game? Stats are rebuilt without them.`)) return;
+    setBusy(true); setErr("");
+    try {
+      await post({ slug, op: "remove-files", byEdition });
+      applied(slug);
+    } catch (e) { setErr(String((e as Error).message || e)); setBusy(false); }
+  }
+
   async function remove(ed: EditionGames) {
     const games = pickedIn(ed).map((g) => g.index);
     if (!games.length) return;
@@ -509,18 +542,33 @@ export function GameFilesEditor({ slug }: { slug: string }) {
           once in the same round — the usual cause is uploading the same files again (adding files <em>appends</em> to an
           edition rather than replacing it). Every extra copy inflates games played, tossups heard, and totals.
           <div style={{ marginTop: 8 }}>
+            <button type="button" className="btn-primary btn-sm danger-btn" disabled={busy} onClick={removeAllDupes}>
+              {busy ? "Removing…" : `Remove every extra copy & rebuild`}
+            </button>{" "}
             <button
               type="button" className="mini-btn"
               onClick={() => setMany((editions || []).flatMap((ed) => ed.games.filter((g) => g.copy > 1).map((g) => ({ edId: ed.id, index: g.index }))), true)}
             >
-              Select every extra copy
+              Just select them
             </button>
           </div>
+        </div>
+      )}
+      {crossTeams.length > 0 && (
+        <div className="srcfiles-warn srcfiles-warn-block">
+          <strong>{crossTeams.length} team{crossTeams.length === 1 ? "" : "s"} played in more than one edition.</strong> A
+          team normally plays a single mirror, so this usually means games were uploaded into the wrong edition, or into
+          two of them. Games whose matchup appears in another edition in the same round are marked below.
+          <ul style={{ margin: "6px 0 0 18px" }}>
+            {crossTeams.slice(0, 12).map((t) => <li key={t.name}>{t.name} — {t.editions.map(edLabel).join(", ")}</li>)}
+            {crossTeams.length > 12 && <li>…and {crossTeams.length - 12} more</li>}
+          </ul>
         </div>
       )}
       {byLabel(editions).map((ed) => {
         const sel = pickedIn(ed);
         const dupes = ed.games.filter((g) => g.copy > 1).length;
+        const shared = ed.games.filter((g) => otherEds(ed.id, g).length > 0).length;
         return (
           <div className="srcfiles-ed" key={ed.id}>
             {ed.games.length === 0 ? (
@@ -532,11 +580,12 @@ export function GameFilesEditor({ slug }: { slug: string }) {
               // A full season is hundreds of rows; keep it folded away unless the
               // owner is actually here to prune it. Editions with duplicates open
               // on their own, since those are the ones needing attention.
-              <details className="srcfiles-fold" open={dupes > 0}>
+              <details className="srcfiles-fold" open={dupes > 0 || shared > 0}>
                 <summary>
                   {editions.length > 1 ? `${ed.label} — ` : ""}
                   {ed.games.length} game{ed.games.length === 1 ? "" : "s"}
                   {dupes > 0 && <span className="srcfiles-fold-warn"> · {dupes} duplicate{dupes === 1 ? "" : "s"}</span>}
+                  {shared > 0 && <span className="srcfiles-fold-warn"> · {shared} also in another edition</span>}
                   {sel.length > 0 && <span className="muted"> · {sel.length} selected</span>}
                 </summary>
                 <div className="srcfiles-scroll">
@@ -550,7 +599,7 @@ export function GameFilesEditor({ slug }: { slug: string }) {
                       const parsed = parseRoundInput(cur);
                       const moved = parsed !== null && parsed !== g.round;
                       return (
-                        <tr key={g.index} className={moved ? "srcfiles-dirty" : g.copy > 1 ? "srcfiles-dupe" : undefined}>
+                        <tr key={g.index} className={moved ? "srcfiles-dirty" : g.copy > 1 || otherEds(ed.id, g).length ? "srcfiles-dupe" : undefined}>
                           <td className="srcfiles-check">
                             <input type="checkbox" checked={!!picked[`${ed.id}:${g.index}`]} onChange={() => toggle(ed.id, g.index)} />
                           </td>
@@ -565,7 +614,12 @@ export function GameFilesEditor({ slug }: { slug: string }) {
                           </td>
                           <td>{g.teams.join(" vs ") || <span className="muted">—</span>}</td>
                           <td className="right mono">{g.tossups}</td>
-                          <td className="mono">{g.copies > 1 ? `${g.copy} of ${g.copies}` : ""}</td>
+                          <td className="mono">
+                            {g.copies > 1 ? `${g.copy} of ${g.copies}` : ""}
+                            {otherEds(ed.id, g).length > 0 && (
+                              <div className="muted" style={{ fontFamily: "inherit" }}>also in {otherEds(ed.id, g).map(edLabel).join(", ")}</div>
+                            )}
+                          </td>
                         </tr>
                       );
                     })}

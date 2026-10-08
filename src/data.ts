@@ -17,8 +17,15 @@ export function loadIndex(): Promise<IndexData> {
   return indexPromise;
 }
 
+// Bumped by refreshIndex so anything showing index data (the access-request
+// badges above all) fetches it again rather than keeping what it first loaded.
+let indexEpoch = 0;
+const indexSubs = new Set<() => void>();
+
 export function refreshIndex() {
   indexPromise = null;
+  indexEpoch++;
+  for (const f of [...indexSubs]) f();
 }
 
 const cache = new Map<string, Promise<unknown>>();
@@ -115,7 +122,24 @@ function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) {
 }
 
 export function useIndex() {
-  return useAsync<IndexData>(() => loadIndex(), []);
+  const epoch = useSyncExternalStore(
+    (cb) => { indexSubs.add(cb); return () => { indexSubs.delete(cb); }; },
+    () => indexEpoch,
+    () => indexEpoch
+  );
+  // Not useAsync: that blanks the data while it refetches, and a refetch here
+  // would flash every owner-only tab and page out of existence for a moment.
+  const [data, setData] = useState<IndexData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    loadIndex()
+      .then((d) => alive && (setData(d), setError(null), setLoading(false)))
+      .catch((e) => alive && (setError(String(e.message || e)), setLoading(false)));
+    return () => { alive = false; };
+  }, [epoch]);
+  return { data, error, loading };
 }
 
 export function useSetJson<T>(slug: string, file: string, nonce = 0) {

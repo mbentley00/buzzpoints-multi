@@ -109,6 +109,7 @@ export interface SetEntry {
   tournamentDate?: string; // YYYY-MM-DD the tournament was first played (not when it was added here)
   forum?: boolean; // the set's discussion is open (off by default)
   forumUnread?: number; // forum posts this viewer hasn't seen (signed-in viewers only)
+  pendingAccess?: number; // access requests waiting on this viewer (owners only)
   // An individual shootout (IPNCT-style): players compete for themselves, so
   // "teams" here are players. Absent means a team tournament.
   individual?: boolean;
@@ -138,6 +139,8 @@ export interface SetCtx {
   // viewer hasn't seen.
   forum: boolean;
   forumUnread: number;
+  // Access requests waiting on the owner (0 for everyone else).
+  pendingAccess: number;
 }
 
 // ---- discussion (see api/_lib/forum.ts) ----
@@ -268,6 +271,9 @@ export interface Meta {
   // and replacements nobody has mapped to a question yet. `buzzes` counts buzzes
   // on a tossup, or times a bonus was heard. Owner-facing; `kind` is absent on
   // sets built before bonuses were checked (tossups).
+  // Teams found in games from more than one mirror (multi-edition sets only),
+  // usually games uploaded into two editions. Owner-facing.
+  crossMirrorTeams?: { name: string; editions: string[] }[];
   missingQuestions?: { kind?: "tossups" | "bonuses"; editionId: string; round: number; num: number; games: number; buzzes: number }[];
   generatedAt: string;
 }

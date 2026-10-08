@@ -3,7 +3,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { readBlobJson } from "./_lib/blob.js";
 import { currentUser, canModerate } from "./_lib/auth.js";
-import { SetEntry, canList, canViewContent, sanitizeEntry, effectiveVisibility, TOURNAMENT_LEVELS } from "./_lib/sets.js";
+import { SetEntry, canList, canViewContent, sanitizeEntry, effectiveVisibility, TOURNAMENT_LEVELS, isSetOwner, readAccess } from "./_lib/sets.js";
 import { sendEmail, emailEnabled, feedbackBody } from "./_lib/email.js";
 import { isCategoryBucket, CategoryBucket } from "./_lib/categories.js";
 import { getSearchDoc, fold } from "./_lib/searchIndex.js";
@@ -230,7 +230,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const idx = await readBlobJson<{ sets: SetEntry[] }>("sets/index.json", false);
     const sets = (idx?.sets ?? [])
       .filter((s) => canList(s, user, admin))
-      .map((s) => sanitizeEntry(s, user) as ReturnType<typeof sanitizeEntry> & { forumUnread?: number });
+      .map((s) => sanitizeEntry(s, user) as ReturnType<typeof sanitizeEntry> & { forumUnread?: number; pendingAccess?: number });
     // How many forum posts this viewer hasn't seen, per set with a discussion
     // they can read — what the badges show. Only such sets are read, and only
     // for a signed-in viewer, so the list stays one file for everyone else.
@@ -240,6 +240,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!full?.forum || !canViewContent(full, user)) return;
         const data = await readForum(s.slug).catch(() => null);
         if (data) s.forumUnread = unreadFor(data, user);
+      }));
+    // Access requests waiting on this viewer, per set they own or co-own —
+    // otherwise the only sign anyone is waiting is an email. Counted from the
+    // requests themselves, never stored, so it can't drift from what Settings
+    // shows. Owners only: nobody else learns that requests exist.
+    if (user)
+      await Promise.all(sets.map(async (s) => {
+        const full = (idx?.sets ?? []).find((e) => e.slug === s.slug);
+        if (!full || !isSetOwner(full, user)) return;
+        const n = (await readAccess(s.slug).catch(() => [])).filter((a) => a.status === "pending").length;
+        if (n) s.pendingAccess = n;
       }));
     res.setHeader("cache-control", "no-store");
     return res.status(200).json({ sets });

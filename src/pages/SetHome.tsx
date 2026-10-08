@@ -3,12 +3,12 @@ import { useSetCtx, setTabs } from "../components/Layout";
 import { levelLabel, difficultyLabel } from "../types";
 
 export function SetHome() {
-  const { meta, level, tdLink, difficulty, editions, isOwner, forum, forumUnread } = useSetCtx();
+  const { meta, level, tdLink, difficulty, editions, isOwner, forum, forumUnread, pendingAccess } = useSetCtx();
   const { slug = "" } = useParams();
   const base = `/set/${slug}`;
   // Every page the header offers, as a card — the same list, so nothing the
   // header links to is missing from here.
-  const links = setTabs(meta, base, { hasEditions: editions.length > 1, isOwner, forum, forumUnread });
+  const links = setTabs(meta, base, { hasEditions: editions.length > 1, isOwner, forum, forumUnread, pendingAccess });
   return (
     <div>
       <div className="page-header">
