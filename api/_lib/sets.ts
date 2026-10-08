@@ -494,6 +494,9 @@ export interface AccessRequest {
   // and find the person already has access.
   via?: "owner" | "link";
   resolvedAt?: string;
+  // Filed by opening an invite link that needs the owner's approval, rather than
+  // through the request form. Holds that link's label ("" if it has none).
+  fromLink?: string;
 }
 export const readAccess = (slug: string) => readBlobJson<AccessRequest[]>(`sets/${slug}/_access.json`, false).then((r) => r || []);
 export const writeAccess = (slug: string, r: AccessRequest[]) => writeJson(`sets/${slug}/_access.json`, r);
@@ -505,7 +508,10 @@ export const readYf = (slug: string) => readBlobJson<any>(`sets/${slug}/_yf.json
 export const writeYf = (slug: string, raw: unknown) => writeJson(`sets/${slug}/_yf.json`, raw);
 
 // Invite links: a shareable token any logged-in account can redeem to join a set.
-export interface InviteLink { id: string; label: string; by: string; at: string; revoked?: boolean; uses: number; }
+// `approval`: opening the link doesn't let anyone in — it files an access request
+// for the owner to approve, so a link that travels further than intended (a
+// team group chat, a forum post) only produces requests.
+export interface InviteLink { id: string; label: string; by: string; at: string; revoked?: boolean; uses: number; approval?: true }
 export const readLinks = (slug: string) => readBlobJson<InviteLink[]>(`sets/${slug}/_links.json`, false).then((r) => r || []);
 export const writeLinks = (slug: string, r: InviteLink[]) => writeJson(`sets/${slug}/_links.json`, r);
 

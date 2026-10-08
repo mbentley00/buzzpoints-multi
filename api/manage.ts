@@ -3,7 +3,7 @@
 //   POST { slug, op } where op is one of:
 //     open (any logged-in user):  request-access | join(key)
 //     owner: settings | rename | reaggregate | invite | uninvite |
-//            approve-access(email) | deny-access(email) | create-link(label?) | revoke-link(id)
+//            approve-access(email) | deny-access(email) | create-link(label?, approval?) | revoke-link(id)
 import crypto from "node:crypto";
 import { list, del } from "@vercel/blob";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
@@ -198,6 +198,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // would otherwise turn "no key at all" into a valid one.
       const link = key.length >= 8 ? links.find((l) => l.id === key && !l.revoked) : undefined;
       if (!link) return res.status(404).json({ error: "This invite link is invalid or has been revoked." });
+      // A link that needs approval files a request instead of letting them in.
+      if (link.approval && !canViewContent(entry, user)) {
+        const access = await readAccess(slug);
+        const prior = access.find((a) => a.email === user);
+        if (prior?.status === "pending") return res.status(200).json({ ok: true, pending: true, already: true });
+        const u = (await loadUsers())[user];
+        const rec: AccessRequest = { email: user, name: u?.name || user, at: new Date().toISOString(), status: "pending", fromLink: link.label || "" };
+        await writeAccess(slug, [rec, ...access.filter((a) => a.email !== user)]);
+        link.uses = (link.uses || 0) + 1;
+        await writeLinks(slug, links);
+        const how = `Opened an invite link that needs your approval${link.label ? ` ("${link.label}")` : ""}`;
+        for (const to of ownerEmails(entry))
+          await sendEmail({ to, subject: `Access request — ${entry.name}`, html: accessRequestBody(`${rec.name} (${user})`, entry.name, `${setUrl(slug)}/settings?review=access`, how, effectiveVisibility(entry)) });
+        return res.status(200).json({ ok: true, pending: true });
+      }
       if (!canViewContent(entry, user)) {
         entry.invites = [...new Set([...(entry.invites ?? []), user])].sort();
         await writeIndex(index);
@@ -468,7 +483,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // limits attempts against it, so it has to be far out of guessing range
       // rather than merely inconvenient to type. Links issued before this stay
       // valid; only newly minted ones are longer.
-      const link: InviteLink = { id: crypto.randomBytes(32).toString("base64url"), label: String(body.label || "").slice(0, 60), by: user, at: new Date().toISOString(), uses: 0 };
+      const link: InviteLink = {
+        id: crypto.randomBytes(32).toString("base64url"), label: String(body.label || "").slice(0, 60), by: user, at: new Date().toISOString(), uses: 0,
+        ...(body.approval ? { approval: true as const } : {}),
+      };
       links.unshift(link);
       await writeLinks(slug, links);
       return res.status(200).json({ ok: true, link, url: `${appUrl()}/join/${slug}?key=${link.id}`, links });

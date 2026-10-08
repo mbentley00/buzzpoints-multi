@@ -9,7 +9,7 @@ export function Join() {
   const { slug = "" } = useParams();
   const [params] = useSearchParams();
   const key = params.get("key") || "";
-  const [state, setState] = useState<"working" | "ok" | "error">("working");
+  const [state, setState] = useState<"working" | "ok" | "pending" | "error">("working");
   const [msg, setMsg] = useState("");
   const ran = useRef(false);
 
@@ -20,8 +20,12 @@ export function Join() {
     ran.current = true;
     if (!key) { setState("error"); setMsg("Missing invite key."); return; }
     fetch("/api/manage", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ slug, op: "join", key }) })
-      .then(async (r) => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || `Failed (${r.status})`); })
-      .then(() => { refreshIndex(); clearSetCache(slug); setState("ok"); setTimeout(() => navigate(`/set/${slug}`, { replace: true }), 900); })
+      .then(async (r) => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || `Failed (${r.status})`); return d; })
+      .then((d) => {
+        // A link that needs the owner's approval: the request is filed, and
+        // there's nothing to open yet.
+        if (d.pending) { setState("pending"); return; }
+        refreshIndex(); clearSetCache(slug); setState("ok"); setTimeout(() => navigate(`/set/${slug}`, { replace: true }), 900); })
       .catch((e) => { setState("error"); setMsg(String((e as Error).message || e)); });
   }, [user, loading, slug, key, navigate]);
 
@@ -32,6 +36,15 @@ export function Join() {
         <h1>Joining tournament</h1>
         {state === "working" && <p className="loading">Granting you access…</p>}
         {state === "ok" && <p className="caveat"><span className="ok-msg">You're in.</span> Opening the tournament…</p>}
+        {state === "pending" && (
+          <>
+            <p className="caveat">
+              <span className="ok-msg">Request sent.</span> This link needs the owner's approval — you'll get an email
+              when they let you in.
+            </p>
+            <p className="muted"><Link to="/" className="link">← All tournaments</Link></p>
+          </>
+        )}
         {state === "error" && (
           <>
             <div className="error-box">{msg}</div>

@@ -78,9 +78,11 @@ export function Settings() {
   const [tdLink, setTdLink] = useState("");
   const [tournamentDate, setTournamentDate] = useState("");
   const [difficulty, setDifficulty] = useState("");
-  const [accessRequests, setAccessRequests] = useState<{ email: string; name: string; at: string; role?: string; team?: string }[]>([]);
+  const [accessRequests, setAccessRequests] = useState<{ email: string; name: string; at: string; role?: string; team?: string; fromLink?: string }[]>([]);
   const [resolved, setResolved] = useState<{ email: string; name: string; status: string; via?: string; resolvedAt?: string }[]>([]);
-  const [links, setLinks] = useState<{ id: string; label: string; at: string; revoked?: boolean; uses: number }[]>([]);
+  const [links, setLinks] = useState<{ id: string; label: string; at: string; revoked?: boolean; uses: number; approval?: boolean }[]>([]);
+  // Whether the next link created files requests rather than letting people in.
+  const [linkApproval, setLinkApproval] = useState(false);
   // "Revoke all access": a two-step confirm, and — only for a public set —
   // whether it ends up listed or private.
   const [revokeConfirm, setRevokeConfirm] = useState(false);
@@ -325,7 +327,7 @@ export function Settings() {
   const linkUrl = (id: string) => `${window.location.origin}/join/${slug}?key=${id}`;
   async function createLink() {
     setErr(null); setMsg(null); setBusy(true);
-    try { const d = await postJson("/api/manage", { slug, op: "create-link" }); setLinks(d.links || []); }
+    try { const d = await postJson("/api/manage", { slug, op: "create-link", approval: linkApproval }); setLinks(d.links || []); }
     catch (e) { setErr(String((e as Error).message || e)); } finally { setBusy(false); }
   }
   async function revokeLink(id: string) {
@@ -357,6 +359,9 @@ export function Settings() {
                 <strong>{a.name}</strong> <span className="muted">· {a.email}</span>
                 {(a.role || a.team) && (
                   <span className="muted"> · {[a.role, a.team].filter(Boolean).join(" — ")}</span>
+                )}
+                {a.fromLink !== undefined && (
+                  <span className="muted"> · via invite link{a.fromLink ? ` "${a.fromLink}"` : ""}</span>
                 )}
               </span>
               <span className="req-actions">
@@ -737,14 +742,24 @@ export function Settings() {
           {!reviewingAccess && accessSection}
 
           <h2 style={{ marginTop: 28 }}>Invite links</h2>
-          <p className="muted">Anyone with an account who opens an active link gets access to this tournament.</p>
-          <button className="btn-primary btn-sm" disabled={busy} onClick={createLink}>Create invite link</button>
+          <p className="muted">
+            Anyone with an account who opens an active link gets access to this tournament — or, for a link that needs
+            your approval, sends you an access request to approve or deny above.
+          </p>
+          <div className="buzz-edit">
+            <label className="field-inline">
+              <input type="checkbox" checked={linkApproval} onChange={(e) => setLinkApproval(e.target.checked)} />{" "}
+              Require my approval for people who use this link
+            </label>
+            <button className="btn-primary btn-sm" disabled={busy} onClick={createLink}>Create invite link</button>
+          </div>
           {activeLinks.length > 0 && (
             <ul className="invite-list" style={{ marginTop: 12 }}>
               {activeLinks.map((l) => (
                 <li key={l.id}>
                   <span className="mono" style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis" }}>{linkUrl(l.id)}</span>
                   <span className="req-actions">
+                    {l.approval && <span className="muted">needs approval ·</span>}
                     <span className="muted">{l.uses} use{l.uses === 1 ? "" : "s"}</span>
                     <button className="btn-link" onClick={() => copyLink(l.id)}>{copiedId === l.id ? "Copied!" : "Copy"}</button>
                     <button className="btn-link danger" disabled={busy} onClick={() => revokeLink(l.id)}>Revoke</button>
