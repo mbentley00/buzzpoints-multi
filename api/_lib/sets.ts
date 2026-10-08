@@ -91,7 +91,13 @@ export interface SetEntry {
   // A pending request to make this set public, awaiting a moderator (uploads
   // younger than three months need one — see needsPublishApproval). Cleared on
   // approval, rejection, or the owner changing visibility again.
-  publicPending?: { by: string; at: string };
+  // `visibility` is what was asked for: "listed" when a first post that skipped
+  // review as Private wants into the list (see `unreviewed`). Absent = public.
+  publicPending?: { by: string; at: string; visibility?: "listed" };
+  // Posted Private by someone whose first post this was, so it skipped the
+  // first-post review (only invitees can see a private set). It doesn't make
+  // its owner an established poster: their next listed upload is still reviewed.
+  unreviewed?: true;
   // A tournament may have multiple editions (mirrors). Top-level counts are the
   // COMBINED totals; per-edition summaries live here. Absent => single edition.
   editions?: EditionSummary[];

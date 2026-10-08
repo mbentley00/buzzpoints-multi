@@ -89,6 +89,7 @@ export function Settings() {
   // uploads need approval), and whether picking Public would queue one.
   const [publicPending, setPublicPending] = useState(false);
   const [publicNeedsApproval, setPublicNeedsApproval] = useState(false);
+  const [pendingVis, setPendingVis] = useState<string>("public");
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -127,6 +128,7 @@ export function Settings() {
         setTournamentDate(d.tournamentDate || "");
         setDifficulty(d.difficulty || "");
         setPublicPending(!!d.publicPending);
+        setPendingVis(d.pendingVisibility || "public");
         setPublicNeedsApproval(!!d.publicNeedsApproval);
         setAccessRequests(d.accessRequests || []);
         setResolved(d.resolvedRequests || []);
@@ -173,9 +175,12 @@ export function Settings() {
       if (d.publicPending) {
         // The switch to public wasn't applied — it's queued for a moderator.
         setPublicPending(true);
+        setPendingVis(d.pendingVisibility || "public");
         setVisibility(d.visibility);
         setAutoPublish(!!d.autoPublicAt);
-        setMsg("Settings saved. Making a newly uploaded tournament public needs a moderator's approval — your request has been sent, and you'll get an email when it's decided.");
+        setMsg(d.pendingVisibility === "listed"
+          ? "Settings saved. Your first tournament was posted Private without a moderator's review, so listing it needs one — your request has been sent, and you'll get an email when it's decided."
+          : "Settings saved. Making a newly uploaded tournament public needs a moderator's approval — your request has been sent, and you'll get an email when it's decided.");
       } else {
         setPublicPending(false);
         setMsg("Settings saved.");
@@ -504,7 +509,7 @@ export function Settings() {
           {level === "practice" ? (
             <small className="muted">Practice tournaments stay listed or private — they can't be made public.</small>
           ) : publicPending ? (
-            <small className="muted">Your request to make this tournament public is awaiting a moderator's approval. Until then it stays {visibility}.</small>
+            <small className="muted">Your request to make this tournament {pendingVis === "listed" ? "listed" : "public"} is awaiting a moderator's approval. Until then it stays {visibility}.</small>
           ) : publicNeedsApproval && visibility !== "public" ? (
             <small className="muted">This tournament was uploaded less than three months ago, so making it public needs a moderator's approval — selecting Public sends them a request.</small>
           ) : null}

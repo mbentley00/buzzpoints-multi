@@ -484,6 +484,9 @@ export function CreateSet() {
             {level === "practice" && (
               <small className="muted">Practice tournaments stay listed or private, and don't need a moderator's review.</small>
             )}
+            {level !== "practice" && visibility === "private" && (
+              <small className="muted">Private tournaments go up right away, without waiting for a moderator's review.</small>
+            )}
           </label>
 
           {visibility !== "public" && level !== "practice" && (

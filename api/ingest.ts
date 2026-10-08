@@ -4,7 +4,8 @@
 // First-post review: a brand-new poster (owns no tournaments yet, and isn't a
 // moderator/admin) doesn't publish directly — their upload is held in the
 // moderation queue and moderators are emailed. Established posters publish
-// immediately. A name blocklist is enforced for everyone.
+// immediately, and so does a Private upload, which nobody but its invitees can
+// see. A name blocklist is enforced for everyone.
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import crypto from "node:crypto";
 import { put, del } from "@vercel/blob";
@@ -570,11 +571,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // First-post gate: queue for review unless this account has posted before or
     // is a moderator/admin. Practice tournaments skip it — they can never be
     // public (createTournament clamps them to listed/private), so there's
-    // nothing for a reviewer to protect against.
+    // nothing for a reviewer to protect against — and so do Private uploads,
+    // which only the owner and their invitees ever see. A set that skipped
+    // review that way doesn't count as having posted before.
     const index = await readIndex();
-    const established = index.sets.some((s) => s.owner === owner);
+    const established = index.sets.some((s) => s.owner === owner && !s.unreviewed);
     const privileged = await canModerate(owner);
-    if (!established && !privileged && level !== "practice") {
+    const skipsReview = level === "practice" || normVisibility(body.visibility) === "private";
+    if (!established && !privileged && !skipsReview) {
       const id = crypto.randomBytes(9).toString("base64url");
       await writePendingPayload(id, {
         name, scoring: body.scoring!, hasBonuses: !!body.hasBonuses, ...(body.individual ? { individual: true } : {}),
@@ -612,6 +616,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const wantsPublic = normVisibility(body.visibility) === "public" && !privileged && level !== "practice";
     if (wantsPublic) body.visibility = "listed";
     const { slug, categoryWarnings, roundWarnings, bonusDiffWarnings } = await createTournament(body, owner);
+    if (!established && !privileged && skipsReview && level !== "practice") {
+      const idx = await readIndex();
+      const entry = idx.sets.find((e) => e.slug === slug);
+      if (entry) { entry.unreviewed = true; await writeIndex(idx); }
+    }
     let publicPending = false;
     if (wantsPublic) {
       const idx = await readIndex();

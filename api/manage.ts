@@ -285,6 +285,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         visibility: entry.visibility ?? "listed",
         autoPublicAt: entry.autoPublicAt ?? null,
         publicPending: !!entry.publicPending,
+        // What the pending request asks for: "listed" for a first post that
+        // skipped review as Private, otherwise "public".
+        pendingVisibility: entry.publicPending ? entry.publicPending.visibility ?? "public" : null,
         // Whether flipping this set public would queue an approval rather than
         // apply, so Settings can say so up front.
         publicNeedsApproval: needsPublishApproval(entry) && !(await canModerate(user)),
@@ -326,16 +329,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // in this save still goes through, except the auto-publish date — the
       // client nulls it when the owner picks Public, and losing the date on a
       // request that wasn't granted would silently cancel their auto-publish.
-      const gated = v === "public" && entry.visibility !== "public" && needsPublishApproval(entry) && !(await canModerate(user));
+      const mod = await canModerate(user);
+      // A first post that skipped review by going up Private hasn't been looked
+      // at by anyone, so leaving Private — into the list or out to the public —
+      // goes through the same moderator approval. Once its owner has a reviewed
+      // set, they're established and this no longer applies.
+      const reviewOwed = !!entry.unreviewed && !mod && !index.sets.some((s) => s.owner === entry.owner && !s.unreviewed);
+      const gated = !mod && v !== undefined && v !== entry.visibility && (
+        (v === "public" && needsPublishApproval(entry)) || (reviewOwed && v !== "private"));
       if (gated) {
-        if (!entry.publicPending) {
-          entry.publicPending = { by: user!, at: new Date().toISOString() };
+        if (!entry.publicPending || (entry.publicPending.visibility ?? "public") !== v) {
+          entry.publicPending = { by: user!, at: new Date().toISOString(), ...(v === "listed" ? { visibility: "listed" as const } : {}) };
           const uploaded = new Date(Date.parse(entry.createdAt)).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
           for (const to of await moderatorEmails())
             await sendEmail({ to, subject: `Approve public viewing — ${entry.name}`, html: publishRequestBody(user!, entry.name, uploaded, `${appUrl()}/admin`) });
         }
       } else if (v !== undefined) {
         entry.visibility = v;
+        // A moderator choosing its visibility has looked at it.
+        if (mod) delete entry.unreviewed;
         // The question is settled (a moderator flipped it public, or the owner
         // walked it back) — drop any pending request.
         delete entry.publicPending;
@@ -347,7 +359,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const when = new Date(a);
           // An auto-publish date inside the approval window would make the set
           // public without anyone approving it — the same gate, through a timer.
-          if (needsPublishApproval(entry) && entry.visibility !== "public" && !(await canModerate(user)) &&
+          if (reviewOwed)
+            return res.status(400).json({ error: "Your first tournament hasn't been reviewed yet, so it can't be scheduled to go public. Select Listed or Public to request a moderator's review." });
+          if (needsPublishApproval(entry) && entry.visibility !== "public" && !mod &&
               when.getTime() < Date.parse(entry.createdAt) + 90 * 24 * 60 * 60 * 1000)
             return res.status(400).json({ error: "New uploads need a moderator's approval to go public, so the auto-publish date must be at least three months after the upload. To go public sooner, select Public to request approval." });
           entry.autoPublicAt = when.toISOString();
@@ -361,7 +375,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (body.forum !== undefined) { if (body.forum) entry.forum = true; else delete entry.forum; }
       if (gated) {
         await writeIndex(index);
-        return res.status(200).json({ ok: true, publicPending: true, visibility: entry.visibility, autoPublicAt: entry.autoPublicAt ?? null, allowRequests: requestsAllowed(entry), invites: entry.invites ?? [] });
+        return res.status(200).json({ ok: true, publicPending: true, pendingVisibility: v, visibility: entry.visibility, autoPublicAt: entry.autoPublicAt ?? null, allowRequests: requestsAllowed(entry), invites: entry.invites ?? [] });
       }
     } else if (op === "reaggregate") {
       const source = await readSource(slug);

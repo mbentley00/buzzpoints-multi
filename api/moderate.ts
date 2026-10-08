@@ -155,13 +155,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const entry = index.sets.find((e) => e.slug === slug);
       if (!entry || !entry.publicPending) return res.status(404).json({ error: "No pending public request for that set." });
       const requester = entry.publicPending.by;
+      const requestedVis = entry.publicPending.visibility ?? "public";
       delete entry.publicPending;
       if (op === "approve-publish") {
-        entry.visibility = "public";
-        entry.autoPublicAt = null; // public now; a scheduled auto-publish is moot
+        entry.visibility = requestedVis;
+        delete entry.unreviewed; // a moderator has now looked at it
+        if (requestedVis === "public") entry.autoPublicAt = null; // public now; a scheduled auto-publish is moot
         await writeIndex(index);
         for (const to of new Set([requester, ...ownerEmails(entry)]))
-          await sendEmail({ to, subject: `Now public — ${entry.name}`, html: publishApprovedBody(entry.name, `${appUrl()}/set/${slug}`) });
+          await sendEmail({ to, subject: `${requestedVis === "listed" ? "Now listed" : "Now public"} — ${entry.name}`, html: publishApprovedBody(entry.name, `${appUrl()}/set/${slug}`, requestedVis === "listed") });
         return res.status(200).json({ ok: true });
       }
       // reject: the set keeps its current visibility, only the request is closed

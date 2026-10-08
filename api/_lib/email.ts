@@ -151,8 +151,10 @@ export const publishRequestBody = (requester: string, setName: string, uploaded:
   wrap(`<p><strong>${esc(requester)}</strong> wants to make <strong>${esc(setName)}</strong> public.</p><p>The tournament was uploaded ${esc(uploaded)} — less than three months ago, so going public needs a moderator's approval. Until someone approves it, it stays as it is.</p>${btn(reviewUrl, "Review in the dashboard")}`);
 
 // Sent to the owners once a moderator approves the request.
-export const publishApprovedBody = (setName: string, url: string) =>
-  wrap(`<p>Your request to make <strong>${esc(setName)}</strong> public has been approved. It's now open to everyone.</p>${btn(url, "Open tournament")}`);
+export const publishApprovedBody = (setName: string, url: string, listed = false) =>
+  wrap(listed
+    ? `<p>Your request to list <strong>${esc(setName)}</strong> has been approved. It now appears in the tournament list; invited, logged-in people can view it.</p>${btn(url, "Open tournament")}`
+    : `<p>Your request to make <strong>${esc(setName)}</strong> public has been approved. It's now open to everyone.</p>${btn(url, "Open tournament")}`);
 
 // Sent to the requester when a moderator declines the request. The set itself
 // is untouched — only the switch to public didn't happen.
