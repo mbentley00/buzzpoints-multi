@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, Link, Outlet, useParams, useLocation, useOutletContext } from "react-router-dom";
-import { useSetJson, useIndex, isRevealed, setRevealed, clearSetCache, isContentRedacted, useSetEpoch } from "../data";
+import { useSetJson, useIndex, isRevealed, setRevealed, clearSetCache, refreshIndex, isContentRedacted, useSetEpoch } from "../data";
 import { Meta, SetCtx } from "../types";
 import { useAuth } from "../auth";
 import { Loading, ErrorBox, AuthNav } from "./Common";
@@ -105,6 +105,12 @@ export function SetLayout() {
     try {
       const r = await fetch("/api/manage", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ slug, op: "request-access", role: reqRole, team: reqTeam.trim() }) });
       const d = await r.json().catch(() => ({}));
+      // The server says we're already in: what we're showing is stale, so
+      // fetch again rather than ask for access we have.
+      if (r.status === 400 && /already have access/i.test(d.error || "")) {
+        clearSetCache(slug); refreshIndex(); setReqState("idle");
+        return;
+      }
       if (!r.ok) throw new Error(d.error || `Failed (${r.status})`);
       setReqState("sent");
     } catch (e) { setReqState("error"); setReqMsg(String((e as Error).message || e)); }

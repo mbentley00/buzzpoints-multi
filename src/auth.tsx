@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { refreshIndex } from "./data";
+import { refreshIndex, clearAllSetCache } from "./data";
 
 export interface SignupResult { needsVerification?: boolean; delivered?: boolean; devUrl?: string; email?: string }
 
@@ -58,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setInstitution(d.institution ?? null);
     setRole(d.role ?? (d.isAdmin ? "admin" : "user"));
     refreshIndex(); // visible list + ownership depend on the session
+    clearAllSetCache(); // and so does which sets' files we may read
   };
 
   useEffect(() => {

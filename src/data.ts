@@ -44,17 +44,20 @@ export function loadSetJson<T>(slug: string, file: string, bust = 0): Promise<T>
   if (!cache.has(key)) {
     const url =
       `/api/data?path=${encodeURIComponent(`sets/${slug}/${file}`)}` + (bust ? `&v=${bust}` : "") + (reveal ? "&reveal=1" : "");
-    cache.set(
-      key,
-      fetch(url).then((r) => {
-        if (!r.ok) throw new Error(`${file}: ${r.status}`);
-        // Recorded before the JSON resolves to the caller, so a component
-        // rendering on the data has the answer by the time it renders.
-        const state = r.headers.get("x-bp-content");
-        if (state) redacted.set(slug, state === "redacted");
-        return r.json();
-      })
-    );
+    const p = fetch(url).then((r) => {
+      if (!r.ok) throw new Error(`${file}: ${r.status}`);
+      // Recorded before the JSON resolves to the caller, so a component
+      // rendering on the data has the answer by the time it renders.
+      const state = r.headers.get("x-bp-content");
+      if (state) redacted.set(slug, state === "redacted");
+      return r.json();
+    });
+    // Never keep a failure. A 403 cached from before someone logged in or
+    // joined through an invite link went on telling them to request access
+    // while the server told them they already had it — a loop with no way out
+    // short of a full reload.
+    p.catch(() => { if (cache.get(key) === p) cache.delete(key); });
+    cache.set(key, p);
   }
   return cache.get(key) as Promise<T>;
 }
@@ -72,6 +75,15 @@ export function useSetEpoch(): number {
     () => cacheEpoch,
     () => cacheEpoch
   );
+}
+
+// Every set's cached files, for when the session itself changes (log in or out):
+// what each set lets this browser see depends on who is signed in.
+export function clearAllSetCache() {
+  cache.clear();
+  redacted.clear();
+  cacheEpoch++;
+  for (const f of [...epochSubs]) f();
 }
 
 export function clearSetCache(slug: string) {

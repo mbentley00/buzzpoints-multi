@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth";
-import { refreshIndex } from "../data";
+import { refreshIndex, clearSetCache } from "../data";
 
 export function Join() {
   const { user, loading } = useAuth();
@@ -21,7 +21,7 @@ export function Join() {
     if (!key) { setState("error"); setMsg("Missing invite key."); return; }
     fetch("/api/manage", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ slug, op: "join", key }) })
       .then(async (r) => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || `Failed (${r.status})`); })
-      .then(() => { refreshIndex(); setState("ok"); setTimeout(() => navigate(`/set/${slug}`, { replace: true }), 900); })
+      .then(() => { refreshIndex(); clearSetCache(slug); setState("ok"); setTimeout(() => navigate(`/set/${slug}`, { replace: true }), 900); })
       .catch((e) => { setState("error"); setMsg(String((e as Error).message || e)); });
   }, [user, loading, slug, key, navigate]);
 
