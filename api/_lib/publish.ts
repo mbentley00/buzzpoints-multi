@@ -75,6 +75,16 @@ export const roundFromName = (name: string) => {
   return l ? LETTER_ROUND_BASE + (l[1].toUpperCase().charCodeAt(0) - 64) : null;
 };
 
+// A game's `_round` is usually a number, but Klaxon stamps the packet's name
+// there ("PARAGONE Round 1"). Used verbatim, that string never equals a
+// packet's numeric round, so every buzz lost its question; read a number out of
+// it instead, and fall back to the filename when it has none.
+const gameRound = (declared: unknown, fileName: string): number => {
+  if (declared != null && declared !== "" && Number.isInteger(Number(declared))) return Number(declared);
+  if (typeof declared === "string") { const r = roundFromName(declared); if (r != null) return r; }
+  return roundFromName(fileName) ?? 0;
+};
+
 export function parseFiles(body: { packets?: FileRef[]; games?: FileRef[] }): { packets: PacketFile[]; games: GameFile[] } {
   const packets = (body.packets || []).map((p) => { const d = p.json || {}; return { round: roundFromName(p.name) ?? 0, tossups: d.tossups || [], bonuses: d.bonuses || [] }; });
   const games = (body.games || []).map((g) => {
@@ -85,7 +95,7 @@ export function parseFiles(body: { packets?: FileRef[]; games?: FileRef[] }): { 
     if (isModaqGame(d)) d = modaqToQbj(d);
     else if (!Array.isArray(d.match_questions))
       throw new CreateError(400, `"${g.name}" isn't a game file. Upload a QBJ from MODAQ (.qbj or .json) or a MODAQ saved game.`);
-    return { ...d, round: d._round ?? roundFromName(g.name) ?? 0 } as GameFile;
+    return { ...d, round: gameRound(d._round, g.name) } as GameFile;
   });
   return { packets, games };
 }
