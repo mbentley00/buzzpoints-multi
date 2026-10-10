@@ -851,6 +851,9 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   (out["meta.json"] as any).missingQuestions = missing.map((m) => ({
     kind: m.kind, editionId: m.editionId, round: m.round, num: m.num, games: m.games.length,
     buzzes: m.games.reduce((n, g) => n + (m.kind === "tossups" ? g.buzzes.length : g.bonuses.length), 0),
+    // Which games, so the banner can say "Team A vs Team B" rather than leave
+    // the owner to work out which room read it.
+    matchups: m.games.slice(0, 4).map((g) => g.teams.join(" vs ")),
   }));
   if (multi) {
     attachVersions(out, editions);

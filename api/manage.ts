@@ -7,6 +7,7 @@
 import crypto from "node:crypto";
 import { list, del } from "@vercel/blob";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { waitUntil } from "@vercel/functions";
 import { currentUser, normEmail, canModerate, getRole, loadUsers, moderatorEmails } from "./_lib/auth.js";
 import {
   readIndex, writeIndex, readSource, writeSource, readCorrections, writeCorrections, corrKey, aggregateAndWrite,
@@ -480,15 +481,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const access = await readAccess(slug);
       const rec = access.find((a) => a.email === email);
       if (!rec) return res.status(404).json({ error: "Request not found." });
-      if (op === "approve-access") {
-        rec.status = "approved";
-        entry.invites = [...new Set([...(entry.invites ?? []), email])].sort();
-        await writeIndex(index);
-        await sendEmail({ to: email, subject: `Access granted — ${entry.name}`, html: accessGrantedBody(entry.name, setUrl(slug)) });
-      } else rec.status = "denied";
+      const approve = op === "approve-access";
+      rec.status = approve ? "approved" : "denied";
       rec.via = "owner";
       rec.resolvedAt = new Date().toISOString();
-      await writeAccess(slug, access);
+      if (approve) entry.invites = [...new Set([...(entry.invites ?? []), email])].sort();
+      // Both records in parallel, and the "access granted" email after the
+      // response: a cold SMTP connect + TLS + login sat in the middle of this
+      // request and made every approval click take seconds.
+      await Promise.all([approve ? writeIndex(index) : null, writeAccess(slug, access)]);
+      if (approve)
+        waitUntil(sendEmail({ to: email, subject: `Access granted — ${entry.name}`, html: accessGrantedBody(entry.name, setUrl(slug)) })
+          .catch((e) => console.error("access-granted email failed", e)));
       return res.status(200).json({ ok: true, accessRequests: access.filter((a) => a.status === "pending"), resolvedRequests: resolvedList(access) });
     } else if (op === "create-link") {
       const links = await readLinks(slug);

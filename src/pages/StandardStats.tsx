@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, NavLink, useParams } from "react-router-dom";
-import { useSetCtx, useScopedJson } from "../components/Layout";
+import { useSetCtx, scopedPath } from "../components/Layout";
+import { useSetJson } from "../data";
 import { GameRow, GameTeamLine, Meta, TeamRow } from "../types";
-import { num, roundLabel } from "../util";
+import { num, roundLabel, byLabel } from "../util";
 import { PageHeader, Loading, ErrorBox } from "../components/Common";
 
 // The standard stats report — the same six views, columns and column order a
@@ -110,9 +111,17 @@ const per = (n: number, d: number, digits = 2) => (d ? num(n / d, digits) : "—
 
 export function StandardStats() {
   const { slug = "", view: viewParam } = useParams();
-  const { meta, isOwner } = useSetCtx();
-  const { data: games, error, loading } = useScopedJson<GameRow[]>("games.json");
-  const { data: teamRows } = useScopedJson<TeamRow[]>("teams.json");
+  const { meta, isOwner, scope, editions } = useSetCtx();
+  // YellowFruit reports one tournament site at a time, so a set with mirrors
+  // shows one edition here rather than pooling every mirror's teams into a
+  // single standings table. A phase or edition picked in the header still wins.
+  const sortedEds = useMemo(() => byLabel(editions), [editions]);
+  const [edPick, setEdPick] = useState("");
+  const perEdition = editions.length > 1 && scope === "all";
+  const edId = perEdition ? (sortedEds.find((e) => e.id === edPick) ?? sortedEds[0]).id : "";
+  const effScope = perEdition ? edId : scope;
+  const { data: games, error, loading } = useSetJson<GameRow[]>(slug, scopedPath(effScope, "games.json"));
+  const { data: teamRows } = useSetJson<TeamRow[]>(slug, scopedPath(effScope, "teams.json"));
 
   // A missing file, not a broken one.
   const stale = !!error && /\b404\b/.test(error);
@@ -143,6 +152,17 @@ export function StandardStats() {
           </NavLink>
         ))}
       </nav>
+      {perEdition && (
+        <div className="cat-toolbar">
+          <label>
+            Edition{" "}
+            <select value={edId} onChange={(e) => setEdPick(e.target.value)}>
+              {sortedEds.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
+            </select>
+          </label>
+          <span className="muted">Each mirror is reported on its own, as YellowFruit would.</span>
+        </div>
+      )}
 
       {loading && <Loading />}
       {/* A set last aggregated before these reports existed has no games.json at

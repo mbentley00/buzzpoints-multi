@@ -146,13 +146,25 @@ export function Settings() {
   // the warning banners' "Fix …" buttons, which promise to take the owner to
   // one particular repair, were landing them at the top of a long page with it
   // somewhere below. Go to it once it's actually there.
+  // The editors above a section fetch their own data after this, and as they
+  // fill in they push it down the page — "Map these questions" was landing two
+  // screens short of the mapper. So keep it pinned while the page settles, until
+  // the owner scrolls for themselves.
   useEffect(() => {
     if (loading || !loc.hash) return;
     const el = document.getElementById(loc.hash.slice(1));
     if (!el) return;
     // A frame's grace so the section has laid out before we measure it.
     const t = setTimeout(() => el.scrollIntoView({ block: "start", behavior: "smooth" }), 0);
-    return () => clearTimeout(t);
+    const ro = new ResizeObserver(() => el.scrollIntoView({ block: "start" }));
+    ro.observe(document.body);
+    const stop = () => {
+      ro.disconnect();
+      for (const ev of ["wheel", "touchstart", "keydown", "mousedown"]) window.removeEventListener(ev, stop);
+    };
+    for (const ev of ["wheel", "touchstart", "keydown", "mousedown"]) window.addEventListener(ev, stop, { passive: true });
+    const done = setTimeout(stop, 5000);
+    return () => { clearTimeout(t); clearTimeout(done); stop(); };
   }, [loading, loc.hash]);
 
   const tabs = SETTINGS_TABS.filter((t) => !("sourceOnly" in t) || meta?.kind !== "results");
@@ -658,8 +670,9 @@ export function Settings() {
           <p className="muted">
             Game files record only <em>which number</em> a room read — "round 7, tossup 22" or "bonus 21" — and the
             question itself is looked up in that round's packet. When a room read a tiebreaker or a replacement the
-            packet doesn't have, those buzzes and bonus results don't count toward any question. Upload the tiebreaker packet as its own round (any
-            round no games were played in), then pick the question each one really was. Where rooms read different
+            packet doesn't have, those buzzes and bonus results don't count toward any question. Drop the tiebreaker packet into the upload
+            box below (it's filed on a round of its own, whatever the file is called), then pick the question each one
+            really was. Where rooms read different
             questions under the same number, map them game by game. The game files are never changed, so Undo puts
             everything back.
           </p>

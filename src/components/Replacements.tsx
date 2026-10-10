@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { clearSetCache, refreshIndex } from "../data";
-import { byLabel, roundLabel } from "../util";
+import { byLabel, roundLabel, parseRoundInput } from "../util";
+import { uploadFiles } from "../upload";
+import { FileDrop } from "./FileDrop";
 
 // Owner tool for tiebreakers and replacement questions the packets don't
 // contain. A game file records only which number a room read ("round 7, tossup
@@ -36,6 +38,84 @@ const maxWord = (games: MissingGame[]) =>
 const maxParts = (games: MissingGame[]) =>
   Math.max(0, ...games.flatMap((g) => g.bonuses.map((b) => b.parts.length)));
 const pts = (v: number | null) => (v == null ? "?" : v > 0 ? `+${v}` : String(v));
+
+// Tiebreakers usually come in a file of their own ("Tiebreakers.json") that
+// isn't any round's packet, and a packet's round comes from its filename — so
+// uploading one through "Add rounds" meant renaming it to a round nobody played
+// first. Here it's filed on a free letter (T, then U…) whatever it's called, and
+// the page comes back to this list, where its questions are suggested in order
+// for the numbers the packets were missing. Once mapped, the tiebreaker packet
+// is only a source: it isn't listed as a round of its own, and raises no
+// "packet has no games" warning.
+function TiebreakerUpload({ slug, editions, defaultEd }: { slug: string; editions: EditionCands[]; defaultEd: string }) {
+  const [edId, setEdId] = useState(defaultEd);
+  const [files, setFiles] = useState<File[]>([]);
+  const [status, setStatus] = useState<string | null>(null);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const sorted = byLabel(editions);
+
+  // One free lettered round per file, starting at T.
+  const freeRounds = (n: number) => {
+    const used = new Set((editions.find((e) => e.id === edId)?.packets || []).map((p) => p.round));
+    const order = "TUVWXYZSRQPONMLKJIHGFEDCBA".split("").map((l) => parseRoundInput(l)!);
+    return order.filter((r) => !used.has(r)).slice(0, n);
+  };
+
+  async function upload() {
+    setErr("");
+    const rounds = freeRounds(files.length);
+    if (rounds.length < files.length) { setErr("No free lettered rounds left in this edition."); return; }
+    setBusy(true);
+    try {
+      const renamed = files.map((f, i) => new File([f], `Round ${roundLabel(rounds[i])}.json`, { type: f.type || "application/json" }));
+      const refs = await uploadFiles(renamed, (d, t) => setStatus(`Uploading… ${d}/${t}`));
+      setStatus("Adding to the tournament…");
+      const r = await fetch("/api/ingest", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ editionOf: slug, editionId: edId, packets: refs, games: [] }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((d as any).error || `Failed (${r.status})`);
+      clearSetCache(slug);
+      refreshIndex();
+      window.location.hash = "replacements";
+      window.location.reload();
+    } catch (e) { setErr(String((e as Error).message || e)); setBusy(false); setStatus(null); }
+  }
+
+  const planned = freeRounds(files.length);
+  return (
+    <details className="srcfiles-fold" open={!editions.some((e) => e.packets.some((p) => !p.played))}>
+      <summary>Upload a tiebreaker packet</summary>
+      <p className="muted srcfiles-note">
+        Drop the tiebreaker or replacement packet JSON here — whatever it's named, and even if you aren't uploading
+        any other rounds. It's filed on a round of its own and its questions are offered below, in order, for the
+        numbers the packets were missing.
+      </p>
+      {editions.length > 1 && (
+        <label className="field">
+          <span>Edition</span>
+          <select value={edId} disabled={busy} onChange={(e) => setEdId(e.target.value)}>
+            {sorted.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
+          </select>
+          <span className="muted">Any edition's tiebreakers can be mapped from any other, so one upload covers every mirror.</span>
+        </label>
+      )}
+      <FileDrop accept=".json" value={files} onChange={setFiles} hint="Packet JSON (one file per tiebreaker packet)" />
+      {files.length > 0 && planned.length === files.length && (
+        <p className="muted">Will be filed as round {planned.map(roundLabel).join(", ")}.</p>
+      )}
+      {err && <div className="error-box">{err}</div>}
+      {status && <div className="caveat">{status}</div>}
+      <p>
+        <button className="btn-primary btn-sm" disabled={busy || !files.length} onClick={upload}>
+          {busy ? "Working…" : "Upload tiebreakers"}
+        </button>
+      </p>
+    </details>
+  );
+}
 
 export function ReplacementEditor({ slug }: { slug: string }) {
   const [data, setData] = useState<Data | null>(null);
@@ -161,6 +241,7 @@ export function ReplacementEditor({ slug }: { slug: string }) {
       )}
       {missing.length > 0 && (
         <>
+          <TiebreakerUpload slug={slug} editions={data.editions} defaultEd={missing[0].editionId} />
           <table className="data-table srcfiles-table repl-table">
             <thead>
               <tr><th>Read as</th><th>Games and results</th><th>Question that was read</th></tr>

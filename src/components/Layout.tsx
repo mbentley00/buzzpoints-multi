@@ -246,8 +246,14 @@ export function SetLayout() {
             <ul className="cat-warn-list">
               {meta!.missingQuestions!.slice(0, 6).map((m, i) => (
                 <li key={i}>
+                  {hasEditions && <>{editions.find((e) => e.id === m.editionId)?.label ?? m.editionId}: </>}
                   Round {roundLabel(m.round)}, {m.kind === "bonuses" ? "bonus" : "tossup"} #{m.num} — {m.games} game{m.games === 1 ? "" : "s"}
                   {m.kind !== "bonuses" && `, ${m.buzzes} buzz${m.buzzes === 1 ? "" : "es"}`}
+                  {!!m.matchups?.length && (
+                    <span className="muted">
+                      {" "}({m.matchups.join("; ")}{m.games > m.matchups.length ? `; +${m.games - m.matchups.length} more` : ""})
+                    </span>
+                  )}
                 </li>
               ))}
               {meta!.missingQuestions!.length > 6 && <li>…and {meta!.missingQuestions!.length - 6} more</li>}

@@ -274,7 +274,7 @@ export interface Meta {
   // Teams found in games from more than one mirror (multi-edition sets only),
   // usually games uploaded into two editions. Owner-facing.
   crossMirrorTeams?: { name: string; editions: string[] }[];
-  missingQuestions?: { kind?: "tossups" | "bonuses"; editionId: string; round: number; num: number; games: number; buzzes: number }[];
+  missingQuestions?: { kind?: "tossups" | "bonuses"; editionId: string; round: number; num: number; games: number; buzzes: number; matchups?: string[] }[];
   generatedAt: string;
 }
 

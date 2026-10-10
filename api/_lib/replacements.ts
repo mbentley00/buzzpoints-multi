@@ -256,12 +256,19 @@ export function replacementCandidates(editions: Edition[]) {
 // "Round 7 read #21 and #22, but its packet stops at 20" — when an edition has
 // exactly one packet no game was played from, the overflow almost certainly
 // came from it in order: #21 is its first question, #22 its second.
+// A mirror with no spare packet of its own borrows the one other edition's,
+// since a single tiebreaker upload is meant to cover every mirror.
 export function suggestReplacement(m: MissingQuestion, editions: Edition[]): ReplacementTarget | null {
-  const e = editions.find((x) => x.id === m.editionId);
-  if (!e || m.num <= m.packetCount) return null;
-  const played = new Set((e.games || []).map((g) => g.round));
-  const spare = [...new Set((e.packets || []).map((p) => p.round))].filter((r) => !played.has(r));
+  const own = editions.find((x) => x.id === m.editionId);
+  if (!own || m.num <= m.packetCount) return null;
+  const spareOf = (e: Edition) => {
+    const played = new Set((e.games || []).map((g) => g.round));
+    return [...new Set((e.packets || []).map((p) => p.round))].filter((r) => !played.has(r)).map((round) => ({ e, round }));
+  };
+  let spare = spareOf(own);
+  if (!spare.length) spare = editions.filter((e) => e !== own).flatMap(spareOf);
   if (spare.length !== 1) return null;
+  const { e, round } = spare[0];
   const idx = m.num - m.packetCount;
-  return questionsOf(packetOn(e, spare[0]), m.kind)[idx - 1] ? { editionId: e.id, round: spare[0], num: idx } : null;
+  return questionsOf(packetOn(e, round), m.kind)[idx - 1] ? { editionId: e.id, round, num: idx } : null;
 }
