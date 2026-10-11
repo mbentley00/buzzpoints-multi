@@ -670,6 +670,7 @@ export interface FirstSentenceTossup {
   answer: string;
   category: string;
   subcategory: string;
+  sentenceStartIndex?: number; // first clue word, after any "Note to players: …" (absent on older builds)
   sentenceEndIndex: number;
   wordCount: number;
   sentenceWords: string[];

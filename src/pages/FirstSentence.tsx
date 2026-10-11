@@ -16,13 +16,16 @@ function valueLabel(v: number): string {
   return v < 0 ? "Neg" : "0";
 }
 
-function Sentence({ words, buzzers }: { words: string[]; buzzers: Buzz[] }) {
+// `start` is the word number of words[0]: a leading note to players is left off
+// the shown sentence, and a buzz during it sits on the first clue word.
+function Sentence({ words, start, buzzers }: { words: string[]; start: number; buzzers: Buzz[] }) {
   const byIndex = new Map<number, Buzz[]>();
   for (const b of buzzers) {
     if (b.wordIndex === null) continue;
-    const arr = byIndex.get(b.wordIndex) ?? [];
+    const i = Math.max(0, b.wordIndex - start);
+    const arr = byIndex.get(i) ?? [];
     arr.push(b);
-    byIndex.set(b.wordIndex, arr);
+    byIndex.set(i, arr);
   }
   return (
     <p className="fs-sentence">
@@ -110,7 +113,7 @@ export function FirstSentence() {
                 </span>
               </div>
             </div>
-            <Sentence words={x.sentenceWords} buzzers={x.buzzers} />
+            <Sentence words={x.sentenceWords} start={x.sentenceStartIndex ?? 0} buzzers={x.buzzers} />
             <div className="fs-buzzers">
               {x.buzzers.map((b, i) => (
                 <span key={i} className={`fs-buzzer ${valueClass(b.value)}`} title={valueLabel(b.value)}>

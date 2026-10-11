@@ -274,13 +274,86 @@ function sentenceEndIndices(words: string[]): number[] {
   }
   return ends;
 }
-const firstSentenceEnd = (words: string[]) => {
-  const e = sentenceEndIndices(words);
-  return e.length ? e[0] : words.length - 1;
+// Instructions that open a tossup aren't its first clue: "[Note to moderator:
+// …]", "Note to players: description acceptable.", "Moderator note: …",
+// "Warning, two answers required.", or a bare "Specific term required." /
+// "Pencil and paper ready." — sometimes several in a row, sometimes with no
+// closing period ("WARNING: DESCRIPTION ACCEPTABLE The …"). They're still read
+// out, so they keep their word numbers; we only start the first sentence after
+// them. Returns the index of the notes' last word, or -1 when there are none.
+const NOTE_LABEL = /^(notes?|moderators?'?s?|reader'?s?|editor'?s?|warning|caution|attention|ntp|content)$/i;
+const CLUE_START = /^(A|An|The|This|These|That|Those|One|In|At|During|After|Before|For|Its|His|Her|Some|Many|While|When)$/;
+const CLUE_PRONOUN = /^(this|these|he|she|his|her|its|they|their)$/i;
+const NOTE_OPENER = /^(description|descriptive|either|two|2|three|both|specific|somewhat|reasonably|exact|name|names|word|words|translations?|common|original|general|synonyms|answers?|action|pencils?)$/i;
+const NOTE_TERMINAL = /^(acceptable|accepted|required|needed|ready|prompted)$/i;
+const NOTE_DIRECTIVE = /^(do not|don't) read\b|^this (question|tossup) (can|should|may|must|is to)\b/i;
+const coreWord = (w: string) => w.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "");
+const startsUpper = (w: string | undefined) => !!w && /^[^A-Za-z0-9]*[A-Z]/.test(w);
+function leadingNoteEnd(words: string[]): number {
+  const ends = sentenceEndIndices(words);
+  let i = 0;
+  while (i < words.length) {
+    // A bracketed note runs to its matching bracket, whatever it says.
+    const open = words[i][0];
+    if (open === "[" || open === "(" || open === "{") {
+      const close = { "[": "]", "(": ")", "{": "}" }[open]!;
+      let depth = 0, j = i;
+      for (; j < words.length && j < i + 80; j++) {
+        for (const ch of words[j]) depth += ch === open ? 1 : ch === close ? -1 : 0;
+        if (depth <= 0) break;
+      }
+      if (depth > 0 || j >= words.length) break;
+      i = j + 1;
+      continue;
+    }
+    const head = words.slice(i, i + 7);
+    const labeled = NOTE_LABEL.test(coreWord(head[0])) && head.some((w, k) => /:$/.test(w) || (k === 0 && /,$/.test(w)));
+    const directive = NOTE_DIRECTIVE.test(head.join(" "));
+    const opener = NOTE_OPENER.test(coreWord(head[0]));
+    const sentEnd = ends.find((e) => e >= i) ?? words.length - 1;
+    // A note that never got its period: "…ACCEPTABLE The", "…required.These",
+    // "read score clues slowly A symphony…", "…rhymes with "frame" A terrorist…",
+    // "…BEFORE READING William Duane…", "Do not read to Chicago A. This…" (a
+    // lone team letter isn't a sentence end). Stop where the clue plainly starts.
+    let end = sentEnd;
+    if (labeled || directive || opener) {
+      const note = labeled || directive;
+      for (let k = i; k < sentEnd && k < i + 30; k++) {
+        const w = words[k], next = words[k + 1];
+        const glued = /[a-z][.?!:]+["”’)]*[A-Z]/.test(w);
+        const keyword = NOTE_TERMINAL.test(coreWord(w)) && startsUpper(next);
+        const clueStart = note && /[a-z,]["”’)]?$/.test(w) && CLUE_START.test(next) && !/^(or|and|&)$/i.test(words[k + 2] || "");
+        const quoted = note && /["”]$/.test(w) && startsUpper(next);
+        const shouted = note && /[A-Z]{2,}$/.test(w) && w === w.toUpperCase() && /^[A-Z][a-z]/.test(next || "");
+        const period = note && k > i && /[a-z]\.$/.test(w) && startsUpper(next);
+        const team = directive && k > i + 2 && /^[A-Z]\.?$/.test(w) && startsUpper(next) && !/^(or|and|&)$/i.test(next);
+        if (glued || keyword || clueStart || quoted || shouted || period || team) { end = k; break; }
+      }
+    }
+    const span = words.slice(i, end + 1).map((w) => coreWord(w).split(/[.?!:]/)[0]);
+    // A bare instruction: "Composer and genre required." — short, ends on (or
+    // opens with) its keyword, and doesn't talk about "this" answer like a clue.
+    const phrase = span.length <= 14 && span.some((w) => NOTE_TERMINAL.test(w)) &&
+      (opener || (NOTE_TERMINAL.test(span[span.length - 1]) && !span.some((w) => CLUE_PRONOUN.test(w))));
+    if (!(phrase || ((labeled || directive) && end - i < 35))) break;
+    i = end + 1;
+  }
+  return Math.min(i, words.length) - 1;
+}
+// Sentence ends after any leading notes. A tossup that's all note (or has no
+// sentence break left) ends at its last word, as before.
+const clueSentenceEnds = (words: string[]) => {
+  const start = leadingNoteEnd(words);
+  return { start: start + 1, ends: sentenceEndIndices(words).filter((e) => e > start) };
 };
+const firstSentence = (words: string[]) => {
+  const { start, ends } = clueSentenceEnds(words);
+  return start >= words.length ? { start: 0, end: words.length - 1 } : { start, end: ends.length ? ends[0] : words.length - 1 };
+};
+const firstSentenceEnd = (words: string[]) => firstSentence(words).end;
 const nthSentenceEnd = (words: string[], n: number) => {
-  const e = sentenceEndIndices(words);
-  return e.length >= n ? e[n - 1] : words.length - 1;
+  const { ends } = clueSentenceEnds(words);
+  return ends.length >= n ? ends[n - 1] : words.length - 1;
 };
 
 /* category parsing -> (main, full subcategory) */
@@ -1828,14 +1901,15 @@ export function aggregate(
   const firstSent: Record<string, unknown>[] = [];
   for (const [id, t] of tossups) {
     const words = t.words;
-    const endI = firstSentenceEnd(words);
+    const { start: startI, end: endI } = firstSentence(words);
     // A correct first-line buzz would be a power; a non-power "get" on the first
     // sentence is a parsing artifact and is excluded (powers + wrong buzzes kept).
+    // A buzz during a leading note still counts — it's before the first clue ended.
     const fs = (tuBuzzes.get(id) || []).filter((b) => b.wordIndex !== null && b.wordIndex <= endI && !(hasPower && isGet(b.value))).sort((a, b) => a.wordIndex! - b.wordIndex!);
     if (!fs.length) continue;
     firstSent.push({
       id, round: t.round, num: t.num, answer: t.answer, category: t.category, subcategory: t.subcategory,
-      sentenceEndIndex: endI, wordCount: t.wordCount, sentenceWords: words.slice(0, endI + 1),
+      sentenceStartIndex: startI, sentenceEndIndex: endI, wordCount: t.wordCount, sentenceWords: words.slice(startI, endI + 1),
       buzzCount: fs.length, powers: fs.filter((b) => isPower(b.value)).length, gets: fs.filter((b) => isGet(b.value)).length, incorrect: fs.filter((b) => !isCorrect(b.value)).length,
       buzzers: fs.map((b) => ({ player: b.player, team: b.team, value: b.value, wordIndex: b.wordIndex, teamId: b.team ? teamId.get(b.team) ?? null : null, playerId: b.player ? playerId.get(plKey(b.player, b.team || "")) ?? null : null })),
     });
