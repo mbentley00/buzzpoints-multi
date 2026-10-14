@@ -45,9 +45,9 @@ export function Login() {
         navigate(next, { replace: true });
       }
     } catch (err) {
-      const e2 = err as Error & { needsVerification?: boolean; devUrl?: string };
+      const e2 = err as Error & { needsVerification?: boolean; delivered?: boolean; devUrl?: string };
       // Logging in unverified re-sends the link server-side (carrying `next`).
-      if (e2.needsVerification) setPending({ email: email.trim(), devUrl: e2.devUrl });
+      if (e2.needsVerification) setPending({ email: email.trim(), devUrl: e2.devUrl, delivered: e2.delivered });
       else setError(String(e2.message || err));
     } finally {
       setBusy(false);
@@ -90,7 +90,14 @@ export function Login() {
         <header className="topbar"><div className="topbar-inner"><Link to="/" className="brand">Buzzpoints</Link></div></header>
         <main className="content">
           <h1>Verify your email</h1>
-          <p>We sent a verification link to <strong>{pending.email}</strong>. Click it to finish and sign in.</p>
+          {pending.delivered === false && !pending.devUrl ? (
+            <div className="error-box">
+              We couldn't send a verification email to <strong>{pending.email}</strong>. Check the address,
+              or try Resend below in a few minutes.
+            </div>
+          ) : (
+            <p>We sent a verification link to <strong>{pending.email}</strong>. Click it to finish and sign in.</p>
+          )}
           {pending.devUrl && (
             <div className="caveat">
               Email delivery isn't configured yet, so here's your link directly:{" "}

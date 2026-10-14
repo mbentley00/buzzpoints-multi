@@ -32,10 +32,14 @@ function openReset(token: string, users: UserStore): User | null {
 async function sendVerification(email: string, name: string, next?: string) {
   const url = verifyUrl(email, next);
   const delivered = await sendEmail({ to: email, subject: "Verify your Buzzpoints email", html: verifyEmailBody(name, url) });
-  // Surface the link in-app whenever delivery didn't actually happen (no provider
-  // configured, or the provider rejected the recipient e.g. an unverified domain).
-  return { delivered, devUrl: delivered ? undefined : url };
+  return { delivered, devUrl: delivered ? undefined : devLink(url) };
 }
+
+// When an email doesn't go out, local dev shows its link in-app so you can test
+// without a mail server. Never on a deployment: there the link is the only proof
+// someone holds the address, so handing it to whoever filled in the form would
+// verify addresses they don't own — or, for a reset, take over someone's account.
+const devLink = (url: string) => (process.env.VERCEL ? undefined : url);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "GET") {
@@ -108,7 +112,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (u) {
         const url = resetUrl(u, safeNext((req.body || {}).next));
         const delivered = await sendEmail({ to: email, subject: "Reset your Buzzpoints password", html: resetPasswordBody(u.name, url) });
-        return res.status(200).json({ ok: true, ...(delivered ? {} : { devUrl: url }) });
+        // A failed send stays invisible too, for the same reason as above.
+        return res.status(200).json({ ok: true, ...(delivered ? {} : { devUrl: devLink(url) }) });
       }
       return res.status(200).json({ ok: true });
     }
@@ -144,8 +149,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!u || !verifyPassword(password, u.pwHash))
         return res.status(401).json({ error: "Incorrect email or password." });
       if (!isVerified(u)) {
-        const { devUrl } = await sendVerification(email, u.name, safeNext((req.body || {}).next));
-        return res.status(403).json({ error: "Please verify your email first — we've re-sent the link.", needsVerification: true, devUrl });
+        const { delivered, devUrl } = await sendVerification(email, u.name, safeNext((req.body || {}).next));
+        return res.status(403).json({ error: "Please verify your email first — we've re-sent the link.", needsVerification: true, delivered, devUrl });
       }
       setSessionCookie(res, signToken(email));
       return res.status(200).json({ email, name: u.name ?? null, institution: u.institution ?? null, isAdmin: isAdminEmail(email), role: roleOf(email, users) });

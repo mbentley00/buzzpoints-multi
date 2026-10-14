@@ -32,16 +32,17 @@ interface AuthState {
 const Ctx = createContext<AuthState>(null as unknown as AuthState);
 export const useAuth = () => useContext(Ctx);
 
-type AuthResp = { email?: string | null; name?: string | null; institution?: string | null; isAdmin?: boolean; role?: Role; error?: string; needsVerification?: boolean; devUrl?: string; next?: string | null };
+type AuthResp = { email?: string | null; name?: string | null; institution?: string | null; isAdmin?: boolean; role?: Role; error?: string; needsVerification?: boolean; delivered?: boolean; devUrl?: string; next?: string | null };
 async function call(body: Record<string, unknown>): Promise<{ ok: boolean; status: number; data: AuthResp }> {
   const r = await fetch("/api/auth", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const data = await r.json().catch(() => ({}));
   return { ok: r.ok, status: r.status, data };
 }
 function fail(data: AuthResp): never {
-  const e = new Error(data.error || "Request failed") as Error & { needsVerification?: boolean; devUrl?: string };
+  const e = new Error(data.error || "Request failed") as Error & { needsVerification?: boolean; delivered?: boolean; devUrl?: string };
   e.needsVerification = data.needsVerification;
   e.devUrl = data.devUrl;
+  e.delivered = data.delivered;
   throw e;
 }
 
