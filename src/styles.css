@@ -1114,6 +1114,8 @@ a.auth-user:hover { color: #fff; text-decoration: underline; }
 .tag-chip.on { background: #2563eb; border-color: #2563eb; color: #fff; }
 /* Team page: pick rounds to see the team's games and totals for just those. */
 .round-pick { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.round-range { margin-left: 6px; white-space: nowrap; }
+.round-range select { font: inherit; font-size: 13px; padding: 2px 6px; border: 1px solid var(--field-border); border-radius: 4px; background: var(--surface); color: inherit; }
 .rt-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .rt-newtag { padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: 4px; font-size: 13px; min-width: 180px; }
 .version-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; font-size: 13.5px; padding: 7px 12px; background: var(--surface-3); border: 1px solid #dbe6fb; border-radius: 6px; }

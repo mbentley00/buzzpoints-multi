@@ -1082,6 +1082,17 @@ export function aggregate(
     let inner = m.get(team); if (!inner) { inner = new Map(); m.set(team, inner); }
     inner.set(cat, (inner.get(cat) || 0) + 1);
   };
+  // The same team category tallies again, split by round and left unfinished, so
+  // a team page can re-total its categories over just the rounds a reader picks
+  // ("did our lineup swap after round 6 help fine arts?").
+  type TmRound = { games: number; fullTuh: number; unread: number; tu: Map<string, TuCat>; bn: Map<string, BnCat>; heard: Map<string, number> };
+  const tmRound = new Map<string, Map<number, TmRound>>();
+  const tmRoundOf = (team: string, round: number): TmRound => {
+    let inner = tmRound.get(team); if (!inner) { inner = new Map(); tmRound.set(team, inner); }
+    let v = inner.get(round);
+    if (!v) { v = { games: 0, fullTuh: 0, unread: 0, tu: new Map(), bn: new Map(), heard: new Map() }; inner.set(round, v); }
+    return v;
+  };
 
   const plKey = (n: string, t: string | null) => `${n}${SEP}${t}`;
   const plOf = (name: string, team: string): PL => {
@@ -1187,6 +1198,7 @@ export function aggregate(
       const t = tmOf(tname);
       t.games += 1;
       t.fullTuh += gameTuh;
+      { const rr = tmRoundOf(tname, r); rr.games += 1; rr.fullTuh += gameTuh; }
       t.bonusPts += mt.bonus_points || 0;
       addGamePts(tname, mt.bonus_points || 0);
       gtOf(tname).bonusPts += mt.bonus_points || 0;
@@ -1213,7 +1225,10 @@ export function aggregate(
         tuHeard.set(key!, (tuHeard.get(key!) || 0) + 1);
         // Everyone in the room heard it, whoever buzzed — this is the "tossups
         // heard" a category BPA is spread over.
-        for (const t of teamNames) { bumpHeard(tmCatHeardMid, t, tq.categoryMid); bumpHeard(tmCatHeardSub, t, tq.subcategory); }
+        for (const t of teamNames) {
+          bumpHeard(tmCatHeardMid, t, tq.categoryMid); bumpHeard(tmCatHeardSub, t, tq.subcategory);
+          const h = tmRoundOf(t, r).heard; h.set(tq.subcategory, (h.get(tq.subcategory) || 0) + 1);
+        }
       }
       let converted = false;
       let controlling: string | null = null;
@@ -1294,6 +1309,11 @@ export function aggregate(
             const tc = nestCat<TuCat>(tmTuCat, bteam, tq.subcategory, () => ({ ...newCatAcc(), main: tq.category }));
             tc.main = tq.category;
             addCat(tc, value, widx, prec, unread);
+            const rr = tmRoundOf(bteam, r);
+            rr.unread += unread;
+            let rc = rr.tu.get(tq.subcategory);
+            if (!rc) { rc = { ...newCatAcc(), main: tq.category }; rr.tu.set(tq.subcategory, rc); }
+            addCat(rc, value, widx, prec, unread);
           }
         }
         if (isCorrect(value)) { converted = true; controlling = bteam; controllingOrig = origTeam; }
@@ -1357,12 +1377,18 @@ export function aggregate(
             gtOf(controlling).bonusesHeard += 1;
             const tbc = nestCat<BnCat>(tmBonusCat, controlling, bdef.subcategory, () => ({ heard: 0, pts: 0, main: bdef.category, parts: new Map() }));
             tbc.main = bdef.category; tbc.heard++; tbc.pts += total;
+            const rbn = tmRoundOf(controlling, r).bn;
+            let rbc = rbn.get(bdef.subcategory);
+            if (!rbc) { rbc = { heard: 0, pts: 0, main: bdef.category, parts: new Map() }; rbn.set(bdef.subcategory, rbc); }
+            rbc.heard++; rbc.pts += total;
             for (let i = 0; i < parts.length; i++) {
               const got = (partPts[i] || 0) + (bbPts[i] || 0);
               const diff = diffAt(bdef.difficultyModifiers, i);
-              const slot = tbc.parts.get(diff) || [0, 0];
-              slot[1] += 1; if (got > 0) slot[0] += 1;
-              tbc.parts.set(diff, slot);
+              for (const acc of [tbc, rbc]) {
+                const slot = acc.parts.get(diff) || [0, 0];
+                slot[1] += 1; if (got > 0) slot[0] += 1;
+                acc.parts.set(diff, slot);
+              }
             }
           }
         }
@@ -1778,6 +1804,42 @@ export function aggregate(
   teams.sort((a, b) => (b.ppg as number) - (a.ppg as number));
   files["teams.json"] = teams;
   files["teams_detail.json"] = tmDetail;
+
+  // Per-round raw category tallies behind the team pages' round picker: compact
+  // arrays rather than objects, since this is teams × rounds × subcategories.
+  //   tu[sub] = [powers, gets, incorrect, points, posSum, posN, earliest, unread, heard]
+  //   bn[sub] = [heard, points, { difficulty: [got, offered] }]
+  // A subcategory's main category is the same in every round, so it's listed once.
+  {
+    const r6 = (n: number) => Math.round(n * 1e6) / 1e6;
+    const tuMain: Record<string, string> = {}, bnMain: Record<string, string> = {};
+    const out: Record<string, Record<number, unknown>> = {};
+    for (const [team, rounds] of tmRound) {
+      const tid = teamId.get(team);
+      if (!tid) continue;
+      const byRound: Record<number, unknown> = {};
+      for (const [rnd, rr] of rounds) {
+        const tu: Record<string, unknown[]> = {}, bn: Record<string, unknown[]> = {};
+        for (const [sub, a] of rr.tu) {
+          tuMain[sub] = a.main;
+          tu[sub] = [a.powers, a.gets, a.incorrect, a.points, a.posSum, a.posN, a.earliest, r6(a.unread), rr.heard.get(sub) || 0];
+        }
+        // A round where the team heard a subcategory without buzzing still counts
+        // toward its BPA denominator — as it does for the season, which lists every
+        // subcategory the team buzzed in at some point.
+        const season = tmTuCat.get(team);
+        for (const [sub, n] of rr.heard)
+          if (!tu[sub] && season?.has(sub)) { tuMain[sub] = season.get(sub)!.main; tu[sub] = [0, 0, 0, 0, 0, 0, null, 0, n]; }
+        for (const [sub, a] of rr.bn) {
+          bnMain[sub] = a.main;
+          bn[sub] = [a.heard, a.pts, Object.fromEntries(a.parts)];
+        }
+        byRound[rnd] = { g: rr.games, th: rr.fullTuh, u: r6(rr.unread), tu, ...(cfg.hasBonuses ? { bn } : {}) };
+      }
+      out[tid] = byRound;
+    }
+    files["team_rounds.json"] = { tuMain, bnMain, teams: out };
+  }
 
   /* ----------------------------- tossup categories + per-category players ----------------------------- */
   const tuCatNew = (): CatTuAcc => ({ main: "", heard: 0, powers: 0, gets: 0, buzzSum: 0, buzzN: 0, firstConv: 0, secondConv: 0, incorrectBefore: 0 });

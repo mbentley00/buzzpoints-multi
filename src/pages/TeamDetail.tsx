@@ -1,12 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, Link, Navigate } from "react-router-dom";
-import { useSetCtx, useScopedJson } from "../components/Layout";
+import { useSetCtx, useScopedJson, scopedPath } from "../components/Layout";
+import { loadSetJson } from "../data";
 import { TeamDetail, RosterPlayer, CatBonusRow, CatBonusSub, CatTeamTossupRow, CatTeamTossupSub, GameRow, GamePlayerLine } from "../types";
 import { num, pct, roundLabel } from "../util";
 import { Loading, ErrorBox, EditionBadges } from "../components/Common";
 import { CategoryGroups, CatColumn } from "../components/CategoryGroups";
 import { DataTable, Column } from "../components/DataTable";
 import { Rename } from "../components/Rename";
+import { TeamRounds, teamRoundView } from "../teamRounds";
 
 const buzz = (v: number | null) => (v === null ? "—" : num(v));
 const rankCell = (rank?: number | null, rankOf?: number | null) =>
@@ -21,34 +23,57 @@ function Stat({ label, value, title }: { label: string; value: string; title?: s
   );
 }
 
-// This team's games from the box scores, with a round picker: totals and
-// player lines for just the rounds chosen (all of them when none are). Read
-// from games.json in the same scope as the page, so team ids line up.
-function TeamGames({ teamId }: { teamId: string }) {
+type MyGame = { g: GameRow; us: GameRow["teams"][number]; them: GameRow["teams"] };
+
+// Which rounds the page is totalled over: chips to pick any mix of rounds, and a
+// from–to pair for the common case of a contiguous stretch (say, everything
+// after a lineup change). No rounds picked means all of them.
+function RoundPicker({ rounds, picked, setPicked }: { rounds: number[]; picked: Set<number>; setPicked: (s: Set<number>) => void }) {
+  const toggle = (r: number) => { const n = new Set(picked); if (n.has(r)) n.delete(r); else n.add(r); setPicked(n); };
+  const on = rounds.filter((r) => picked.has(r));
+  const from = on.length ? on[0] : rounds[0], to = on.length ? on[on.length - 1] : rounds[rounds.length - 1];
+  const range = (a: number, z: number) => {
+    const [lo, hi] = a <= z ? [a, z] : [z, a];
+    const n = new Set(rounds.filter((r) => r >= lo && r <= hi));
+    setPicked(n.size === rounds.length ? new Set() : n);
+  };
+  return (
+    <div className="round-pick">
+      <span className="muted">Rounds:</span>
+      <button type="button" className={"tag-chip" + (picked.size ? "" : " on")} onClick={() => setPicked(new Set())}>All</button>
+      {rounds.map((r) => (
+        <button key={r} type="button" className={"tag-chip" + (picked.has(r) ? " on" : "")} onClick={() => toggle(r)}>{roundLabel(r)}</button>
+      ))}
+      {rounds.length > 2 && (
+        <span className="round-range">
+          <select aria-label="From round" value={from} onChange={(e) => range(Number(e.target.value), to)}>
+            {rounds.map((r) => <option key={r} value={r}>{roundLabel(r)}</option>)}
+          </select>
+          {" – "}
+          <select aria-label="To round" value={to} onChange={(e) => range(from, Number(e.target.value))}>
+            {rounds.map((r) => <option key={r} value={r}>{roundLabel(r)}</option>)}
+          </select>
+        </span>
+      )}
+    </div>
+  );
+}
+
+// "rounds 4–9", "round 3", or "5 rounds" for a scattered pick.
+function roundsPhrase(picked: Set<number>, rounds: number[]) {
+  const on = rounds.filter((r) => picked.has(r));
+  if (on.length === 1) return `round ${roundLabel(on[0])}`;
+  const i = rounds.indexOf(on[0]);
+  const contiguous = on.every((r, k) => rounds[i + k] === r);
+  return contiguous ? `rounds ${roundLabel(on[0])}–${roundLabel(on[on.length - 1])}` : `${on.length} rounds`;
+}
+
+// This team's games from the box scores in the chosen rounds, and the player
+// lines pooled over them.
+function TeamGames({ sel, filtered, phrase }: { sel: MyGame[]; filtered: boolean; phrase: string }) {
   const { meta, slug } = useSetCtx();
-  const { data: games } = useScopedJson<GameRow[]>("games.json");
-  const [picked, setPicked] = useState<Set<number>>(new Set());
-
-  const mine = useMemo(() => (games ?? [])
-    .map((g) => {
-      const us = g.teams.find((t) => t.id === teamId);
-      return us ? { g, us, them: g.teams.filter((t) => t !== us) } : null;
-    })
-    .filter((x): x is NonNullable<typeof x> => !!x)
-    .sort((a, b) => a.g.round - b.g.round), [games, teamId]);
-  const rounds = useMemo(() => [...new Set(mine.map((m) => m.g.round))], [mine]);
-  // A set aggregated before box scores existed has no games.json: say nothing.
-  if (!mine.length) return null;
-
-  const sel = picked.size ? mine.filter((m) => picked.has(m.g.round)) : mine;
-  const toggle = (r: number) => setPicked((p) => { const n = new Set(p); if (n.has(r)) n.delete(r); else n.add(r); return n; });
-  const sum = (f: (m: (typeof mine)[number]) => number) => sel.reduce((a, m) => a + f(m), 0);
-  const n = sel.length;
-  const w = sel.filter((m) => m.us.result === "W").length, l = sel.filter((m) => m.us.result === "L").length, t = sel.filter((m) => m.us.result === "T").length;
-  const bHeard = sum((m) => m.us.bonusesHeard), bPts = sum((m) => m.us.bonusPts), tuh = sum((m) => m.g.tuh);
   const teamBonus = meta.hasBonuses && meta.hasTeamBonuses !== false;
 
-  // Player lines pooled over the chosen games.
   const byPlayer = new Map<string, GamePlayerLine & { gp: number }>();
   for (const m of sel) for (const p of m.us.players) {
     const k = p.id ?? p.name;
@@ -62,24 +87,7 @@ function TeamGames({ teamId }: { teamId: string }) {
 
   return (
     <>
-      <h2>Games by round</h2>
-      <div className="round-pick">
-        <span className="muted">Rounds:</span>
-        <button type="button" className={"tag-chip" + (picked.size ? "" : " on")} onClick={() => setPicked(new Set())}>All</button>
-        {rounds.map((r) => (
-          <button key={r} type="button" className={"tag-chip" + (picked.has(r) ? " on" : "")} onClick={() => toggle(r)}>{roundLabel(r)}</button>
-        ))}
-      </div>
-      <div className="stat-row">
-        <Stat label="Games" value={String(n)} />
-        <Stat label="Record" value={`${w}-${l}${t ? `-${t}` : ""}`} />
-        <Stat label="PPG" value={num(n ? sum((m) => m.us.score) / n : null)} />
-        {teamBonus && <Stat label="PPB" value={num(bHeard ? bPts / bHeard : null, 2)} />}
-        <Stat label="PP20TUH" value={num(tuh ? (20 * sum((m) => m.us.score)) / tuh : null)} />
-        {meta.hasPower && <Stat label="Powers" value={String(sum((m) => m.us.powers))} />}
-        <Stat label="Correct" value={String(sum((m) => m.us.gets))} />
-        <Stat label={meta.hasNeg ? "Neg" : "Inc"} value={String(sum((m) => m.us.incorrect))} />
-      </div>
+      <h2>Games{filtered ? ` in ${phrase}` : ""}</h2>
       <div className="table-wrap">
         <table className="data-table">
           <thead>
@@ -106,9 +114,9 @@ function TeamGames({ teamId }: { teamId: string }) {
           </tbody>
         </table>
       </div>
-      {picked.size > 0 && players.length > 0 && (
+      {filtered && players.length > 0 && (
         <>
-          <h3>Players in {picked.size === 1 ? `round ${roundLabel([...picked][0])}` : "these rounds"}</h3>
+          <h3>Players in {phrase}</h3>
           <div className="table-wrap">
             <table className="data-table">
               <thead>
@@ -147,6 +155,34 @@ export function TeamDetailPage() {
   // bonus conversion; hide the team-level bonus UI while keeping tossup stats.
   const teamBonus = meta.hasBonuses && meta.hasTeamBonuses !== false;
 
+  // Round picker: the box scores give the games, record and per-game lines;
+  // team_rounds.json gives the category tables. Sets built before either
+  // existed simply don't get the picker (or the filtered categories).
+  const { data: games } = useScopedJson<GameRow[]>("games.json");
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+  const filtered = picked.size > 0;
+  // The per-round category tallies are big (teams × rounds × subcategories), so
+  // they're only fetched once someone actually narrows the rounds.
+  const [tr, setTr] = useState<TeamRounds | null | undefined>(undefined);
+  useEffect(() => {
+    if (!filtered || tr !== undefined) return;
+    let alive = true;
+    loadSetJson<TeamRounds>(slug, scopedPath(scope, "team_rounds.json"))
+      .then((x) => alive && setTr(x), () => alive && setTr(null));
+    return () => { alive = false; };
+  }, [filtered, tr, slug, scope]);
+  useEffect(() => setTr(undefined), [slug, scope]);
+  useEffect(() => setPicked(new Set()), [id, scope]);
+  const mine = useMemo<MyGame[]>(() => (games ?? [])
+    .map((g) => {
+      const us = g.teams.find((t) => t.id === id);
+      return us ? { g, us, them: g.teams.filter((t) => t !== us) } : null;
+    })
+    .filter((x): x is MyGame => !!x)
+    .sort((a, b) => a.g.round - b.g.round), [games, id]);
+  const rounds = useMemo(() => [...new Set(mine.map((m) => m.g.round))].sort((a, b) => a - b), [mine]);
+  const rv = useMemo(() => (filtered && tr?.teams[id] ? teamRoundView(tr, id, picked) : null), [filtered, tr, id, picked]);
+
   if (loading) return <Loading />;
   if (error) return <ErrorBox error={error} />;
   if (!d) return <ErrorBox error="Team not found." />;
@@ -154,11 +190,25 @@ export function TeamDetailPage() {
   // a team page lands on that player instead.
   if (meta.individual && d.roster[0]) return <Navigate to={`/set/${slug}/player/${d.roster[0].id}`} replace />;
 
+  const sel = filtered ? mine.filter((m) => picked.has(m.g.round)) : mine;
+  const phrase = filtered ? roundsPhrase(picked, rounds) : "";
+  // Games in scope: from the box scores when there are any, else the round tallies.
+  const nGames = filtered ? (mine.length ? sel.length : rv?.games ?? 0) : d.games;
+  const sum = (f: (m: MyGame) => number) => sel.reduce((a, m) => a + f(m), 0);
+  const canFilterCats = !!tr?.teams[id];
+  const cats = rv?.categories ?? d.categories;
+  const bonusCats = rv?.bonusCategories ?? d.bonusCategories;
+  const catNote = !filtered || canFilterCats ? null
+    : tr === undefined ? <p className="muted">Loading these rounds…</p>
+    : <p className="muted">These are season totals: rebuild this tournament's stats to filter categories by round.</p>;
+
   const tossupCols: CatColumn<CatTeamTossupRow, CatTeamTossupSub>[] = [
     ...(meta.hasPower ? [{ label: "Pwr", align: "right" as const, main: (g: CatTeamTossupRow) => g.powers, sub: (s: CatTeamTossupSub) => s.powers }] : []),
     { label: "Get", align: "right", main: (g) => g.gets, sub: (s) => s.gets },
     { label: meta.hasNeg ? "Neg" : "Inc", align: "right", main: (g) => g.incorrect, sub: (s) => s.incorrect },
     { label: "Points", align: "right", main: (g) => g.points, sub: (s) => s.points },
+    { label: "Pts/G", align: "right", title: "Tossup points in this category per game played", main: (g) => num(nGames ? g.points / nGames : null), sub: (s) => num(nGames ? s.points / nGames : null),
+      sortMain: (g) => g.points, sortSub: (s) => s.points },
     { label: "Rank", align: "right", title: "This team's rank in the category by total points, of the teams that played it", main: (g) => rankCell(g.rank, g.rankOf), sub: (s) => rankCell(s.rank, s.rankOf),
       // Rank 1 is the best, so ascending is the useful default reading.
       sortMain: (g) => g.rank ?? null, sortSub: (s) => s.rank ?? null },
@@ -211,6 +261,25 @@ export function TeamDetailPage() {
         )}
       </div>
 
+      {rounds.length > 1 && <RoundPicker rounds={rounds} picked={picked} setPicked={setPicked} />}
+
+      {filtered && mine.length ? (() => {
+        const n = sel.length, tuh = sum((m) => m.g.tuh), bHeard = sum((m) => m.us.bonusesHeard);
+        const w = sel.filter((m) => m.us.result === "W").length, l = sel.filter((m) => m.us.result === "L").length, t = sel.filter((m) => m.us.result === "T").length;
+        return (
+          <div className="stat-row" title={`Totals over ${phrase}`}>
+            <Stat label="Games" value={String(n)} />
+            <Stat label="Record" value={`${w}-${l}${t ? `-${t}` : ""}`} />
+            <Stat label="PPG" value={num(n ? sum((m) => m.us.score) / n : null)} />
+            {teamBonus && <Stat label="PPB" value={num(bHeard ? sum((m) => m.us.bonusPts) / bHeard : null, 2)} />}
+            <Stat label="PP20TUH" value={num(tuh ? (20 * sum((m) => m.us.tuPts)) / tuh : null)} />
+            {rv && <Stat label="BPA" value={num(rv.bpa)} title="Buzz point area-under-the-curve over these rounds" />}
+            {meta.hasPower && <Stat label="Powers" value={String(sum((m) => m.us.powers))} />}
+            <Stat label="Correct" value={String(sum((m) => m.us.gets))} />
+            <Stat label={meta.hasNeg ? "Neg" : "Inc"} value={String(sum((m) => m.us.incorrect))} />
+          </div>
+        );
+      })() : (
       <div className="stat-row">
         <Stat label="PPG" value={num(d.ppg)} />
         {teamBonus && <Stat label="PPB" value={num(d.ppb, 2)} />}
@@ -222,19 +291,22 @@ export function TeamDetailPage() {
         <Stat label="1st buzzes" value={String(d.firstBuzzes)} />
         <Stat label="Top 3" value={String(d.top3Buzzes)} />
       </div>
+      )}
 
       {view === "main" || !teamBonus ? (
         <>
-          <h2>Roster</h2>
+          <h2>Roster{filtered ? " — all rounds" : ""}</h2>
           <DataTable rows={d.roster} columns={rosterCols} initialSort="pts" initialDir="desc" rowKey={(p) => p.id} />
-          <TeamGames teamId={id} />
-          <h2>Tossups by category</h2>
-          <CategoryGroups groups={d.categories} columns={tossupCols} linkBase={`/set/${slug}/tossup`} mainParam="category" subParam="subcategory" />
+          {mine.length > 0 && <TeamGames sel={sel} filtered={filtered} phrase={phrase} />}
+          <h2>Tossups by category{filtered && canFilterCats ? ` in ${phrase}` : ""}</h2>
+          {catNote}
+          <CategoryGroups groups={cats} columns={tossupCols} linkBase={`/set/${slug}/tossup`} mainParam="category" subParam="subcategory" />
         </>
       ) : (
         <>
-          <h2>Bonuses by category</h2>
-          <CategoryGroups groups={d.bonusCategories} columns={bonusCols} linkBase={`/set/${slug}/bonus`} mainParam="category" subParam="subcategory" />
+          <h2>Bonuses by category{filtered && canFilterCats ? ` in ${phrase}` : ""}</h2>
+          {catNote}
+          <CategoryGroups groups={bonusCats} columns={bonusCols} linkBase={`/set/${slug}/bonus`} mainParam="category" subParam="subcategory" />
         </>
       )}
     </div>
