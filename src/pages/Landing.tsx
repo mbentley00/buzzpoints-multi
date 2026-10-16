@@ -152,9 +152,14 @@ export function Landing() {
               </p>
             )}
           </div>
-          <Link to="/new" className="btn-primary">
-            Create new
-          </Link>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            {sets.filter((s) => s.owns && s.kind !== "results").length >= 2 && (
+              <Link to="/combine" className="link">Combine your tournaments</Link>
+            )}
+            <Link to="/new" className="btn-primary">
+              Create new
+            </Link>
+          </div>
         </div>
 
         {showControls && (

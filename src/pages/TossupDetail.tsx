@@ -56,7 +56,11 @@ function BuzzPop({ bz, slug }: { bz: Buzz[]; slug: string }) {
  *  onHoverWord, highlights the buzzers at that word in the buzz list. Hovering a
  *  buzzed word also pops up everyone who buzzed there; clicking pins that popup
  *  so you can follow the player/team links inside it. */
-function Question({ d, slug, onHoverWord, focus }: { d: TossupDetail; slug: string; onHoverWord: (i: number | null) => void; focus: number | null }) {
+function Question({ d, slug, onHoverWord, focus, lit }: {
+  d: TossupDetail; slug: string; onHoverWord: (i: number | null) => void; focus: number | null;
+  // The word a hovered buzz row, or the buzz curve's crosshair, points at.
+  lit: number | null;
+}) {
   const eff = (b: Buzz) => effIdx(d, b);
   const [pinned, setPinned] = useState<number | null>(null);
   const [hovered, setHovered] = useState<number | null>(null);
@@ -123,7 +127,7 @@ function Question({ d, slug, onHoverWord, focus }: { d: TossupDetail; slug: stri
           <span
             key={k}
             ref={i === focus ? focusRef : undefined}
-            className={"q-tok" + (power ? " q-power" : "") + (i === focus ? " q-tok-focus" : "")}
+            className={"q-tok" + (power ? " q-power" : "") + (i === focus ? " q-tok-focus" : "") + (i === lit ? " q-tok-lit" : "")}
             onMouseEnter={() => { onHoverWord(i); setHovered(i); }}
             onMouseLeave={() => { onHoverWord(null); setHovered(null); }}
           >
@@ -152,7 +156,7 @@ function Question({ d, slug, onHoverWord, focus }: { d: TossupDetail; slug: stri
       {/* The slot one past the last word: nobody buzzed before the question ran out. */}
       {endBuzzes ? (
         <span
-          className="q-tok"
+          className={"q-tok" + (lit === d.words.length ? " q-tok-lit" : "")}
           onMouseEnter={() => { onHoverWord(d.words.length); setHovered(d.words.length); }}
           onMouseLeave={() => { onHoverWord(null); setHovered(null); }}
         >
@@ -171,7 +175,7 @@ function Question({ d, slug, onHoverWord, focus }: { d: TossupDetail; slug: stri
           </span>
         </span>
       ) : (
-        <span className="q-end">■END■</span>
+        <span className={"q-end" + (lit === d.words.length ? " q-tok-lit" : "")}>■END■</span>
       )}
     </p>
   );
@@ -257,18 +261,18 @@ function BuzzEditor({ d, b, slug, isOwner, teammates, cols, onClose, onApplied }
   );
 }
 
-function BuzzRow({ d, b, slug, i, isOwner, canEdit, editing, highlight, teammates, opponents, editions, showEdition, individual, onEdit, onClose, onApplied }: {
+function BuzzRow({ d, b, slug, i, isOwner, canEdit, editing, highlight, teammates, opponents, editions, showEdition, individual, onEdit, onClose, onApplied, onHover }: {
   d: TossupDetail; b: Buzz; slug: string; i: number; isOwner: boolean; canEdit: boolean; editing: boolean;
   highlight: boolean; teammates: string[]; opponents: string[]; editions: EditionSummary[]; showEdition: boolean;
   // A shootout: the "team" is this player and the "opponent" is one of several
   // people in the room — neither is worth a cell.
   individual: boolean;
-  onEdit: () => void; onClose: () => void; onApplied: () => void;
+  onEdit: () => void; onClose: () => void; onApplied: () => void; onHover: (on: boolean) => void;
 }) {
   const t = tier(b.value);
   return (
     <>
-      <tr className={`buzz-row ${rowCls[t]}${highlight ? " buzz-hl" : ""}`}>
+      <tr className={`buzz-row ${rowCls[t]}${highlight ? " buzz-hl" : ""}`} onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)}>
         <td className="buzz-who">
           <span className="buzz-player">
             {b.playerId ? <Link className="link" to={`/set/${slug}/player/${b.playerId}`}>{b.player}</Link> : b.player}
@@ -308,6 +312,8 @@ export function TossupDetailPage() {
   const { data: rosters } = useSetJson<Rosters>(slug, version !== "all" ? `editions/${version}/rosters.json` : "rosters.json", nonce);
   const [editing, setEditing] = useState<number | null>(null);
   const [hoverWord, setHoverWord] = useState<number | null>(null);
+  const [rowWord, setRowWord] = useState<number | null>(null); // word of the hovered buzz row
+  const [curveWord, setCurveWord] = useState<number | null>(null); // word under the buzz-curve crosshair
   // ?w=<1-based word number> — set by the buzzpoint links on a player's page.
   const [params] = useSearchParams();
   const wParam = Number(params.get("w"));
@@ -349,11 +355,11 @@ export function TossupDetailPage() {
       <div className="tu-grid">
         <div className="tu-left">
           <h1>Packet {roundLabel(d.round)}: Tossup {d.num}</h1>
-          <Question d={d} slug={slug} onHoverWord={setHoverWord} focus={focusWord} />
+          <Question d={d} slug={slug} onHoverWord={setHoverWord} focus={focusWord} lit={rowWord ?? curveWord} />
           <p className="tu-answer">ANSWER: <Html html={d.answer} /></p>
           <p className="subtitle">{d.category} · <span className="muted">{d.subcategory}</span></p>
           <QuestionTags slug={slug} id={d.id} kind="tossups" tags={d.tags || []} isOwner={isOwner} />
-          {d.buzzes.length > 0 && <BuzzCurve d={d} />}
+          {d.buzzes.length > 0 && <BuzzCurve d={d} onHoverWord={setCurveWord} />}
         </div>
 
         <div className="tu-right">
@@ -383,6 +389,7 @@ export function TossupDetailPage() {
                     editions={editions} showEdition={showEdition} individual={!!meta.individual}
                     onEdit={() => setEditing(i)} onClose={() => setEditing(null)}
                     onApplied={() => { setEditing(null); setNonce((n) => n + 1); }}
+                    onHover={(on) => setRowWord(on ? effIdx(d, b) : null)}
                   />
                 ))}
               </tbody>

@@ -133,6 +133,9 @@ export interface SetEntry {
   tournamentDate?: string;
   // Whether the set's discussion (see _lib/forum.ts) is open. Off by default.
   forum?: boolean;
+  // Built by combining other tournaments (see _lib/combine.ts): each source and
+  // the packet numbers its rounds became. Absent on ordinary sets.
+  combinedFrom?: { slug: string; name: string; from: number; to: number }[];
   numGames: number;
   numTeams: number;
   numPlayers: number;
@@ -247,6 +250,7 @@ export function sanitizeEntry(e: SetEntry, user: string | null) {
     hasAccess: canViewContent(e, user),
     // Normalized so the client never has to special-case the absent default.
     allowRequests: requestsAllowed(e),
+    owns,
     // Owners (creator and co-owners alike) see the management lists; everyone
     // else sees neither who's invited nor who else can edit.
     ...(owns ? { invites, coOwners: coOwners || [], publicPending: !!publicPending } : {}),

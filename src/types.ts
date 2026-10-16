@@ -113,6 +113,9 @@ export interface SetEntry {
   // An individual shootout (IPNCT-style): players compete for themselves, so
   // "teams" here are players. Absent means a team tournament.
   individual?: boolean;
+  owns?: boolean; // the viewer owns or co-owns this set
+  // Built by combining other tournaments: each source and the packets it became.
+  combinedFrom?: CombinedFrom[];
   numGames: number;
   numTeams: number;
   numPlayers: number;
@@ -120,6 +123,7 @@ export interface SetEntry {
   rounds: number;
   createdAt: string;
 }
+export interface CombinedFrom { slug: string; name: string; from: number; to: number }
 
 // What SetLayout passes to child pages via Outlet context.
 export interface SetCtx {
@@ -135,6 +139,7 @@ export interface SetCtx {
   level?: string;
   tdLink?: string;
   difficulty?: string;
+  combinedFrom?: CombinedFrom[];
   // Whether the set's discussion is open, and how many of its posts this
   // viewer hasn't seen.
   forum: boolean;

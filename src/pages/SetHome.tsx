@@ -3,7 +3,7 @@ import { useSetCtx, setTabs } from "../components/Layout";
 import { levelLabel, difficultyLabel } from "../types";
 
 export function SetHome() {
-  const { meta, level, tdLink, difficulty, editions, isOwner, forum, forumUnread, pendingAccess } = useSetCtx();
+  const { meta, level, tdLink, difficulty, combinedFrom, editions, isOwner, forum, forumUnread, pendingAccess } = useSetCtx();
   const { slug = "" } = useParams();
   const base = `/set/${slug}`;
   // Every page the header offers, as a card — the same list, so nothing the
@@ -23,6 +23,18 @@ export function SetHome() {
             {meta.scoringLabel}
             {meta.hasBonuses ? " · with bonuses" : " · no bonuses"}
           </p>
+          {combinedFrom && combinedFrom.length > 0 && (
+            <p className="subtitle">
+              Combined from{" "}
+              {combinedFrom.map((c, i) => (
+                <span key={c.slug}>
+                  {i > 0 && " · "}
+                  <Link className="link" to={`/set/${c.slug}`}>{c.name}</Link>{" "}
+                  <span className="muted">(packets {c.from}–{c.to})</span>
+                </span>
+              ))}
+            </p>
+          )}
           {tdLink && (
             <p className="subtitle">
               <a className="link" href={tdLink} target="_blank" rel="noreferrer">Tournament Database entry →</a>

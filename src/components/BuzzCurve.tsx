@@ -36,7 +36,8 @@ function niceStep(max: number, target = 4): number {
   return [1, 2, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? mag * 10;
 }
 
-export function BuzzCurve({ d }: { d: TossupDetail }) {
+// onHoverWord lights the crosshair's word in the question text above.
+export function BuzzCurve({ d, onHoverWord }: { d: TossupDetail; onHoverWord?: (i: number | null) => void }) {
   const svg = useRef<SVGSVGElement | null>(null);
   const [hover, setHover] = useState<number | null>(null);
 
@@ -89,7 +90,10 @@ export function BuzzCurve({ d }: { d: TossupDetail }) {
     if (!r) return;
     const px = ((e.clientX - r.left) / r.width) * W;
     const i = Math.round(((px - M.left) / PW) * n);
-    setHover(i >= 0 && i <= n ? i : null);
+    const h = i >= 0 && i <= n ? i : null;
+    setHover(h);
+    // The text has a slot per word plus ■END■; the axis runs one past that.
+    onHoverWord?.(h === null ? null : Math.min(h, d.words.length));
   };
 
   return (
@@ -108,7 +112,7 @@ export function BuzzCurve({ d }: { d: TossupDetail }) {
       <svg
         ref={svg} viewBox={`0 0 ${W} ${H}`} className="buzzcurve-svg" role="img"
         aria-label={`Cumulative buzzes by word position: ${cumT[n]} in total, ${cumC[n]} correct`}
-        onMouseMove={onMove} onMouseLeave={() => setHover(null)}
+        onMouseMove={onMove} onMouseLeave={() => { setHover(null); onHoverWord?.(null); }}
       >
         {/* Dashed grid in both directions, as the old site drew it. */}
         {yTicks.map((v) => (

@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams, Link, Navigate } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
-import { TeamDetail, RosterPlayer, CatBonusRow, CatBonusSub, CatTeamTossupRow, CatTeamTossupSub } from "../types";
-import { num, pct } from "../util";
+import { TeamDetail, RosterPlayer, CatBonusRow, CatBonusSub, CatTeamTossupRow, CatTeamTossupSub, GameRow, GamePlayerLine } from "../types";
+import { num, pct, roundLabel } from "../util";
 import { Loading, ErrorBox, EditionBadges } from "../components/Common";
 import { CategoryGroups, CatColumn } from "../components/CategoryGroups";
 import { DataTable, Column } from "../components/DataTable";
@@ -18,6 +18,122 @@ function Stat({ label, value, title }: { label: string; value: string; title?: s
       <div className="stat-value">{value}</div>
       <div className="stat-label">{label}</div>
     </div>
+  );
+}
+
+// This team's games from the box scores, with a round picker: totals and
+// player lines for just the rounds chosen (all of them when none are). Read
+// from games.json in the same scope as the page, so team ids line up.
+function TeamGames({ teamId }: { teamId: string }) {
+  const { meta, slug } = useSetCtx();
+  const { data: games } = useScopedJson<GameRow[]>("games.json");
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+
+  const mine = useMemo(() => (games ?? [])
+    .map((g) => {
+      const us = g.teams.find((t) => t.id === teamId);
+      return us ? { g, us, them: g.teams.filter((t) => t !== us) } : null;
+    })
+    .filter((x): x is NonNullable<typeof x> => !!x)
+    .sort((a, b) => a.g.round - b.g.round), [games, teamId]);
+  const rounds = useMemo(() => [...new Set(mine.map((m) => m.g.round))], [mine]);
+  // A set aggregated before box scores existed has no games.json: say nothing.
+  if (!mine.length) return null;
+
+  const sel = picked.size ? mine.filter((m) => picked.has(m.g.round)) : mine;
+  const toggle = (r: number) => setPicked((p) => { const n = new Set(p); if (n.has(r)) n.delete(r); else n.add(r); return n; });
+  const sum = (f: (m: (typeof mine)[number]) => number) => sel.reduce((a, m) => a + f(m), 0);
+  const n = sel.length;
+  const w = sel.filter((m) => m.us.result === "W").length, l = sel.filter((m) => m.us.result === "L").length, t = sel.filter((m) => m.us.result === "T").length;
+  const bHeard = sum((m) => m.us.bonusesHeard), bPts = sum((m) => m.us.bonusPts), tuh = sum((m) => m.g.tuh);
+  const teamBonus = meta.hasBonuses && meta.hasTeamBonuses !== false;
+
+  // Player lines pooled over the chosen games.
+  const byPlayer = new Map<string, GamePlayerLine & { gp: number }>();
+  for (const m of sel) for (const p of m.us.players) {
+    const k = p.id ?? p.name;
+    const cur = byPlayer.get(k) ?? { ...p, tuh: 0, powers: 0, gets: 0, incorrect: 0, pts: 0, gp: 0 };
+    cur.tuh += p.tuh; cur.powers += p.powers; cur.gets += p.gets; cur.incorrect += p.incorrect; cur.pts += p.pts; cur.gp++;
+    byPlayer.set(k, cur);
+  }
+  const players = [...byPlayer.values()].sort((a, b) => b.pts - a.pts);
+  const who = (x: { id: string | null; name: string }, path: "team" | "player") =>
+    x.id ? <Link className="link" to={`/set/${slug}/${path}/${x.id}`}>{x.name}</Link> : x.name;
+
+  return (
+    <>
+      <h2>Games by round</h2>
+      <div className="round-pick">
+        <span className="muted">Rounds:</span>
+        <button type="button" className={"tag-chip" + (picked.size ? "" : " on")} onClick={() => setPicked(new Set())}>All</button>
+        {rounds.map((r) => (
+          <button key={r} type="button" className={"tag-chip" + (picked.has(r) ? " on" : "")} onClick={() => toggle(r)}>{roundLabel(r)}</button>
+        ))}
+      </div>
+      <div className="stat-row">
+        <Stat label="Games" value={String(n)} />
+        <Stat label="Record" value={`${w}-${l}${t ? `-${t}` : ""}`} />
+        <Stat label="PPG" value={num(n ? sum((m) => m.us.score) / n : null)} />
+        {teamBonus && <Stat label="PPB" value={num(bHeard ? bPts / bHeard : null, 2)} />}
+        <Stat label="PP20TUH" value={num(tuh ? (20 * sum((m) => m.us.score)) / tuh : null)} />
+        {meta.hasPower && <Stat label="Powers" value={String(sum((m) => m.us.powers))} />}
+        <Stat label="Correct" value={String(sum((m) => m.us.gets))} />
+        <Stat label={meta.hasNeg ? "Neg" : "Inc"} value={String(sum((m) => m.us.incorrect))} />
+      </div>
+      <div className="table-wrap">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Round</th><th>Opponent</th><th>Result</th><th className="right">Score</th>
+              {meta.hasPower && <th className="right">Pwr</th>}
+              <th className="right">Get</th><th className="right">{meta.hasNeg ? "Neg" : "Inc"}</th>
+              {teamBonus && <><th className="right">Bonus pts</th><th className="right">PPB</th></>}
+            </tr>
+          </thead>
+          <tbody>
+            {sel.map((m, i) => (
+              <tr key={i}>
+                <td>{roundLabel(m.g.round)}</td>
+                <td>{m.them.length ? m.them.map((x, j) => <span key={j}>{j > 0 && ", "}{who(x, "team")}</span>) : "—"}</td>
+                <td>{m.us.result ?? "—"}</td>
+                <td className="right mono">{m.us.score}{m.them.length === 1 ? `–${m.them[0].score}` : ""}</td>
+                {meta.hasPower && <td className="right mono">{m.us.powers}</td>}
+                <td className="right mono">{m.us.gets}</td>
+                <td className="right mono">{m.us.incorrect}</td>
+                {teamBonus && <><td className="right mono">{m.us.bonusPts}</td><td className="right mono">{m.us.bonusesHeard ? num(m.us.bonusPts / m.us.bonusesHeard, 2) : "—"}</td></>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {picked.size > 0 && players.length > 0 && (
+        <>
+          <h3>Players in {picked.size === 1 ? `round ${roundLabel([...picked][0])}` : "these rounds"}</h3>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Player</th><th className="right">GP</th>
+                  {meta.hasPower && <th className="right">Pwr</th>}
+                  <th className="right">Get</th><th className="right">{meta.hasNeg ? "Neg" : "Inc"}</th>
+                  <th className="right">Points</th><th className="right">PPG</th>
+                </tr>
+              </thead>
+              <tbody>
+                {players.map((p) => (
+                  <tr key={p.id ?? p.name}>
+                    <td>{who(p, "player")}</td><td className="right mono">{p.gp}</td>
+                    {meta.hasPower && <td className="right mono">{p.powers}</td>}
+                    <td className="right mono">{p.gets}</td><td className="right mono">{p.incorrect}</td>
+                    <td className="right mono">{p.pts}</td><td className="right mono">{num(p.pts / p.gp)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </>
   );
 }
 
@@ -111,6 +227,7 @@ export function TeamDetailPage() {
         <>
           <h2>Roster</h2>
           <DataTable rows={d.roster} columns={rosterCols} initialSort="pts" initialDir="desc" rowKey={(p) => p.id} />
+          <TeamGames teamId={id} />
           <h2>Tossups by category</h2>
           <CategoryGroups groups={d.categories} columns={tossupCols} linkBase={`/set/${slug}/tossup`} mainParam="category" subParam="subcategory" />
         </>

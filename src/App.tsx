@@ -4,6 +4,7 @@ import { Landing } from "./pages/Landing";
 import { About } from "./pages/About";
 import { Search } from "./pages/Search";
 import { CreateSet } from "./pages/CreateSet";
+import { CombineSets } from "./pages/CombineSets";
 import { SetHome } from "./pages/SetHome";
 import { Tossups } from "./pages/Tossups";
 import { TossupDetailPage } from "./pages/TossupDetail";
@@ -47,6 +48,7 @@ export default function App() {
       <Route path="/admin/:tab" element={<Admin />} />
       <Route path="/profile" element={<Profile />} />
       <Route path="/new" element={<CreateSet />} />
+      <Route path="/combine" element={<CombineSets />} />
       <Route path="/set/:slug" element={<SetLayout />}>
         <Route index element={<SetHome />} />
         <Route path="tossup" element={<Tossups />} />

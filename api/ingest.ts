@@ -18,6 +18,7 @@ import {
 } from "./_lib/sets.js";
 import { createTournament, createFromSource, updateFromSource, parseFiles, validLevel, cleanTdLink, cleanTournamentDate, normVisibility, CreateError, FileRef } from "./_lib/publish.js";
 import { parseYellowFruit } from "./_lib/yellowfruit.js";
+import { combineSets, CombineBody } from "./_lib/combine.js";
 import { scrapeEdition, scrapeBonusResults, applyBonusResults, applyBonusText, listEditions, listSets, setEditions, parseTarget, slugToName, scoringFor, setNameFrom } from "./_lib/importBuzzpoints.js";
 import { detectStaticSite, scrapeStaticEdition } from "./_lib/importStatic.js";
 import { applyBonusFills, BonusFill } from "./_lib/bonusFill.js";
@@ -457,6 +458,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Async import from another Buzzpoints site, or a local native-file import
   // (browser drives start/edition/finish).
+  // A new tournament pooling several the caller owns (see _lib/combine.ts).
+  if (body.op === "combine") {
+    try { return res.status(200).json(await combineSets(body as CombineBody, owner)); }
+    catch (e) { return res.status(e instanceof CreateError ? e.status : 500).json({ error: (e as Error).message }); }
+  }
   if (typeof body.op === "string" && (body.op.startsWith("import-") || body.op.startsWith("local-") || body.op.startsWith("bonus-text-"))) return handleImport(body, owner, res);
 
   // Validate the optional companion YellowFruit file up front (so a first-post

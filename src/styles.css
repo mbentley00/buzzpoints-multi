@@ -948,6 +948,8 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
 .q-tok-focus { border-radius: 4px; box-shadow: 0 0 0 2px #e08a1e; background: var(--warn-bg); }
 @keyframes q-focus-pulse { from { box-shadow: 0 0 0 6px rgba(224, 138, 30, 0); } to { box-shadow: 0 0 0 2px #e08a1e; } }
 .q-tok-focus { animation: q-focus-pulse 0.6s ease-out 1; }
+/* The word a hovered buzz row, or the buzz curve's crosshair, points at. */
+.q-tok-lit { border-radius: 4px; box-shadow: 0 0 0 2px #e08a1e; background: var(--warn-bg); }
 
 /* Who buzzed here — hover a buzzed word, click to pin (so the links inside are
    reachable). Also reused for a bonus part's converting teams. */
@@ -1110,6 +1112,8 @@ a.auth-user:hover { color: #fff; text-decoration: underline; }
 }
 .tag-chip:hover { background: var(--hover); }
 .tag-chip.on { background: #2563eb; border-color: #2563eb; color: #fff; }
+/* Team page: pick rounds to see the team's games and totals for just those. */
+.round-pick { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
 .rt-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .rt-newtag { padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: 4px; font-size: 13px; min-width: 180px; }
 .version-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; font-size: 13.5px; padding: 7px 12px; background: var(--surface-3); border: 1px solid #dbe6fb; border-radius: 6px; }
@@ -1200,6 +1204,12 @@ a.auth-user:hover { color: #fff; text-decoration: underline; }
 
 /* create-tournament form */
 .create-form { max-width: 560px; display: flex; flex-direction: column; gap: 16px; margin-top: 14px; }
+/* Combine tournaments: the owned-set picker and the chosen order. */
+.combine-list { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+.combine-opt { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; cursor: pointer; }
+.combine-order { margin: 4px 0 0; padding-left: 22px; }
+.combine-order li { margin: 2px 0; }
+.combine-order .btn-link { margin-left: 6px; }
 .field { display: flex; flex-direction: column; gap: 5px; }
 .field > span { font-weight: 600; font-size: 13.5px; }
 .field input[type="text"], .field input:not([type]), .field input[type="file"], .field select {
