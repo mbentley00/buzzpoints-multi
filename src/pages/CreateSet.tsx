@@ -186,6 +186,14 @@ export function CreateSet() {
     if (g.firstDate) setTournamentDate(g.firstDate);
   }
   const scanGroup = scan?.sets.find((g) => g.key === scanSet) || null;
+  // Sites with far fewer rounds than is typical usually mean the export is
+  // missing that site's other games (not every QBJ made it in), so say so.
+  const typicalRounds = useMemo(() => {
+    if (!scanGroup) return 0;
+    const n = scanGroup.mirrors.map((m) => m.roundPacket.size).sort((a, b) => a - b);
+    return n[Math.floor(n.length / 2)] || 0;
+  }, [scanGroup]);
+  const isShort = (rounds: number) => typicalRounds >= 4 && rounds <= typicalRounds / 2;
 
   // The browser drives the import across many requests so each one (a single
   // edition scrape) stays within the function time limit. Large multi-mirror
@@ -669,13 +677,24 @@ export function CreateSet() {
                           <td><input value={folderLabels[m.name] ?? m.label} onChange={(e) => setFolderLabels((l) => ({ ...l, [m.name]: e.target.value }))} disabled={off} /></td>
                           {scanGroup.editionNames.size > 1 && <td>{scanGroup.editionNames.get(m.edKey) || "—"}</td>}
                           <td>{m.games.length}</td>
-                          <td className={cov.matched < cov.rounds ? "warn-text" : ""}>{cov.matched} / {cov.rounds}</td>
+                          <td className={cov.matched < cov.rounds || isShort(cov.rounds) ? "warn-text" : ""}>
+                            {cov.matched} / {cov.rounds}
+                            {isShort(cov.rounds) && <span title={`Most sites have ${typicalRounds} rounds. This site's other games may be missing from the file.`}> — only {cov.rounds} round{cov.rounds === 1 ? "" : "s"}?</span>}
+                          </td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
               </div>
+              {scanGroup.mirrors.some((m) => isShort(m.roundPacket.size)) && (
+                <small className="warn-text">
+                  {scanGroup.mirrors.filter((m) => isShort(m.roundPacket.size)).map((m) => m.label).join(", ")}{" "}
+                  {scanGroup.mirrors.filter((m) => isShort(m.roundPacket.size)).length === 1 ? "has" : "have"} far fewer rounds than the
+                  other sites (most have {typicalRounds}). The file may be missing those sites' other games. You can still go ahead,
+                  and add their games later from the tournament's Editions page.
+                </small>
+              )}
               <small className="muted">
                 Each site's packets are filed under the round that site played them, so sites that read the packets in a
                 different order still line up question by question.
