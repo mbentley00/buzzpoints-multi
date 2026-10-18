@@ -61,6 +61,7 @@ export interface SetGroup {
   key: string; name: string; hasBonuses: boolean; scoring: string | null;
   mirrors: Mirror[];
   editionNames: Map<string, string>; // edKey -> display name ("" -> "")
+  firstDate?: string; // earliest site start_date (YYYY-MM-DD), when the sites' index.json say
 }
 export interface FolderScan {
   sets: SetGroup[];
@@ -151,6 +152,7 @@ export async function scanDataFolder(files: PathFile[], onProgress?: (msg: strin
 
   const groups = new Map<string, SetGroup>();
   const setValues = new Map<string, Set<number>>();
+  const setDate = new Map<string, string>();
   let mi = 0, noGames = 0, unmatched = 0;
   for (const [mirror, games] of mirrorFiles) {
     onProgress?.(`Reading games… ${++mi}/${mirrorFiles.size} sites`);
@@ -170,12 +172,13 @@ export async function scanDataFolder(files: PathFile[], onProgress?: (msg: strin
     if (!roundPacket.size) { noGames++; continue; } // no games / no round info
 
     // Prefer the mirror's own index.json, which names its set and edition.
-    let label = mirror, setKey: string | undefined, edKey: string | undefined;
+    let label = mirror, setKey: string | undefined, edKey: string | undefined, date: string | undefined;
     const mf = mirrorIndex.get(mirror);
     if (mf) {
       try {
         const j = JSON.parse(await mf.text());
         if (j.name) label = String(j.name);
+        if (/^\d{4}-\d{2}-\d{2}/.test(String(j.start_date || ""))) date = String(j.start_date).slice(0, 10);
         if (j.set) setKey = setByName.get(normPacket(String(j.set)));
         if (setKey && j.edition) edKey = edByName.get(`${setKey}|${normPacket(String(j.edition))}`);
       } catch { /* fall through to packet voting */ }
@@ -201,11 +204,13 @@ export async function scanDataFolder(files: PathFile[], onProgress?: (msg: strin
     if (!setKey) { unmatched++; continue; }
     if (!groups.has(setKey)) groups.set(setKey, { key: setKey, name: setName.get(setKey) || setKey, hasBonuses: setBonuses.get(setKey) !== false, scoring: null, mirrors: [], editionNames: new Map() });
     groups.get(setKey)!.mirrors.push({ name: mirror, label, edKey: edKey ?? "", games, roundPacket });
+    if (date && (!setDate.has(setKey) || date < setDate.get(setKey)!)) setDate.set(setKey, date);
     if (!setValues.has(setKey)) setValues.set(setKey, new Set());
     for (const v of vals) setValues.get(setKey)!.add(v);
   }
   for (const g of groups.values()) {
     g.scoring = scoringFromValues(setValues.get(g.key) || new Set());
+    g.firstDate = setDate.get(g.key);
     g.mirrors.sort((a, b) => a.label.localeCompare(b.label));
     for (const m of g.mirrors) g.editionNames.set(m.edKey, edDisplay.get(`${g.key}|${m.edKey}`) || m.edKey.split("/").pop() || "");
   }
