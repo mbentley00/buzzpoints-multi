@@ -34,7 +34,9 @@ export async function ingestPostRetry(b: any, onWait?: (s: number) => void, trie
 // One edition to stage. Packet files must already be named by the round this
 // mirror played them ("Round_3.json"), since the server reads a packet's round
 // from its filename.
-export interface StageEdition { label: string; packets: File[]; games: File[] }
+// keepId: when replacing a set's data, the existing edition this one takes over
+// (it keeps that id, so per-edition settings stay attached).
+export interface StageEdition { label: string; packets: File[]; games: File[]; keepId?: string }
 
 // Upload and stage every edition; returns the job to finish with "local-create"
 // (or "local-finish") and how many editions it holds.
@@ -51,7 +53,7 @@ export async function stageEditions(
     const packetRefs = await uploadFiles(ed.packets, (d, t) => say(`Uploading ${tag} — packets ${d}/${t}`));
     const gameRefs = await uploadFiles(ed.games, (d, t) => say(`Uploading ${tag} — games ${d}/${t}`));
     say(`Reading ${tag}…`);
-    await ingestPostRetry({ op: "local-edition", jobId: start.jobId, index: n, label: ed.label, packets: packetRefs, games: gameRefs }, wait);
+    await ingestPostRetry({ op: "local-edition", jobId: start.jobId, index: n, label: ed.label, ...(ed.keepId ? { keepId: ed.keepId } : {}), packets: packetRefs, games: gameRefs }, wait);
     n++;
   }
   return { jobId: start.jobId, editionCount: n };

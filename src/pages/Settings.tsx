@@ -16,6 +16,7 @@ import { PacketTextFill } from "../components/BonusTextRepair";
 import { QuestionEditor } from "../components/QuestionEditor";
 import { DupeFinder } from "../components/DupeFinder";
 import { ReplacementEditor } from "../components/Replacements";
+import { ReplaceData } from "../components/ReplaceData";
 
 const VIS_OPTIONS: { id: Visibility; label: string; desc: string }[] = [
   { id: "listed", label: "Listed (login + invite)", desc: "Shown in the list; only invited, logged-in people can view." },
@@ -656,6 +657,18 @@ export function Settings() {
             instead of starting a new one.
           </p>
           <UploadCleanup slug={slug} />
+
+          <h2 id="replace" style={{ marginTop: 28 }}>Replace all data</h2>
+          <p className="muted">
+            Swap every edition's packets and games for a new export — a buzzpoint-migrator <code>.db</code>, its data
+            folder, or a .zip of that folder. Use it when a better copy of the data turns up (for example, one with every
+            team's bonus results). The tournament keeps its address, name, owners, visibility, invites and corrections.
+          </p>
+          <ReplaceData
+            slug={slug} setName={meta?.setName ?? ""} scoring={meta?.scoring ?? ""}
+            editions={editions.length ? editions : [{ id: "e0", label: "Original" }]}
+            onDone={() => setTimeout(() => window.location.reload(), 1500)}
+          />
 
           <h2 id="games" style={{ marginTop: 28 }}>Individual games</h2>
           <p className="muted">

@@ -4,7 +4,7 @@
 import { PacketFile, GameFile } from "./aggregate.js";
 import { SCORINGS } from "./scoring.js";
 import {
-  readIndex, writeIndex, writeSource, writeCorrections, writeRequests, readCorrections,
+  readIndex, writeIndex, writeSource, readSource, editionsOf, writeCorrections, writeRequests, readCorrections,
   aggregateAndWrite, SetSource, SetEntry, Visibility, writeYf, TOURNAMENT_LEVELS, isSetOwner, practiceVisibility, difficultiesFor, isTournamentDate,
 } from "./sets.js";
 import { parseYellowFruit } from "./yellowfruit.js";
@@ -200,6 +200,30 @@ export async function updateFromSource(
   source.name = entry.name || source.name;
   // ...and the format: a re-scrape knows nothing about how the set is read.
   if (entry.individual) source.individual = true;
+  // Edition ids anchor per-edition settings (phases, replacements, labels). An
+  // incoming edition keeps the id of the one it replaces — named by keepId, or
+  // else the existing edition with the same label — and any other gets a fresh
+  // id, so a setting never lands on a different mirror than it was made for.
+  if (source.editions?.length) {
+    const prev = await readSource(slug);
+    const old = prev ? editionsOf(prev) : [];
+    const oldIds = new Set(old.map((e) => e.id));
+    const byLabel = new Map(old.map((e) => [e.label.trim().toLowerCase(), e.id]));
+    const taken = new Set<string>();
+    const want = source.editions.map((e) => {
+      const k = (e as { keepId?: string }).keepId;
+      const id = k && oldIds.has(k) ? k : byLabel.get(e.label.trim().toLowerCase());
+      if (!id || taken.has(id)) return null;
+      taken.add(id);
+      return id;
+    });
+    let n = 0;
+    const fresh = () => { while (taken.has(`e${n}`) || oldIds.has(`e${n}`)) n++; taken.add(`e${n}`); return `e${n}`; };
+    source.editions = source.editions.map((e, i) => {
+      const { keepId: _k, ...rest } = e as typeof e & { keepId?: string };
+      return { ...rest, id: want[i] ?? fresh() };
+    });
+  }
   await writeSource(slug, source);
   const { meta, editions } = await aggregateAndWrite(slug, source, await readCorrections(slug));
 

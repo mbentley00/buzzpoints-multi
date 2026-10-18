@@ -41,6 +41,14 @@ export function editionsOf(s: SetSource): Edition[] {
   }
   return eds;
 }
+// The first "e<n>" id not already used. Ids can have gaps (an edition removed,
+// or data replaced), so the count of editions isn't a safe next id.
+export function nextEditionId(eds: { id: string }[]): string {
+  const used = new Set(eds.map((e) => e.id));
+  let n = eds.length;
+  while (used.has(`e${n}`)) n++;
+  return `e${n}`;
+}
 export interface EditionSummary { id: string; label: string; numGames: number; numTeams: number; numPlayers: number; numTossups: number; rounds: number; }
 export type Visibility = "public" | "listed" | "private";
 

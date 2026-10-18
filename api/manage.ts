@@ -17,6 +17,7 @@ import {
   readMetaMap, writeMetaMap, readTagEdits, writeTagEdits, readBonusDiffs, writeBonusDiffs,
   isSetOwner, isPrimaryOwner, ownerEmails, requestsAllowed, needsPublishApproval, isPractice, practiceVisibility,
   isTournamentDate, readReplacements, writeReplacements,
+  nextEditionId,
 } from "./_lib/sets.js";
 import {
   applyReplacements, scanMissingQuestions, replacementCandidates, suggestReplacement, replacementKey, QuestionReplacement,
@@ -949,7 +950,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           let label = base, n = 2;
           while (labels.has(label)) label = `${base} (${n++})`;
           labels.add(label);
-          eds = [...eds, { ...e, id: `e${eds.length}`, label }];
+          eds = [...eds, { ...e, id: nextEditionId(eds), label }];
         }
         // The absorbed tournament's edits are its owner's work, so they come
         // along. Anything already keyed the same in the destination wins —

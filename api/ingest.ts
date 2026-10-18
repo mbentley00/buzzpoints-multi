@@ -15,6 +15,7 @@ import { currentUser, isAdminEmail, canModerate, loadUsers, moderatorEmails, sig
 import {
   readIndex, writeIndex, readSource, writeSource, writeCorrections, readCorrections,
   aggregateAndWrite, editionsOf, SetSource, isSetOwner,
+  nextEditionId,
 } from "./_lib/sets.js";
 import { createTournament, createFromSource, updateFromSource, parseFiles, validLevel, cleanTdLink, cleanTournamentDate, normVisibility, CreateError, FileRef, ParsedEdition } from "./_lib/publish.js";
 import { parseYellowFruit } from "./_lib/yellowfruit.js";
@@ -93,7 +94,8 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
         const packets = await resolveRefs(body.packets, tempPaths);
         const games = await resolveRefs(body.games, tempPaths);
         const parsed = parseFiles({ packets, games });
-        await writeJson(edPath(jobId, i), { label: String(body.label || `Mirror ${i + 1}`), packets: parsed.packets, games: parsed.games });
+        const keepId = typeof body.keepId === "string" && body.keepId ? body.keepId : undefined;
+        await writeJson(edPath(jobId, i), { label: String(body.label || `Mirror ${i + 1}`), ...(keepId ? { keepId } : {}), packets: parsed.packets, games: parsed.games });
         await cleanupTemp(tempPaths);
       } catch (e) {
         await cleanupTemp(tempPaths);
@@ -107,8 +109,9 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     const count = Number(body.editionCount) || 0;
     const editions: any[] = [];
     for (let i = 0; i < count; i++) {
-      const ed = await readBlobJson<{ label: string; packets: any[]; games: any[] }>(edPath(jobId, i), false);
-      if (ed && Array.isArray(ed.games) && ed.games.length) editions.push({ id: `e${editions.length}`, label: ed.label, packets: ed.packets, games: ed.games });
+      const ed = await readBlobJson<{ label: string; keepId?: string; packets: any[]; games: any[] }>(edPath(jobId, i), false);
+      if (ed && Array.isArray(ed.games) && ed.games.length)
+        editions.push({ id: `e${editions.length}`, label: ed.label, ...(ed.keepId ? { keepId: ed.keepId } : {}), packets: ed.packets, games: ed.games });
     }
     if (!editions.length) return res.status(400).json({ error: "No editions with game data." });
     const cleanup = () => del([jobPath(jobId), ...Array.from({ length: count }, (_, i) => edPath(jobId, i))]).catch(() => {});
@@ -663,7 +666,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Create a new edition / mirror.
         const blockedLabel = findBlocked(body.edition || "", blocklist);
         if (blockedLabel) return res.status(400).json({ error: `Edition label contains a disallowed word: "${blockedLabel}".` });
-        const id = `e${eds.length}`;
+        const id = nextEditionId(eds);
         const label = (body.edition || "").trim() || `Mirror ${eds.length + 1}`;
         next = { ...source, editions: [...eds, { id, label, packets, games }] };
         resultId = id;
