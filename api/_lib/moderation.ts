@@ -30,6 +30,9 @@ export interface PendingPayload {
   yf?: any;
   packets?: { name: string; json: any }[];
   games?: { name: string; json: any }[];
+  // A multi-mirror upload, already parsed (see CreateBody.parsedEditions).
+  parsedEditions?: { label: string; packets: any[]; games: any[] }[];
+  individual?: boolean; difficulty?: string; tournamentDate?: string;
 }
 
 async function writeJson(path: string, obj: unknown) {

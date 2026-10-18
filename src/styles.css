@@ -1220,6 +1220,18 @@ a.auth-user:hover { color: #fff; text-decoration: underline; }
 .field-inline { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13.5px; }
 .field small { font-size: 12px; }
 
+/* New tournament: several sites / packet versions, and the data-folder preview */
+.multi-add { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; font-size: 13px; }
+.site-block { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
+.site-block-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.site-block-head input { flex: 1 1 180px; min-width: 0; }
+.field > .btn-link { align-self: flex-start; }
+.site-table-wrap { max-height: 360px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+.site-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.site-table th, .site-table td { padding: 4px 8px; text-align: left; border-bottom: 1px solid var(--line); }
+.site-table th { position: sticky; top: 0; background: var(--surface-2); font-weight: 600; }
+.site-table td input:not([type]) { width: 100%; min-width: 120px; padding: 4px 6px; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--surface); color: var(--ink); font-size: 13px; }
+
 /* drag-and-drop / folder file picker */
 .file-drop {
   border: 1.5px dashed var(--line-strong); background: var(--surface-2); border-radius: 6px;

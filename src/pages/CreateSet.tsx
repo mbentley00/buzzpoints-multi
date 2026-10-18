@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { refreshIndex } from "../data";
 import { useAuth } from "../auth";
@@ -9,6 +9,8 @@ import { FileDrop } from "../components/FileDrop";
 import { Visibility, TOURNAMENT_LEVELS, RoundWarning, BonusDiffWarning, difficultyOptions } from "../types";
 import { warningText } from "../components/SourceFiles";
 import { hasYearFirst, yearFirstSuggestion } from "../util";
+import { scanDataFolder, filesFromPicker, filesFromZip, mirrorPackets, mirrorCoverage, readSiteGames, sitePacketPlan, sitePacketFiles, FolderScan } from "../migratorFolder";
+import { stageEditions, ingestPostRetry, StageEdition } from "../ingestClient";
 
 interface CategoryWarning { category: string; count: number; reason: string; examples: string[] }
 
@@ -38,6 +40,15 @@ async function readFiles(files: File[]) {
   return out;
 }
 
+// The wizard's manual upload can hold several packet versions (American and
+// British, say) and several sites (mirrors), each of which played one version.
+// One version + one site is the plain single upload.
+interface VersionDraft { id: string; name: string; packets: File[] }
+interface SiteDraft { id: string; label: string; versionId: string; versionTouched: boolean; games: File[]; roundPacket: Map<number, string> }
+let draftSeq = 0;
+const draftId = (p: string) => `${p}${++draftSeq}`;
+const newSite = (versionId: string): SiteDraft => ({ id: draftId("s"), label: "", versionId, versionTouched: false, games: [], roundPacket: new Map() });
+
 // YYYY-MM-DD for an <input type="date">, default two years out.
 function plusYears(years: number): string {
   const d = new Date();
@@ -48,7 +59,7 @@ function plusYears(years: number): string {
 export function CreateSet() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
-  const [mode, setMode] = useState<"upload" | "import">("upload");
+  const [mode, setMode] = useState<"upload" | "folder" | "import">("upload");
   const [importUrl, setImportUrl] = useState("");
   const [importBonuses, setImportBonuses] = useState(false);
   const [name, setName] = useState("");
@@ -68,8 +79,17 @@ export function CreateSet() {
   // Individual shootout (IPNCT-style): players compete for themselves. Such a
   // format is tossups-only, so ticking it unticks bonuses (still changeable).
   const [individual, setIndividual] = useState(false);
-  const [packets, setPackets] = useState<File[]>([]);
-  const [games, setGames] = useState<File[]>([]);
+  const [versions, setVersions] = useState<VersionDraft[]>(() => [{ id: "v0", name: "", packets: [] }]);
+  const [sites, setSites] = useState<SiteDraft[]>(() => [newSite("v0")]);
+  const multi = versions.length > 1 || sites.length > 1;
+  // The data-folder upload (buzzpoint-migrator / quizbowlstats layout).
+  const [scan, setScan] = useState<FolderScan | null>(null);
+  const [scanSet, setScanSet] = useState("");
+  const [scanMsg, setScanMsg] = useState("");
+  const [folderLabels, setFolderLabels] = useState<Record<string, string>>({});
+  const [folderSkip, setFolderSkip] = useState<Set<string>>(new Set());
+  const dirInput = useRef<HTMLInputElement>(null);
+  const zipInput = useRef<HTMLInputElement>(null);
   const [yfFile, setYfFile] = useState<File[]>([]);
   const [visibility, setVisibility] = useState<Visibility>("listed");
   const [autoPublish, setAutoPublish] = useState(true);
@@ -83,8 +103,11 @@ export function CreateSet() {
   const [warned, setWarned] = useState<{ slug: string; warnings: CategoryWarning[]; rounds: RoundWarning[]; bonusDiffs: BonusDiffWarning[] } | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function onGames(files: File[]) {
-    setGames(files);
+  const updateSite = (id: string, patch: Partial<SiteDraft>) => setSites((l) => l.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  const updateVersion = (id: string, patch: Partial<VersionDraft>) => setVersions((l) => l.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+
+  async function onSiteGames(siteId: string, files: File[]) {
+    updateSite(siteId, { games: files, roundPacket: new Map() });
     setDetected(null);
     if (!files.length) return;
     try {
@@ -94,7 +117,67 @@ export function CreateSet() {
     } catch {
       /* detection is best-effort; ignore parse errors here */
     }
+    const { roundPacket } = await readSiteGames(files);
+    setSites((l) => l.map((x) => {
+      if (x.id !== siteId) return x;
+      let versionId = x.versionId;
+      // Guess which version this site played from the packet names its games
+      // carry, unless the owner already picked one.
+      if (!x.versionTouched && versions.length > 1) {
+        let best = 0;
+        for (const v of versions) {
+          const n = sitePacketPlan(roundPacket, v.packets).byRound.size;
+          if (n > best) { best = n; versionId = v.id; }
+        }
+      }
+      return { ...x, roundPacket, versionId };
+    }));
   }
+
+  function addVersion() {
+    setVersions((l) => [...l, { id: draftId("v"), name: "", packets: [] }]);
+  }
+  function removeVersion(id: string) {
+    const rest = versions.filter((v) => v.id !== id);
+    setVersions(rest);
+    setSites((l) => l.map((x) => (x.versionId === id ? { ...x, versionId: rest[0].id, versionTouched: false } : x)));
+  }
+  function addSite() { setSites((l) => [...l, newSite(versions[0].id)]); }
+  function removeSite(id: string) { setSites((l) => l.filter((x) => x.id !== id)); }
+
+  // How each site's packets will be lined up with its games (see sitePacketPlan).
+  const sitePlans = useMemo(() => new Map(sites.map((x) => {
+    const v = versions.find((vv) => vv.id === x.versionId) || versions[0];
+    return [x.id, x.games.length && v.packets.length ? sitePacketPlan(x.roundPacket, v.packets) : null] as const;
+  })), [sites, versions]);
+
+  async function onFolder(list: FileList | null, zip?: File) {
+    setError(null); setScan(null); setScanMsg("");
+    try {
+      let files;
+      if (zip) { setScanMsg("Unzipping…"); files = await filesFromZip(zip); }
+      else files = list ? filesFromPicker(list) : [];
+      if (!files.length) return;
+      const sc = await scanDataFolder(files, setScanMsg);
+      if (!sc.sets.length) throw new Error("No question set in that folder matched any site's games.");
+      // The set with the most sites is almost always the one meant.
+      const pick = [...sc.sets].sort((a, b) => b.mirrors.length - a.mirrors.length)[0];
+      setScan(sc);
+      chooseScanSet(sc, pick.key);
+      setScanMsg("");
+    } catch (e) { setError(String((e as Error).message || e)); setScanMsg(""); }
+  }
+  function chooseScanSet(sc: FolderScan, key: string) {
+    const g = sc.sets.find((x) => x.key === key);
+    if (!g) return;
+    setScanSet(key);
+    setFolderLabels(Object.fromEntries(g.mirrors.map((m) => [m.name, m.label])));
+    setFolderSkip(new Set());
+    if (g.scoring) { setScoring(g.scoring); setDetected(g.scoring); }
+    setHasBonuses(g.hasBonuses);
+    setName((n) => (n.trim() ? n : g.name));
+  }
+  const scanGroup = scan?.sets.find((g) => g.key === scanSet) || null;
 
   // The browser drives the import across many requests so each one (a single
   // edition scrape) stays within the function time limit. Large multi-mirror
@@ -150,15 +233,120 @@ export function CreateSet() {
     }
   }
 
+  // What the server said after creating (or queueing) the tournament.
+  function onCreated(json: any) {
+    if (json.pending) {
+      // First-time poster: held for moderator review rather than published.
+      setSubmitted(json.message || "Your first tournament was submitted for review. You'll get an email when it's approved.");
+      setBusy(false);
+      setStatus(null);
+      return;
+    }
+    refreshIndex();
+    // Uploading straight to Public queues a moderator request instead (fresh
+    // uploads need approval) — say so, or the owner would just see "listed"
+    // and wonder where their choice went.
+    if (json.publicPending)
+      window.alert("Your tournament was created. Making a newly uploaded tournament public needs a moderator's approval — your request has been sent, and you'll get an email when it's decided. Until then the tournament is listed (shown in the list, invited viewers only).");
+    // If the category heuristic flagged likely-mislabeled categories, the
+    // packets' rounds don't line up with the games', or a bonus carries
+    // difficulty marks that can't be right, pause on a review screen so the
+    // owner can fix things before relying on the stats.
+    const warnings: CategoryWarning[] = Array.isArray(json.categoryWarnings) ? json.categoryWarnings : [];
+    const rounds: RoundWarning[] = Array.isArray(json.roundWarnings) ? json.roundWarnings : [];
+    const bonusDiffs: BonusDiffWarning[] = Array.isArray(json.bonusDiffWarnings) ? json.bonusDiffWarnings : [];
+    if (warnings.length || rounds.length || bonusDiffs.length) {
+      setWarned({ slug: json.slug, warnings, rounds, bonusDiffs });
+      setBusy(false);
+      setStatus(null);
+      return;
+    }
+    navigate(`/set/${json.slug}`);
+  }
+
+  // Several editions at once: each is uploaded and read by its own request,
+  // then one last request builds the tournament (with the same review rules as
+  // a single upload).
+  async function submitStaged(build: () => Promise<StageEdition[]>) {
+    setBusy(true);
+    try {
+      setStatus("Preparing files…");
+      const editions = await build();
+      const { jobId, editionCount } = await stageEditions(editions, setStatus);
+      let yf: any = undefined;
+      if (yfFile?.length) yf = (await readFiles(yfFile))[0]?.json;
+      const autoPublicAt = visibility === "public" ? null : autoPublish ? new Date(autoPublishDate).toISOString() : null;
+      setStatus(`Building the tournament from ${editionCount} site${editionCount === 1 ? "" : "s"}…`);
+      const json = await ingestPostRetry({
+        op: "local-create", jobId, editionCount,
+        name: name.trim(), level, tdLink: tdLink.trim() || undefined, difficulty: difficulty || undefined, tournamentDate: tournamentDate || undefined,
+        scoring, hasBonuses, individual, visibility, autoPublicAt, ...(yf ? { yf } : {}),
+      }, (sec) => setStatus(`The server is busy; retrying in ${sec}s…`));
+      onCreated(json);
+    } catch (err) {
+      setError(String((err as Error).message || err));
+      setBusy(false);
+      setStatus(null);
+    }
+  }
+
+  function validateSites(): string | null {
+    for (const [i, v] of versions.entries()) {
+      const what = versions.length > 1 ? `packet version ${v.name.trim() || i + 1}` : "the packets";
+      if (versions.length > 1 && !v.name.trim()) return `Name packet version ${i + 1} (e.g. "American" or "British").`;
+      if (!v.packets.length) return `Choose the packet files for ${what}.`;
+    }
+    const seen = new Set<string>();
+    for (const [i, x] of sites.entries()) {
+      const label = x.label.trim();
+      if (sites.length > 1 && !label) return `Name site ${i + 1} (e.g. "Chicago" or "Oxford").`;
+      if (label && seen.has(label.toLowerCase())) return `Two sites are both named "${label}". Give each site its own name.`;
+      seen.add(label.toLowerCase());
+      if (!x.games.length) return `Choose the game files for ${label || `site ${i + 1}`}.`;
+    }
+    if (versions.length > 1) {
+      const used = new Set(sites.map((x) => x.versionId));
+      const unused = versions.find((v) => !used.has(v.id));
+      if (unused) return `No site played packet version "${unused.name.trim()}". Pick it for a site, or remove it.`;
+    }
+    return null;
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (mode === "import") return submitImport();
     setError(null);
     if (!name.trim()) return setError("Enter a tournament name.");
     if (!level) return setError("Choose a tournament type.");
-    if (!packets?.length) return setError("Choose at least one packet file.");
-    if (!games?.length) return setError("Choose at least one game file (.qbj or .json).");
     if (!tournamentDate) return setError("Enter the date the tournament was played.");
+    if (mode === "folder") {
+      if (!scan || !scanGroup) return setError("Choose the data folder (or its .zip) first.");
+      const chosen = scanGroup.mirrors.filter((m) => !folderSkip.has(m.name));
+      if (!chosen.length) return setError("Include at least one site.");
+      return submitStaged(async () => {
+        const out: StageEdition[] = [];
+        for (const m of chosen) {
+          const { files } = await mirrorPackets(scan, scanGroup.key, m);
+          out.push({ label: (folderLabels[m.name] || "").trim() || m.label, packets: files, games: m.games });
+        }
+        return out;
+      });
+    }
+    const bad = validateSites();
+    if (bad) return setError(bad);
+    if (multi) {
+      return submitStaged(async () => {
+        const out: StageEdition[] = [];
+        for (const [i, x] of sites.entries()) {
+          const v = versions.find((vv) => vv.id === x.versionId) || versions[0];
+          const label = x.label.trim() || (versions.length > 1 ? v.name.trim() : "") || `Site ${i + 1}`;
+          out.push({ label, packets: await sitePacketFiles(x.roundPacket, v.packets), games: x.games });
+        }
+        return out;
+      });
+    }
+    const packets = versions[0].packets;
+    const games = sites[0].games;
 
     setBusy(true);
     try {
@@ -186,33 +374,7 @@ export function CreateSet() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `ingest failed (${res.status})`);
-      if (json.pending) {
-        // First-time poster: held for moderator review rather than published.
-        setSubmitted(json.message || "Your first tournament was submitted for review. You'll get an email when it's approved.");
-        setBusy(false);
-        setStatus(null);
-        return;
-      }
-      refreshIndex();
-      // Uploading straight to Public queues a moderator request instead (fresh
-      // uploads need approval) — say so, or the owner would just see "listed"
-      // and wonder where their choice went.
-      if (json.publicPending)
-        window.alert("Your tournament was created. Making a newly uploaded tournament public needs a moderator's approval — your request has been sent, and you'll get an email when it's decided. Until then the tournament is listed (shown in the list, invited viewers only).");
-      // If the category heuristic flagged likely-mislabeled categories, the
-      // packets' rounds don't line up with the games', or a bonus carries
-      // difficulty marks that can't be right, pause on a review screen so the
-      // owner can fix things before relying on the stats.
-      const warnings: CategoryWarning[] = Array.isArray(json.categoryWarnings) ? json.categoryWarnings : [];
-      const rounds: RoundWarning[] = Array.isArray(json.roundWarnings) ? json.roundWarnings : [];
-      const bonusDiffs: BonusDiffWarning[] = Array.isArray(json.bonusDiffWarnings) ? json.bonusDiffWarnings : [];
-      if (warnings.length || rounds.length || bonusDiffs.length) {
-        setWarned({ slug: json.slug, warnings, rounds, bonusDiffs });
-        setBusy(false);
-        setStatus(null);
-        return;
-      }
-      navigate(`/set/${json.slug}`);
+      onCreated(json);
     } catch (err) {
       setError(String((err as Error).message || err));
       setBusy(false);
@@ -335,13 +497,16 @@ export function CreateSet() {
         <form className="create-form" onSubmit={submit}>
           <label className="field">
             <span>How do you want to add this tournament?</span>
-            <select value={mode} onChange={(e) => setMode(e.target.value as "upload" | "import")}>
+            <select value={mode} onChange={(e) => setMode(e.target.value as "upload" | "folder" | "import")}>
               <option value="upload">Upload packets &amp; game files (.qbj / .json)</option>
+              <option value="folder">Upload a buzzpoint-migrator data folder (every site at once)</option>
               <option value="import">Import from an existing Buzzpoints site</option>
             </select>
             <small className="muted">
               {mode === "upload"
-                ? "Upload your files for full buzz-level stats. Optionally attach the YellowFruit file you scored from."
+                ? "Upload your files for full buzz-level stats: one site, or several sites (mirrors) and packet versions at once. Optionally attach the YellowFruit file you scored from."
+                : mode === "folder"
+                ? <>The <code>data</code> folder you'd feed buzzpoint-migrator: <code>question_sets/</code> with the packets and <code>tournaments/</code> with each site's QBJs. Every site becomes a mirror, matched to the packet version it played.</>
                 : "Paste the link to another Buzzpoints site (e.g. one deployed on Vercel). Every edition listed there is imported as one tournament."}
             </small>
           </label>
@@ -429,7 +594,7 @@ export function CreateSet() {
             </small>
           )}
 
-          {mode === "upload" && <>
+          {mode !== "import" && <>
           <label className="field">
             <span>Scoring format</span>
             <select value={scoring} onChange={(e) => { setScoring(e.target.value); setDetected(null); }}>
@@ -451,17 +616,136 @@ export function CreateSet() {
             <span>This format has bonuses</span>
           </label>
 
-          <div className="field">
-            <span>Packet files (one JSON per round)</span>
-            <FileDrop accept=".json" value={packets} onChange={setPackets} hint="Standard packet-parser JSON" />
-          </div>
+          {mode === "folder" && (
+            <div className="field">
+              <span>Data folder</span>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button type="button" className="btn-secondary" disabled={busy || !!scanMsg} onClick={() => dirInput.current?.click()}>Choose folder…</button>
+                <button type="button" className="btn-secondary" disabled={busy || !!scanMsg} onClick={() => zipInput.current?.click()}>Choose a .zip…</button>
+              </div>
+              <input
+                ref={dirInput} type="file" hidden multiple
+                // @ts-expect-error non-standard directory picker
+                webkitdirectory="" directory=""
+                onChange={(e) => { onFolder(e.target.files); e.target.value = ""; }}
+              />
+              <input ref={zipInput} type="file" hidden accept=".zip" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFolder(null, f); e.target.value = ""; }} />
+              {scanMsg && <small className="muted">{scanMsg}</small>}
+              {!scan && !scanMsg && <small className="muted">Pick the folder that holds <code>question_sets/</code> and <code>tournaments/</code>, or a .zip of it.</small>}
+            </div>
+          )}
+          {mode === "folder" && scan && scanGroup && (
+            <div className="field">
+              {scan.sets.length > 1 && (
+                <label className="field">
+                  <span>Question set</span>
+                  <select value={scanSet} onChange={(e) => chooseScanSet(scan, e.target.value)}>
+                    {scan.sets.map((g) => <option key={g.key} value={g.key}>{g.name} ({g.mirrors.length} site{g.mirrors.length === 1 ? "" : "s"})</option>)}
+                  </select>
+                  <small className="muted">The folder holds several question sets; one tournament is made from the one you pick.</small>
+                </label>
+              )}
+              <span>{scanGroup.mirrors.length - folderSkip.size} of {scanGroup.mirrors.length} sites included</span>
+              <div className="site-table-wrap">
+                <table className="site-table">
+                  <thead><tr><th></th><th>Site (shown as)</th>{scanGroup.editionNames.size > 1 && <th>Packets</th>}<th>Games</th><th>Rounds with packets</th></tr></thead>
+                  <tbody>
+                    {scanGroup.mirrors.map((m) => {
+                      const cov = mirrorCoverage(scan, scanGroup.key, m);
+                      const off = folderSkip.has(m.name);
+                      return (
+                        <tr key={m.name} className={off ? "muted" : ""}>
+                          <td><input type="checkbox" aria-label={`Include ${m.label}`} checked={!off} onChange={() => setFolderSkip((s0) => { const n = new Set(s0); if (n.has(m.name)) n.delete(m.name); else n.add(m.name); return n; })} /></td>
+                          <td><input value={folderLabels[m.name] ?? m.label} onChange={(e) => setFolderLabels((l) => ({ ...l, [m.name]: e.target.value }))} disabled={off} /></td>
+                          {scanGroup.editionNames.size > 1 && <td>{scanGroup.editionNames.get(m.edKey) || "—"}</td>}
+                          <td>{m.games.length}</td>
+                          <td className={cov.matched < cov.rounds ? "warn-text" : ""}>{cov.matched} / {cov.rounds}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <small className="muted">
+                Each site's packets are filed under the round that site played them, so sites that read the packets in a
+                different order still line up question by question.
+                {(scan.noGames > 0 || scan.unmatched > 0) && <> Skipped: {[scan.noGames && `${scan.noGames} site${scan.noGames === 1 ? "" : "s"} with no usable games`, scan.unmatched && `${scan.unmatched} that matched no question set`].filter(Boolean).join(", ")}.</>}
+              </small>
+            </div>
+          )}
 
-          <div className="field">
-            <span>Game files (.qbj or .json)</span>
-            <FileDrop accept=".json,.qbj" value={games} onChange={onGames} hint="QBJ files or MODAQ saved games (.qbj / .json)" />
-          </div>
+          {mode === "upload" && !multi && (
+            <>
+              <div className="field">
+                <span>Packet files (one JSON per round)</span>
+                <FileDrop accept=".json" value={versions[0].packets} onChange={(f) => updateVersion(versions[0].id, { packets: f })} hint="Standard packet-parser JSON" />
+              </div>
+              <div className="field">
+                <span>Game files (.qbj or .json)</span>
+                <FileDrop accept=".json,.qbj" value={sites[0].games} onChange={(f) => onSiteGames(sites[0].id, f)} hint="QBJ files or MODAQ saved games (.qbj / .json)" />
+              </div>
+              <div className="multi-add">
+                <span className="muted">Played at several sites, or in more than one packet version?</span>
+                <button type="button" className="btn-link" onClick={addSite}>+ Add another site</button>
+                <button type="button" className="btn-link" onClick={addVersion}>+ Add a packet version</button>
+              </div>
+            </>
+          )}
 
-          <div className="field">
+          {mode === "upload" && multi && (
+            <>
+              <div className="field">
+                <span>Packet versions</span>
+                <small className="muted">One per version of the questions (e.g. American and British). Sites that read the same version share its packets.</small>
+                {versions.map((v, i) => (
+                  <div key={v.id} className="site-block">
+                    <div className="site-block-head">
+                      <input value={v.name} onChange={(e) => updateVersion(v.id, { name: e.target.value })} placeholder={versions.length > 1 ? `Version ${i + 1} name, e.g. ${i === 0 ? "American" : "British"}` : "Version name (optional)"} />
+                      {versions.length > 1 && <button type="button" className="btn-link danger" onClick={() => removeVersion(v.id)}>Remove</button>}
+                    </div>
+                    <FileDrop accept=".json" value={v.packets} onChange={(f) => updateVersion(v.id, { packets: f })} hint="Packet-parser JSON, one per packet" />
+                  </div>
+                ))}
+                <button type="button" className="btn-link" onClick={addVersion}>+ Add a packet version</button>
+              </div>
+
+              <div className="field">
+                <span>Sites</span>
+                <small className="muted">One per mirror. Each site's games are matched to packets by the packet name in its QBJs, so sites can play the packets in any order.</small>
+                {sites.map((x, i) => {
+                  const plan = sitePlans.get(x.id);
+                  const v = versions.find((vv) => vv.id === x.versionId) || versions[0];
+                  return (
+                    <div key={x.id} className="site-block">
+                      <div className="site-block-head">
+                        <input value={x.label} onChange={(e) => updateSite(x.id, { label: e.target.value })} placeholder={`Site ${i + 1} name, e.g. Chicago`} />
+                        {versions.length > 1 && (
+                          <select value={x.versionId} onChange={(e) => updateSite(x.id, { versionId: e.target.value, versionTouched: true })} aria-label="Packet version this site played">
+                            {versions.map((vv, j) => <option key={vv.id} value={vv.id}>{vv.name.trim() || `Version ${j + 1}`}</option>)}
+                          </select>
+                        )}
+                        {sites.length > 1 && <button type="button" className="btn-link danger" onClick={() => removeSite(x.id)}>Remove</button>}
+                      </div>
+                      <FileDrop accept=".json,.qbj" value={x.games} onChange={(f) => onSiteGames(x.id, f)} hint="This site's QBJ files or MODAQ saved games" />
+                      {plan && (
+                        <small className={plan.mode === "name" && !plan.unmatched.length ? "muted" : "warn-text"}>
+                          {plan.mode === "name"
+                            ? <>Packets matched by name for {plan.byRound.size} of {plan.named} rounds.
+                                {plan.unmatched.length > 0 && <> No packet in {v.name.trim() || "this version"} matches {plan.unmatched.slice(0, 3).map((u) => `round ${u.round} ("${u.packet}")`).join(", ")}{plan.unmatched.length > 3 ? `, and ${plan.unmatched.length - 3} more` : ""}, so those rounds will have no questions.</>}</>
+                            : plan.named
+                            ? <>Only {plan.byRound.size} of {plan.named} rounds' packet names match these packet files, so each packet's round comes from its filename (Round_3.json → round 3). Check that's the order this site played them.</>
+                            : <>These games don't name their packets, so each packet's round comes from its filename (Round_3.json → round 3). Check that's the order this site played them.</>}
+                        </small>
+                      )}
+                    </div>
+                  );
+                })}
+                <button type="button" className="btn-link" onClick={addSite}>+ Add another site</button>
+              </div>
+            </>
+          )}
+
+          {mode === "upload" && <div className="field">
             <span>YellowFruit file (optional)</span>
             <FileDrop
               accept=".yft,.json,.qbj"
@@ -470,7 +754,7 @@ export function CreateSet() {
               onChange={setYfFile}
               hint="Attach the .yft you scored from to download a corrections-applied copy later."
             />
-          </div>
+          </div>}
           </>}
 
           <label className="field">

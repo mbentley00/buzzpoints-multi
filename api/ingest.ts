@@ -16,7 +16,7 @@ import {
   readIndex, writeIndex, readSource, writeSource, writeCorrections, readCorrections,
   aggregateAndWrite, editionsOf, SetSource, isSetOwner,
 } from "./_lib/sets.js";
-import { createTournament, createFromSource, updateFromSource, parseFiles, validLevel, cleanTdLink, cleanTournamentDate, normVisibility, CreateError, FileRef } from "./_lib/publish.js";
+import { createTournament, createFromSource, updateFromSource, parseFiles, validLevel, cleanTdLink, cleanTournamentDate, normVisibility, CreateError, FileRef, ParsedEdition } from "./_lib/publish.js";
 import { parseYellowFruit } from "./_lib/yellowfruit.js";
 import { combineSets, CombineBody } from "./_lib/combine.js";
 import { scrapeEdition, scrapeBonusResults, applyBonusResults, applyBonusText, listEditions, listSets, setEditions, parseTarget, slugToName, scoringFor, setNameFrom } from "./_lib/importBuzzpoints.js";
@@ -77,7 +77,7 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
     await writeJson(jobPath(jobId), { local: true, by: owner, createdAt: new Date().toISOString() });
     return res.status(200).json({ jobId });
   }
-  if (body.op === "local-edition" || body.op === "local-finish") {
+  if (body.op === "local-edition" || body.op === "local-finish" || body.op === "local-create") {
     const jobId = String(body.jobId || "");
     const job = await readBlobJson<any>(jobPath(jobId), false);
     if (!job || !job.local) return res.status(404).json({ error: "Import session not found or expired. Start over." });
@@ -111,12 +111,45 @@ async function handleImport(body: any, owner: string, res: VercelResponse) {
       if (ed && Array.isArray(ed.games) && ed.games.length) editions.push({ id: `e${editions.length}`, label: ed.label, packets: ed.packets, games: ed.games });
     }
     if (!editions.length) return res.status(400).json({ error: "No editions with game data." });
+    const cleanup = () => del([jobPath(jobId), ...Array.from({ length: count }, (_, i) => edPath(jobId, i))]).catch(() => {});
+
+    // The New Tournament wizard's multi-mirror upload: the staged editions go
+    // through exactly the path a one-request upload does (first-post review,
+    // public needs a moderator, tournament date required).
+    if (body.op === "local-create") {
+      if (body.yf) {
+        try { parseYellowFruit(body.yf); }
+        catch (e) { return res.status(400).json({ error: `YellowFruit file: ${(e as Error).message}` }); }
+      }
+      const { blocklist } = await readModConfig();
+      const createBody: Body = {
+        name: body.name, scoring: body.scoring, hasBonuses: !!body.hasBonuses, individual: !!body.individual,
+        level: body.level, tdLink: body.tdLink, difficulty: body.difficulty, tournamentDate: body.tournamentDate,
+        visibility: body.visibility, autoPublicAt: body.autoPublicAt ?? null, ...(body.yf ? { yf: body.yf } : {}),
+        parsedEditions: editions.map((e) => ({ label: e.label, packets: e.packets, games: e.games })),
+      };
+      try {
+        await publishNew(createBody, owner, res, [], blocklist);
+      } catch (e) {
+        if (e instanceof CreateError) return res.status(e.status).json({ error: e.message });
+        return res.status(500).json({ error: (e as Error).message });
+      }
+      // Keep the staged editions when the request was refused (a bad name, no
+      // date), so it can be fixed and re-sent without uploading everything again.
+      if (res.statusCode < 400) await cleanup();
+      return;
+    }
+
     const name = String(body.name || "").trim();
     if (!name) return res.status(400).json({ error: "Set name is required." });
     if (!body.scoring || !(body.scoring in SCORINGS)) return res.status(400).json({ error: "Unknown scoring format." });
     const source: SetSource = { name, scoring: body.scoring, hasBonuses: !!body.hasBonuses, ...(body.individual ? { individual: true } : {}), editions };
-    const cleanup = () => del([jobPath(jobId), ...Array.from({ length: count }, (_, i) => edPath(jobId, i))]).catch(() => {});
     const refreshSlug = String(body.refreshSlug || "").trim();
+    // Creating a set this way skips the first-post review and the public-
+    // approval request, so it's the admin bulk tool's alone. Owners creating a
+    // set use "local-create"; refreshing a set they own stays open to them.
+    if (!refreshSlug && !(await canModerate(owner)))
+      return res.status(403).json({ error: "Use the New Tournament page to create a tournament." });
     try {
       let result: { slug: string; editions?: number };
       if (refreshSlug) result = await updateFromSource(source, refreshSlug, owner, await canModerate(owner));
@@ -375,6 +408,7 @@ interface Body {
   editionSlugs?: string[];
   op?: string; jobId?: string; index?: number; // async import: import-start | import-edition | import-finish
   refreshSlug?: string; // import-finish: refresh this existing set in place instead of creating one
+  parsedEditions?: ParsedEdition[]; // local-create: the staged mirrors, read back server-side (never from the client)
 }
 
 // Resolve a list of file refs to inline JSON. A ref uploaded directly to Blob
@@ -411,6 +445,101 @@ async function resolveRefs(refs: FileRef[] | undefined, tempPaths: string[]): Pr
 }
 const cleanupTemp = (paths: string[]) => (paths.length ? del(paths).catch(() => {}) : Promise.resolve());
 
+
+// Create a brand-new uploaded tournament, or queue it for review. Shared by the
+// one-request upload and the staged multi-mirror upload ("local-create"), so a
+// set of many mirrors goes through the same first-post review and the same
+// "public needs a moderator" rule as a single upload.
+async function publishNew(body: Body, owner: string, res: VercelResponse, tempPaths: string[], blocklist: string[]) {
+  // ---- create a new tournament ----
+  const name = (body.name || "").trim();
+  if (!name) return res.status(400).json({ error: "Tournament name is required." });
+  if (!body.scoring || !(body.scoring in SCORINGS)) return res.status(400).json({ error: "Unknown scoring format." });
+  const multi = body.parsedEditions || [];
+  const blocked = findBlocked(name, blocklist) || findBlocked(body.edition || "", blocklist)
+    || multi.map((e) => findBlocked(e.label || "", blocklist)).find(Boolean);
+  if (blocked) return res.status(400).json({ error: `Tournament name contains a disallowed word: "${blocked}".` });
+  // Validate the tournament type + optional TD link now, so a queued first post
+  // doesn't fail only at approval time.
+  let level: string, tdLink: string | undefined;
+  // A newly posted tournament has to say when it was played. Only checked here,
+  // for new posts: imports and submissions already queued before dates existed
+  // go through createTournament without one.
+  if (!String(body.tournamentDate ?? "").trim())
+    return res.status(400).json({ error: "Enter the date the tournament was played." });
+  try { level = validLevel(body.level); tdLink = cleanTdLink(body.tdLink); body.tournamentDate = cleanTournamentDate(body.tournamentDate); }
+  catch (e) { if (e instanceof CreateError) return res.status(e.status).json({ error: e.message }); throw e; }
+
+  // First-post gate: queue for review unless this account has posted before or
+  // is a moderator/admin. Practice tournaments skip it — they can never be
+  // public (createTournament clamps them to listed/private), so there's
+  // nothing for a reviewer to protect against — and so do Private uploads,
+  // which only the owner and their invitees ever see. A set that skipped
+  // review that way doesn't count as having posted before.
+  const index = await readIndex();
+  const established = index.sets.some((s) => s.owner === owner && !s.unreviewed);
+  const privileged = await canModerate(owner);
+  const skipsReview = level === "practice" || normVisibility(body.visibility) === "private";
+  if (!established && !privileged && !skipsReview) {
+    const id = crypto.randomBytes(9).toString("base64url");
+    await writePendingPayload(id, {
+      name, scoring: body.scoring!, hasBonuses: !!body.hasBonuses, ...(body.individual ? { individual: true } : {}),
+      visibility: body.visibility, autoPublicAt: body.autoPublicAt ?? null,
+      edition: body.edition, level, ...(tdLink ? { tdLink } : {}), ...(body.difficulty ? { difficulty: body.difficulty } : {}),
+      ...(body.tournamentDate ? { tournamentDate: body.tournamentDate } : {}),
+      ...(multi.length
+        ? { parsedEditions: multi }
+        : { packets: body.packets!.map((r) => ({ name: r.name, json: r.json })), games: body.games!.map((r) => ({ name: r.name, json: r.json })) }),
+      ...(body.yf ? { yf: body.yf } : {}),
+    });
+    const byName = (await loadUsers())[owner]?.name || owner;
+    const rec: PendingSubmission = {
+      id, by: owner, byName, name, scoring: body.scoring!, at: new Date().toISOString(),
+      visibility: normVisibility(body.visibility),
+    };
+    await writePending([rec, ...(await readPending()).filter((p) => p.id !== id)]);
+
+    const reviewUrl = `${appUrl()}/admin`;
+    // 30-day, signed one-click approval link the admin can act on from the email.
+    const approveUrl = `${appUrl()}/api/moderate?approve=${encodeURIComponent(signPurpose(id, "approve-sub", 60 * 60 * 24 * 30))}`;
+    for (const to of await moderatorEmails())
+      await sendEmail({ to, subject: `Approve tournament — ${name}`, html: submissionPendingBody(`${byName} (${owner})`, name, reviewUrl, approveUrl, rec.visibility) });
+
+    // The full JSON is now copied into the pending payload; drop the temp uploads.
+    await cleanupTemp(tempPaths);
+    return res.status(202).json({ pending: true, message: "Your first tournament was submitted for review. You'll get an email when it's approved." });
+  }
+
+  // Uploading straight to Public is the same act as flipping a fresh upload
+  // public, so it takes the same moderator approval: create the set Listed
+  // with the request queued, rather than public and unreviewed. (Moderators
+  // and admins publish directly — they're the approvers. URL imports aren't
+  // gated either, but those go through createFromSource, not here. Practice
+  // tournaments can't be public at all, so there's nothing to request.)
+  const wantsPublic = normVisibility(body.visibility) === "public" && !privileged && level !== "practice";
+  if (wantsPublic) body.visibility = "listed";
+  const { slug, categoryWarnings, roundWarnings, bonusDiffWarnings } = await createTournament(body, owner);
+  if (!established && !privileged && skipsReview && level !== "practice") {
+    const idx = await readIndex();
+    const entry = idx.sets.find((e) => e.slug === slug);
+    if (entry) { entry.unreviewed = true; await writeIndex(idx); }
+  }
+  let publicPending = false;
+  if (wantsPublic) {
+    const idx = await readIndex();
+    const entry = idx.sets.find((e) => e.slug === slug);
+    if (entry) {
+      entry.publicPending = { by: owner, at: new Date().toISOString() };
+      await writeIndex(idx);
+      publicPending = true;
+      const uploaded = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+      for (const to of await moderatorEmails())
+        await sendEmail({ to, subject: `Approve public viewing — ${entry.name}`, html: publishRequestBody(owner, entry.name, uploaded, `${appUrl()}/admin`) });
+    }
+  }
+  await cleanupTemp(tempPaths);
+  return res.status(200).json({ slug, categoryWarnings, roundWarnings, bonusDiffWarnings, ...(publicPending ? { publicPending: true } : {}) });
+}
 
 /* ---------------------- missing bonus text repair ------------------------- */
 // A scraped import gets bonus ANSWERS and conversion from one cheap index page;
@@ -557,91 +686,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // ---- create a new tournament ----
-    const name = (body.name || "").trim();
-    if (!name) return res.status(400).json({ error: "Tournament name is required." });
-    if (!body.scoring || !(body.scoring in SCORINGS)) return res.status(400).json({ error: "Unknown scoring format." });
-    const blocked = findBlocked(name, blocklist) || findBlocked(body.edition || "", blocklist);
-    if (blocked) return res.status(400).json({ error: `Tournament name contains a disallowed word: "${blocked}".` });
-    // Validate the tournament type + optional TD link now, so a queued first post
-    // doesn't fail only at approval time.
-    let level: string, tdLink: string | undefined;
-    // A newly posted tournament has to say when it was played. Only checked here,
-    // for new posts: imports and submissions already queued before dates existed
-    // go through createTournament without one.
-    if (!String(body.tournamentDate ?? "").trim())
-      return res.status(400).json({ error: "Enter the date the tournament was played." });
-    try { level = validLevel(body.level); tdLink = cleanTdLink(body.tdLink); body.tournamentDate = cleanTournamentDate(body.tournamentDate); }
-    catch (e) { if (e instanceof CreateError) return res.status(e.status).json({ error: e.message }); throw e; }
-
-    // First-post gate: queue for review unless this account has posted before or
-    // is a moderator/admin. Practice tournaments skip it — they can never be
-    // public (createTournament clamps them to listed/private), so there's
-    // nothing for a reviewer to protect against — and so do Private uploads,
-    // which only the owner and their invitees ever see. A set that skipped
-    // review that way doesn't count as having posted before.
-    const index = await readIndex();
-    const established = index.sets.some((s) => s.owner === owner && !s.unreviewed);
-    const privileged = await canModerate(owner);
-    const skipsReview = level === "practice" || normVisibility(body.visibility) === "private";
-    if (!established && !privileged && !skipsReview) {
-      const id = crypto.randomBytes(9).toString("base64url");
-      await writePendingPayload(id, {
-        name, scoring: body.scoring!, hasBonuses: !!body.hasBonuses, ...(body.individual ? { individual: true } : {}),
-        visibility: body.visibility, autoPublicAt: body.autoPublicAt ?? null,
-        edition: body.edition, level, ...(tdLink ? { tdLink } : {}), ...(body.difficulty ? { difficulty: body.difficulty } : {}),
-        ...(body.tournamentDate ? { tournamentDate: body.tournamentDate } : {}),
-        packets: body.packets!.map((r) => ({ name: r.name, json: r.json })),
-        games: body.games!.map((r) => ({ name: r.name, json: r.json })),
-        ...(body.yf ? { yf: body.yf } : {}),
-      });
-      const byName = (await loadUsers())[owner]?.name || owner;
-      const rec: PendingSubmission = {
-        id, by: owner, byName, name, scoring: body.scoring!, at: new Date().toISOString(),
-        visibility: normVisibility(body.visibility),
-      };
-      await writePending([rec, ...(await readPending()).filter((p) => p.id !== id)]);
-
-      const reviewUrl = `${appUrl()}/admin`;
-      // 30-day, signed one-click approval link the admin can act on from the email.
-      const approveUrl = `${appUrl()}/api/moderate?approve=${encodeURIComponent(signPurpose(id, "approve-sub", 60 * 60 * 24 * 30))}`;
-      for (const to of await moderatorEmails())
-        await sendEmail({ to, subject: `Approve tournament — ${name}`, html: submissionPendingBody(`${byName} (${owner})`, name, reviewUrl, approveUrl, rec.visibility) });
-
-      // The full JSON is now copied into the pending payload; drop the temp uploads.
-      await cleanupTemp(tempPaths);
-      return res.status(202).json({ pending: true, message: "Your first tournament was submitted for review. You'll get an email when it's approved." });
-    }
-
-    // Uploading straight to Public is the same act as flipping a fresh upload
-    // public, so it takes the same moderator approval: create the set Listed
-    // with the request queued, rather than public and unreviewed. (Moderators
-    // and admins publish directly — they're the approvers. URL imports aren't
-    // gated either, but those go through createFromSource, not here. Practice
-    // tournaments can't be public at all, so there's nothing to request.)
-    const wantsPublic = normVisibility(body.visibility) === "public" && !privileged && level !== "practice";
-    if (wantsPublic) body.visibility = "listed";
-    const { slug, categoryWarnings, roundWarnings, bonusDiffWarnings } = await createTournament(body, owner);
-    if (!established && !privileged && skipsReview && level !== "practice") {
-      const idx = await readIndex();
-      const entry = idx.sets.find((e) => e.slug === slug);
-      if (entry) { entry.unreviewed = true; await writeIndex(idx); }
-    }
-    let publicPending = false;
-    if (wantsPublic) {
-      const idx = await readIndex();
-      const entry = idx.sets.find((e) => e.slug === slug);
-      if (entry) {
-        entry.publicPending = { by: owner, at: new Date().toISOString() };
-        await writeIndex(idx);
-        publicPending = true;
-        const uploaded = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-        for (const to of await moderatorEmails())
-          await sendEmail({ to, subject: `Approve public viewing — ${entry.name}`, html: publishRequestBody(owner, entry.name, uploaded, `${appUrl()}/admin`) });
-      }
-    }
-    await cleanupTemp(tempPaths);
-    return res.status(200).json({ slug, categoryWarnings, roundWarnings, bonusDiffWarnings, ...(publicPending ? { publicPending: true } : {}) });
+    return await publishNew(body, owner, res, tempPaths, blocklist);
   } catch (e) {
     await cleanupTemp(tempPaths);
     if (e instanceof CreateError) return res.status(e.status).json({ error: e.message });

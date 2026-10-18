@@ -21,7 +21,12 @@ export interface CreateBody {
   level?: string; tdLink?: string; // tournament type + optional Tournament Database link
   difficulty?: string; // question difficulty on the level's scale (see difficultiesFor)
   tournamentDate?: string; // YYYY-MM-DD it was first played (optional)
+  // Several mirrors / packet versions at once, already parsed (each staged by
+  // its own request, see the "local-edition" op). Takes the place of
+  // packets/games, which only ever make one edition.
+  parsedEditions?: ParsedEdition[];
 }
+export interface ParsedEdition { label: string; packets: PacketFile[]; games: GameFile[] }
 
 // Validate the tournament level (required) and normalize an optional TD link.
 export function validLevel(level: unknown): string {
@@ -110,14 +115,16 @@ export async function createTournament(body: CreateBody, owner: string): Promise
   const name = (body.name || "").trim();
   if (!name) throw new CreateError(400, "Tournament name is required.");
   if (!body.scoring || !(body.scoring in SCORINGS)) throw new CreateError(400, "Unknown scoring format.");
-  if (!body.packets?.length) throw new CreateError(400, "At least one packet is required.");
-  if (!body.games?.length) throw new CreateError(400, "At least one game file (.qbj or .json) is required.");
+  const multi = (body.parsedEditions || []).filter((e) => e && Array.isArray(e.games) && e.games.length);
+  if (!multi.length) {
+    if (!body.packets?.length) throw new CreateError(400, "At least one packet is required.");
+    if (!body.games?.length) throw new CreateError(400, "At least one game file (.qbj or .json) is required.");
+  }
   const level = validLevel(body.level);
   const tdLink = cleanTdLink(body.tdLink);
   const difficulty = cleanDifficulty(level, body.difficulty);
   const tournamentDate = cleanTournamentDate(body.tournamentDate);
 
-  const { packets, games } = parseFiles(body);
   const hasBonuses = !!body.hasBonuses;
   const individual = !!body.individual;
   const visibility = level === "practice" ? practiceVisibility(normVisibility(body.visibility)) : normVisibility(body.visibility);
@@ -134,8 +141,14 @@ export async function createTournament(body: CreateBody, owner: string): Promise
   let slug = slugify(name);
   if (taken.has(slug)) { let n = 2; while (taken.has(`${slug}-${n}`)) n++; slug = `${slug}-${n}`; }
 
-  const label = (body.edition || "").trim() || "Original";
-  const source: SetSource = { name, scoring: body.scoring!, hasBonuses, ...(individual ? { individual } : {}), editions: [{ id: "e0", label, packets, games }] };
+  let editionList: SetSource["editions"];
+  if (multi.length) {
+    editionList = multi.map((e, i) => ({ id: `e${i}`, label: String(e.label || "").trim() || `Mirror ${i + 1}`, packets: e.packets || [], games: e.games }));
+  } else {
+    const { packets, games } = parseFiles(body);
+    editionList = [{ id: "e0", label: (body.edition || "").trim() || "Original", packets, games }];
+  }
+  const source: SetSource = { name, scoring: body.scoring!, hasBonuses, ...(individual ? { individual } : {}), editions: editionList };
   await writeSource(slug, source);
   await writeCorrections(slug, []);
   await writeRequests(slug, []);
