@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
+import { KlaxonPlayerPanel } from "../components/KlaxonPanels";
 import { PlayerDetail, PlayerBuzz } from "../types";
 import { Html, num, primaryAnswer } from "../util";
 import { Loading, ErrorBox, EditionBadges } from "../components/Common";
@@ -98,6 +99,8 @@ export function PlayerDetailPage() {
           <DataTable rows={d.buzzes} columns={cols} initialSort="round" initialDir="asc" rowKey={(b, i) => `${b.id}-${i}`} rowClass={rowClass} />
         </>
       )}
+
+      <KlaxonPlayerPanel slug={slug} scope={scope} playerId={id} show={!!meta.hasKlaxon} />
     </div>
   );
 }

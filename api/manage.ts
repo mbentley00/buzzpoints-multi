@@ -4,6 +4,7 @@
 //     open (any logged-in user):  request-access | join(key)
 //     owner: settings | rename | reaggregate | invite | uninvite |
 //            approve-access(email) | deny-access(email) | create-link(label?, approval?) | revoke-link(id)
+import { parseKlaxonLog, segmentLog, matchSegments, type GameRef, type KlaxonCycle, type KlaxonGame } from "./_lib/klaxon.js";
 import crypto from "node:crypto";
 import { list, del } from "@vercel/blob";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
@@ -721,6 +722,62 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       Object.assign(entry, { numTossups: meta.numTossups, rounds: meta.rounds.length });
       await writeIndex(index);
       return res.status(200).json({ ok: true, replacements: next });
+    } else if (op === "klaxon-match" || op === "klaxon-attach" || op === "klaxon-clear") {
+      // Klaxon full buzz logs: every press behind each buzz, attached to the QBJ
+      // game it came from (see _lib/klaxon.ts). "match" previews which game each
+      // part of a log belongs to; "attach" stores it and rebuilds.
+      if (entry.kind === "results") return res.status(400).json({ error: "This applies to buzz tournaments only." });
+      const source = await readSource(slug);
+      if (!source) return res.status(500).json({ error: "Source data not found (set predates source storage; re-create it)." });
+      const eds = editionsOf(source);
+      const rebuild = async (nextEds: Edition[]) => {
+        const nextSource = withEditions(source, nextEds);
+        await writeSource(slug, nextSource);
+        await aggregateAndWrite(slug, nextSource, await readCorrections(slug));
+      };
+      if (op === "klaxon-clear") {
+        let cleared = 0;
+        const nextEds = eds.map((e) => ({
+          ...e,
+          games: (e.games || []).map((g) => {
+            const kg = g as KlaxonGame;
+            if (!kg.klaxon) return g;
+            cleared++;
+            const { klaxon: _drop, ...rest } = kg;
+            return rest;
+          }),
+        }));
+        if (cleared) await rebuild(nextEds);
+        return res.status(200).json({ ok: true, cleared });
+      }
+      let log;
+      try { log = parseKlaxonLog(body.log); }
+      catch (e) { return res.status(400).json({ error: (e as Error).message }); }
+      const file = String(body.file || "Klaxon log").slice(0, 200);
+      const segments = segmentLog(log);
+      const refs: GameRef[] = eds.flatMap((e) => (e.games || []).map((game, index) => ({ editionId: e.id, editionLabel: e.label, index, game })));
+      const matches = matchSegments(segments, refs);
+      if (op === "klaxon-match") return res.status(200).json({ ok: true, room: log.room ?? (log.rooms || []).join(", "), matches });
+
+      // A game read in two sittings (the reader reloaded) is two parts of the
+      // log; their tossups are merged onto the one game.
+      const perGame = new Map<string, { room: string; questions: Record<string, KlaxonCycle[]> }>();
+      for (const m of matches) {
+        if (!m.match) continue;
+        const k = `${m.match.editionId}:${m.match.index}`;
+        const prev = perGame.get(k);
+        perGame.set(k, { room: m.room || prev?.room || String(log.room || ""), questions: { ...(prev?.questions || {}), ...segments[m.segment].questions } });
+      }
+      if (!perGame.size) return res.status(400).json({ error: "No game in this log matched a game in this tournament." });
+      const nextEds = eds.map((e) => ({
+        ...e,
+        games: (e.games || []).map((g, i) => {
+          const q = perGame.get(`${e.id}:${i}`);
+          return q ? ({ ...g, klaxon: { room: q.room, file, questions: q.questions } } as KlaxonGame) : g;
+        }),
+      }));
+      await rebuild(nextEds);
+      return res.status(200).json({ ok: true, attached: perGame.size, matches });
     } else if (op === "remap-rounds" || op === "remap-games" || op === "remove-files" || op === "remove-uploads") {
       if (entry.kind === "results") return res.status(400).json({ error: "This applies to buzz tournaments only." });
       const source = await readSource(slug);

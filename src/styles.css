@@ -1436,3 +1436,18 @@ a.auth-user:hover { color: #fff; text-decoration: underline; }
 .set-attn li { margin: 2px 0; }
 .help-item { scroll-margin-top: 16px; }
 .help-item h3 { margin: 20px 0 6px; font-size: 16px; }
+
+/* ---- Klaxon: presses behind each buzz, kept visibly apart from QBJ stats ---- */
+.kx-tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent2-tag); background: var(--accent2-bg); border: 1px solid var(--accent2-line); border-radius: 999px; padding: 1px 8px; vertical-align: middle; }
+.kx-panel { margin-top: 28px; border-top: 2px dashed var(--accent2-line); padding-top: 6px; }
+.kx-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px 16px; flex-wrap: wrap; }
+.kx-head h2 { margin: 12px 0 6px; }
+.kx-head-links { font-size: 13px; }
+.kx-record { margin: 0 0 10px; }
+.kx-intro { max-width: 70ch; }
+.kx-others { display: inline; }
+.kx-race { font-weight: 600; }
+.kx-seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 6px; overflow: hidden; }
+.kx-seg button { background: var(--surface); color: var(--ink-soft); border: 0; padding: 5px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.kx-seg button + button { border-left: 1px solid var(--line-strong); }
+.kx-seg button.active { background: var(--accent2-bg); color: var(--accent2-tag); font-weight: 700; }

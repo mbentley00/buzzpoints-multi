@@ -6,6 +6,7 @@ import { useAuth } from "../auth";
 import { Loading, ErrorBox, AuthNav } from "./Common";
 import { warningText } from "./SourceFiles";
 import { byLabel, roundLabel } from "../util";
+import { useKlaxonOn } from "../klaxon";
 
 // Child pages read the set context (meta + ownership + scope) through this hook.
 export function useSetCtx(): SetCtx {
@@ -29,7 +30,7 @@ export function useScopedJson<T>(file: string, nonce = 0) {
 // The pages under a set, in header order. The set's landing page lists the
 // same ones as cards, so the two can't drift apart.
 export interface SetTab { to: string; label: string; desc: string; badge?: number; badgeTitle?: string }
-export function setTabs(meta: Meta, base: string, o: { hasEditions: boolean; isOwner: boolean; forum?: boolean; forumUnread?: number; pendingAccess?: number }): SetTab[] {
+export function setTabs(meta: Meta, base: string, o: { hasEditions: boolean; isOwner: boolean; forum?: boolean; forumUnread?: number; pendingAccess?: number; klaxonOn?: boolean }): SetTab[] {
   const n = (k: number, one: string, many = one + "s") => `${k} ${k === 1 ? one : many}`;
   return [
     { to: `${base}/tossup`, label: "Tossups", desc: n(meta.numTossups, "question") },
@@ -40,6 +41,9 @@ export function setTabs(meta: Meta, base: string, o: { hasEditions: boolean; isO
     { to: `${base}/category/tossup`, label: "Categories (T)", desc: "By subject" },
     ...(meta.hasBonuses ? [{ to: `${base}/category/bonus`, label: "Categories (B)", desc: "By subject" }] : []),
     { to: `${base}/buzzer-races`, label: "Races", desc: "Tossups many rooms buzzed on at once" },
+    // Klaxon logs record every press, not just the one that got the floor. Kept
+    // on a page of its own; a viewer who switched it off sees it struck through.
+    ...(meta.hasKlaxon ? [{ to: `${base}/klaxon`, label: o.klaxonOn === false ? "Klaxon (off)" : "Klaxon", desc: "Every press behind each buzz" }] : []),
     { to: `${base}/first-sentence`, label: "1st Sentence", desc: "Buzzes on the opening clue" },
     { to: `${base}/packet`, label: "Packets", desc: "Questions by round" },
     // Only worth a tab once the owner has marked a metadata field as a tag.
@@ -138,7 +142,8 @@ export function SetLayout() {
   };
 
   const base = `/set/${slug}`;
-  const tabs = meta ? setTabs(meta, base, { hasEditions, isOwner, forum: !!entry?.forum, forumUnread: entry?.forumUnread, pendingAccess }) : [];
+  const klaxonOn = useKlaxonOn();
+  const tabs = meta ? setTabs(meta, base, { hasEditions, isOwner, forum: !!entry?.forum, forumUnread: entry?.forumUnread, pendingAccess, klaxonOn }) : [];
   // Settings shows the list itself, so the banner would only repeat it there.
   const onSettings = /\/settings(\/|$)/.test(loc.pathname);
 

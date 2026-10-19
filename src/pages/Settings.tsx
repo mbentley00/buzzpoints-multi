@@ -17,6 +17,7 @@ import { QuestionEditor } from "../components/QuestionEditor";
 import { DupeFinder } from "../components/DupeFinder";
 import { ReplacementEditor } from "../components/Replacements";
 import { ReplaceData } from "../components/ReplaceData";
+import { KlaxonUpload } from "../components/KlaxonUpload";
 
 const VIS_OPTIONS: { id: Visibility; label: string; desc: string }[] = [
   { id: "listed", label: "Listed (login + invite)", desc: "Shown in the list; only invited, logged-in people can view." },
@@ -46,7 +47,7 @@ const SETTINGS_TABS = [
 type SettingsTab = (typeof SETTINGS_TABS)[number]["id"];
 const TAB_OF_SECTION: Record<string, SettingsTab> = {
   rename: "general", details: "general", visibility: "access", yf: "maintenance", maintenance: "maintenance", delete: "maintenance",
-  requests: "access", people: "access", links: "access", phases: "questions", roundsgames: "files", replace: "files", categories: "questions", bonusdiff: "questions", bonustext: "questions", questionedits: "questions",
+  requests: "access", people: "access", links: "access", phases: "questions", roundsgames: "files", replace: "files", klaxon: "files", categories: "questions", bonusdiff: "questions", bonustext: "questions", questionedits: "questions",
   rounds: "files", addrounds: "files", uploads: "files", games: "files", replacements: "files", renames: "renames", dupes: "renames", discussion: "access", revoke: "access",
 };
 
@@ -732,6 +733,11 @@ export function Settings() {
                 <summary>Remove rounds</summary>
                 <UploadCleanup slug={slug} />
               </details>
+            </Sec>
+
+            <Sec id="klaxon" title="Klaxon buzz logs" line="Add every press behind each buzz from Klaxon rooms. Shown on its own page." help="klaxon"
+              fold open={!!meta?.hasKlaxon} flag={meta?.hasKlaxon ? "attached" : undefined}>
+              <KlaxonUpload slug={slug} hasKlaxon={!!meta?.hasKlaxon} multiEdition={editions.length > 1} />
             </Sec>
 
             <Sec id="replacements" title="Tiebreakers & replacements" line="Point tiebreakers and replacement questions at the question the room actually read." help="replacements"

@@ -143,5 +143,6 @@ export function useIndex() {
 }
 
 export function useSetJson<T>(slug: string, file: string, nonce = 0) {
-  return useAsync<T>(() => loadSetJson<T>(slug, file, nonce), [slug, file, nonce]);
+  // An empty file name means "nothing to load" (a section that's switched off).
+  return useAsync<T>(() => (file ? loadSetJson<T>(slug, file, nonce) : Promise.resolve(null as unknown as T)), [slug, file, nonce]);
 }

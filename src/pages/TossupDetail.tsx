@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { clearSetCache, useSetJson } from "../data";
+import { KlaxonTossupPanel } from "../components/KlaxonPanels";
 import { useSetCtx } from "../components/Layout";
 import { TossupDetail, Buzz, Rosters, EditionSummary } from "../types";
 import { Html, pct, num, roundLabel } from "../util";
@@ -397,6 +398,8 @@ export function TossupDetailPage() {
           </div>
         </div>
       </div>
+
+      <KlaxonTossupPanel slug={slug} version={version} tossupId={id} show={!!meta.hasKlaxon} />
 
       <h2>Summary</h2>
       <div className="table-wrap" style={{ maxWidth: 620 }}>

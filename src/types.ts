@@ -256,6 +256,8 @@ export interface Meta {
   hasTeamBonuses?: boolean;
   hasTags?: boolean;
   needsCategoryMapping?: boolean;
+  // Games carry Klaxon full buzz logs (klaxon.json).
+  hasKlaxon?: boolean;
   kind?: "buzz" | "results";
   numGames: number;
   numTeams: number;

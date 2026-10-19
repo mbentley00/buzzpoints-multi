@@ -68,7 +68,16 @@ export interface FolderScan {
   mirrorCount: number; packetCount: number; noGames: number; unmatched: number;
   packetFile: Map<string, File>;   // `${setKey}|${edKey}|${normPacket}` -> packet File
   anyEdPacket: Map<string, File>;  // `${setKey}|${normPacket}` -> packet File (any edition)
+  // Klaxon buzz logs that came with the export (Klaxon puts its tournament's
+  // klaxon_all_buzz_attempts.json beside data/). Attached once the set exists.
+  klaxonLogs: { name: string; log: unknown }[];
 }
+
+// A Klaxon buzz log, by its format field: a whole tournament's buzz points or
+// one room's full buzz log.
+export const isKlaxonLog = (d: unknown) =>
+  !!d && typeof d === "object" && /^klaxon-(tournament-buzzpoints|fullbuzz)-\d+$/.test(String((d as { format?: unknown }).format ?? "")) &&
+  Array.isArray((d as { buzzes?: unknown }).buzzes);
 
 // Segment list after `anchor` in a "/"-split path, or null.
 function afterAnchor(parts: string[], anchor: string): string[] | null {
@@ -94,11 +103,22 @@ export async function scanDataFolder(files: PathFile[], onProgress?: (msg: strin
   const setIndexFiles: { setKey: string; f: File }[] = [];
   const edIndexFiles: { setKey: string; edKey: string; f: File }[] = [];
 
+  const klaxonLogs: { name: string; log: unknown }[] = [];
+
   onProgress?.("Scanning files…");
   for (const { path, file: f } of files) {
     const parts = path.split("/");
     if (isJunk(parts)) continue;
     const leaf = parts[parts.length - 1];
+    // Outside the migrator's own folders, a .json is worth a look only if it
+    // could be a Klaxon buzz log.
+    if (!parts.includes("question_sets") && !parts.includes("tournaments") && /\.json$/i.test(leaf)) {
+      try {
+        const d = JSON.parse(await f.text());
+        if (isKlaxonLog(d)) klaxonLogs.push({ name: leaf, log: d });
+      } catch { /* not JSON */ }
+      continue;
+    }
     const qs = afterAnchor(parts, "question_sets");
     if (qs) {
       const setKey = qs[0];
@@ -217,8 +237,28 @@ export async function scanDataFolder(files: PathFile[], onProgress?: (msg: strin
   return {
     sets: [...groups.values()].sort((a, b) => a.name.localeCompare(b.name)),
     mirrorCount: mirrorFiles.size, packetCount: packetFile.size, noGames, unmatched,
-    packetFile, anyEdPacket,
+    packetFile, anyEdPacket, klaxonLogs,
   };
+}
+
+// Attach a scan's Klaxon buzz logs to a tournament that now has its games.
+// Returns how many games each log reached; a log that matched nothing is
+// reported, not thrown, so the tournament itself still counts as created.
+export async function attachKlaxonLogs(slug: string, logs: { name: string; log: unknown }[], say?: (m: string) => void) {
+  const out: { name: string; games: number; error?: string }[] = [];
+  for (const l of logs) {
+    say?.(`Adding Klaxon buzz points from ${l.name}…`);
+    try {
+      const r = await fetch("/api/manage", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slug, op: "klaxon-attach", log: l.log, file: l.name }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || `Failed (${r.status})`);
+      out.push({ name: l.name, games: d.attached || 0 });
+    } catch (e) { out.push({ name: l.name, games: 0, error: String((e as Error).message || e) }); }
+  }
+  return out;
 }
 
 // The packet files one mirror needs, each renamed for the round the mirror

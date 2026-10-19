@@ -9,7 +9,7 @@ import { FileDrop } from "../components/FileDrop";
 import { Visibility, TOURNAMENT_LEVELS, RoundWarning, BonusDiffWarning, difficultyOptions } from "../types";
 import { warningText } from "../components/SourceFiles";
 import { hasYearFirst, yearFirstSuggestion } from "../util";
-import { scanDataFolder, filesFromPicker, filesFromZip, mirrorPackets, mirrorCoverage, readSiteGames, sitePacketPlan, sitePacketFiles, FolderScan } from "../migratorFolder";
+import { scanDataFolder, filesFromPicker, filesFromZip, mirrorPackets, mirrorCoverage, readSiteGames, sitePacketPlan, sitePacketFiles, attachKlaxonLogs, FolderScan } from "../migratorFolder";
 import { stageEditions, ingestPostRetry, StageEdition } from "../ingestClient";
 
 interface CategoryWarning { category: string; count: number; reason: string; examples: string[] }
@@ -298,6 +298,18 @@ export function CreateSet() {
         name: name.trim(), level, tdLink: tdLink.trim() || undefined, difficulty: difficulty || undefined, tournamentDate: tournamentDate || undefined,
         scoring, hasBonuses, individual, visibility, autoPublicAt, ...(yf ? { yf } : {}),
       }, (sec) => setStatus(`The server is busy; retrying in ${sec}s…`));
+      // Klaxon buzz points that came in the export: every press behind each
+      // buzz, attached to the games now that they exist. A first-time poster's
+      // tournament doesn't exist until it's approved, so theirs waits.
+      const kx = mode === "folder" ? scan?.klaxonLogs ?? [] : [];
+      if (kx.length && json.slug && !json.pending) {
+        const res = await attachKlaxonLogs(json.slug, kx, setStatus);
+        const bad = res.filter((r) => r.error || !r.games);
+        if (bad.length)
+          window.alert(`The tournament was created, but some Klaxon buzz points couldn't be added (${bad.map((r) => `${r.name}: ${r.error || "no game matched"}`).join("; ")}). You can add them from Settings → Rounds & files → Klaxon buzz logs.`);
+      } else if (kx.length && json.pending) {
+        json.message = `${json.message || "Your first tournament was submitted for review."} Once it's approved, add the Klaxon buzz points from Settings → Rounds & files → Klaxon buzz logs.`;
+      }
       onCreated(json);
     } catch (err) {
       setError(String((err as Error).message || err));
@@ -698,6 +710,7 @@ export function CreateSet() {
               <small className="muted">
                 Each site's packets are filed under the round that site played them, so sites that read the packets in a
                 different order still line up question by question.
+                {scan.klaxonLogs.length > 0 && <> Klaxon buzz points found ({scan.klaxonLogs.map((l) => l.name).join(", ")}): every press behind each buzz is added once the tournament is created.</>}
                 {(scan.noGames > 0 || scan.unmatched > 0) && <> Skipped: {[scan.noGames && `${scan.noGames} site${scan.noGames === 1 ? "" : "s"} with no usable games`, scan.unmatched && `${scan.unmatched} that matched no question set`].filter(Boolean).join(", ")}.</>}
               </small>
             </div>

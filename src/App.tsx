@@ -32,6 +32,7 @@ import { Join } from "./pages/Join";
 import { Admin } from "./pages/Admin";
 import { Requests } from "./pages/Requests";
 import { Settings } from "./pages/Settings";
+import { Klaxon } from "./pages/Klaxon";
 import { Discussion } from "./pages/Discussion";
 import { Profile } from "./pages/Profile";
 
@@ -59,6 +60,7 @@ export default function App() {
         <Route path="bonus-order" element={<BonusOrders />} />
         <Route path="bonus/:id" element={<BonusDetailPage />} />
         <Route path="buzzer-races" element={<BuzzerRaces />} />
+        <Route path="klaxon" element={<Klaxon />} />
         <Route path="first-sentence" element={<FirstSentence />} />
         <Route path="packet" element={<Packets />} />
         <Route path="player" element={<Players />} />

@@ -3,6 +3,7 @@
 // there is no finals mapping, team-name fixup, or hard-coded scoring. Mirrors the
 // richer NSC builder (opponent/ids per buzz, per-player & per-team category
 // breakdowns, buzzer races, first-sentence buzzes, first/top-3 buzzes) generically.
+import { klaxonFile, normName, type GameKlaxon, type KlaxonRaceRec } from "./klaxon.js";
 import { Scoring, classify } from "./scoring.js";
 
 /* ----------------------------- input shapes ----------------------------- */
@@ -34,6 +35,9 @@ export interface GameFile {
     match_players?: { player?: { name?: string }; tossups_heard?: number }[];
   }[];
   match_questions?: {
+    // MODAQ's tossup number in the game (the reading order, replacements
+    // included) — what a Klaxon buzz log calls `question`.
+    question_number?: number;
     tossup_question?: { question_number?: number };
     buzzes?: {
       buzz_position?: { word_index?: number };
@@ -48,6 +52,8 @@ export interface GameFile {
       parts?: { controlled_points?: number | string | null; bounceback_points?: number | string | null }[];
     };
   }[];
+  // Every press behind each buzz, from a Klaxon full buzz log (see klaxon.ts).
+  klaxon?: GameKlaxon;
 }
 
 export interface AggregateConfig {
@@ -1161,8 +1167,14 @@ export function aggregate(
   type GTeamRow = GTeam & { score: number };
   const gameRecs: { round: number; editionId?: string; tuh: number; teams: GTeam[]; players: GPlayer[] }[] = [];
 
+  // Klaxon: each QBJ buzz paired with the Klaxon cycle that produced it.
+  const klaxonRaces: KlaxonRaceRec[] = [];
+  let klaxonGames = 0;
+
   for (const g of games) {
     const r = g.round;
+    const kx = g.klaxon;
+    if (kx) klaxonGames++;
     // Carried onto each buzz and bonus hearing so the detail views can name the
     // mirror it was played in.
     const edId = multiEdition ? g.editionId : undefined;
@@ -1172,6 +1184,12 @@ export function aggregate(
     // rather than credited to a team that played itself.
     const teamNames = [...new Set(((g.match_teams || []).map((t) => t.team?.name).filter(Boolean) as string[]).map(teamNamed))];
     const gameId = `${r}:` + [...teamNames].sort().join("|");
+    const kxTeam = (t: string | null) => {
+      if (!t) return null;
+      const mt = (g.match_teams || []).find((x) => normName(x.team?.name) === normName(t));
+      return mt?.team?.name ? teamNamed(mt.team.name) : teamNamed(t);
+    };
+    let mqIndex = 0;
     // Tossups read in this game (used to credit every teammate with a full game's
     // worth of TUH — see the players section — since sources often list only the
     // players who buzzed, not who actually played).
@@ -1218,6 +1236,8 @@ export function aggregate(
     }
 
     for (const mq of g.match_questions || []) {
+      mqIndex++;
+      const kq = kx?.questions?.[String(mq.question_number ?? mqIndex)];
       const tnum = mq.tossup_question?.question_number;
       const key = tnum != null ? `${r}-${tnum}` : null;
       const tq = key ? tossups.get(key) : undefined;
@@ -1270,6 +1290,19 @@ export function aggregate(
         const geo = tq ? geomOf(g, key!, tq) : undefined;
         if (tq && widx !== null && widx > tq.wordCount) widx = tq.wordCount;
         ordered.push({ value, pname, bteam, widx });
+        // The Klaxon cycle for this buzz, when its winner is this buzz's player.
+        const kc = kq && tq ? kq[ordered.length - 1] : undefined;
+        if (kc && normName(kc.winner) === normName(origPlayer)) {
+          klaxonRaces.push({
+            key: key!, round: r, num: tnum!, ...(edId ? { editionId: edId } : {}),
+            word: widx, value, rebound: ordered.length > 1, winner: pname, team: bteam,
+            others: kc.others.map((o) => {
+              // In a shootout each player is their own team.
+              const team = cfg.individual ? teamNamed(o.name) : kxTeam(o.team);
+              return { player: renamed(o.name, team), team, ms: o.ms, late: o.late };
+            }),
+          });
+        }
         if (tq) {
           const opp = teamNames.find((t) => t !== bteam) ?? null;
           let arr = tuBuzzes.get(key!); if (!arr) { arr = []; tuBuzzes.set(key!, arr); }
@@ -1470,6 +1503,16 @@ export function aggregate(
   }
 
   const files: Record<string, unknown> = {};
+
+  /* ----------------------------- Klaxon (kept apart) ----------------------------- */
+  if (klaxonGames > 0) {
+    const tuInfo = new Map([...tossups.entries()].map(([k, t]) => [k, { answer: t.answer, category: t.category, wordCount: t.wordCount }]));
+    files["klaxon.json"] = klaxonFile(klaxonRaces, {
+      games: klaxonGames, tossups: tuInfo,
+      playerId: (name, team) => playerId.get(plKey(name, team)),
+      teamId: (team) => teamId.get(team),
+    });
+  }
 
   /* ----------------------------- tossups + detail ----------------------------- */
   const tuSumm: Record<string, unknown>[] = [];
@@ -2032,6 +2075,9 @@ export function aggregate(
     // An individual shootout: every "team" here is one player. The client hides
     // the team views and reads room places instead of head-to-head results.
     individual: !!cfg.individual,
+    // Games carry Klaxon full buzz logs: klaxon.json holds every press behind
+    // each buzz, shown apart from the rest (and only when the viewer wants it).
+    hasKlaxon: klaxonGames > 0,
     // Whether per-team/per-player bonus breakdowns exist. False for imports that
     // only expose aggregate bonus conversion (no per-game results), so the client
     // hides team-level PPB while still showing tournament/category bonus stats.

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { clearSetCache, refreshIndex } from "../data";
-import { scanDataFolder, filesFromPicker, filesFromZip, mirrorPackets, mirrorCoverage, FolderScan } from "../migratorFolder";
+import { scanDataFolder, filesFromPicker, filesFromZip, mirrorPackets, mirrorCoverage, attachKlaxonLogs, FolderScan } from "../migratorFolder";
 import { stageEditions, ingestPostRetry, StageEdition } from "../ingestClient";
 
 // Settings → "Replace all data": swap every edition's packets and games for a
@@ -107,10 +107,17 @@ export function ReplaceData({ slug, setName, scoring, editions, onDone }: {
         op: "local-finish", jobId, editionCount, refreshSlug: slug,
         name: setName, scoring: group.scoring || scoring, hasBonuses: group.hasBonuses,
       }, (s) => setStatus(`The server is busy; retrying in ${s}s…`));
+      // The new games replaced the old ones, Klaxon presses and all, so attach
+      // any buzz points that came with this export.
+      const kx = scan.klaxonLogs.length ? await attachKlaxonLogs(slug, scan.klaxonLogs, setStatus) : [];
+      const kxGames = kx.reduce((n, x) => n + x.games, 0);
+      const kxBad = kx.filter((x) => x.error || !x.games);
       clearSetCache(slug);
       refreshIndex();
       setScan(null); setConfirm(false);
-      setDone(`Replaced. The tournament now has ${r.editions} edition${r.editions === 1 ? "" : "s"}.`);
+      setDone(`Replaced. The tournament now has ${r.editions} edition${r.editions === 1 ? "" : "s"}.`
+        + (kx.length ? ` Klaxon buzz points added to ${kxGames} game${kxGames === 1 ? "" : "s"}.` : "")
+        + (kxBad.length ? ` Couldn't add ${kxBad.map((x) => x.name).join(", ")}: ${kxBad.map((x) => x.error || "no game matched").join("; ")}.` : ""));
       onDone();
     } catch (e) { setErr(String((e as Error).message || e)); }
     finally { setBusy(false); setStatus(""); }
@@ -135,6 +142,7 @@ export function ReplaceData({ slug, setName, scoring, editions, onDone }: {
 
       {scan && group && (
         <div className="field">
+          {scan.klaxonLogs.length > 0 && <small className="muted">Klaxon buzz points found ({scan.klaxonLogs.map((l) => l.name).join(", ")}); they're added after the replace.</small>}
           {scan.sets.length > 1 && (
             <label className="field">
               <span>Question set</span>
