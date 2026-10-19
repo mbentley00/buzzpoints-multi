@@ -17,6 +17,7 @@
 // old mapping and removing a mapping puts everything back.
 import { GameFile, PacketFile, tokenize } from "./aggregate.js";
 import type { Edition } from "./sets.js";
+import { htmlToText } from "./html.js";
 
 export type QuestionKind = "tossups" | "bonuses";
 export interface ReplacementTarget { editionId: string; round: number; num: number }
@@ -228,7 +229,7 @@ export function scanMissingQuestions(editions: Edition[], hasBonuses = true): Mi
 // game in the edition was played on that round — a packet nobody played from
 // is most likely the tiebreakers.
 export function replacementCandidates(editions: Edition[]) {
-  const strip = (s: string | undefined) => (s || "").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
+  const strip = (s: string | undefined) => htmlToText(s).replace(/\s+/g, " ").trim();
   const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 3) + "…" : s);
   const primary = (s: string | undefined) => strip(s).split(/\s*[[(]/)[0];
   return editions.map((e) => {

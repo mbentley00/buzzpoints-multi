@@ -383,6 +383,15 @@ export function Settings() {
     ...coOwners.map((e) => ({ email: e, role: "coowner" as const })),
     ...(canAddViewer ? invites.filter((e) => !coOwners.includes(e)).map((e) => ({ email: e, role: "viewer" as const })) : []),
   ];
+  // Switch someone between viewer and co-owner in place. Making a viewer a
+  // co-owner takes them off the invite list on its own; going the other way
+  // needs them added back as a viewer once they're off the co-owner list.
+  async function changeRole(email: string, to: "viewer" | "coowner") {
+    if (to === "coowner") { await coOwner("coowner", email); return; }
+    await coOwner("uncoowner", email);
+    await invite("invite", email);
+    setMsg(`${email} is now a viewer.`);
+  }
   async function addPerson() {
     const email = newPerson.trim();
     if (!email) return;
@@ -602,7 +611,13 @@ export function Settings() {
               {people.map((p) => (
                 <li key={p.role + p.email}>
                   <span>
-                    {p.email} <span className="muted">· {p.role === "coowner" ? "co-owner" : "viewer"}</span>
+                    {p.email}{" "}
+                    {roleChoices.length > 1 ? (
+                      <select className="role-select" value={p.role} disabled={busy} onChange={(e) => changeRole(p.email, e.target.value as "viewer" | "coowner")} aria-label={`Role for ${p.email}`}>
+                        <option value="viewer">viewer</option>
+                        <option value="coowner">co-owner</option>
+                      </select>
+                    ) : <span className="muted">· {p.role === "coowner" ? "co-owner" : "viewer"}</span>}
                     {p.role === "coowner" && coOwnersPending.includes(p.email) && <span className="muted"> · no account yet</span>}
                   </span>
                   <span className="req-actions">

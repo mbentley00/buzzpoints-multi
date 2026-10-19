@@ -16,6 +16,7 @@
 import { put } from "@vercel/blob";
 import { readBlobJson } from "./blob.js";
 import { categoryBuckets, CategoryBucket } from "./categories.js";
+import { htmlToText } from "./html.js";
 
 export const SEARCH_FILE = "_search.json";
 const VERSION = 2; // 2: correct / heard counts behind the conversion rates
@@ -45,7 +46,7 @@ export interface SearchPlayer {
 export interface SearchDoc { v: number; tossups: SearchTossup[]; bonuses: SearchBonus[]; players: SearchPlayer[] }
 
 export const stripHtml = (s: string) =>
-  (s || "").replace(/<[^>]+>/g, "").replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+  htmlToText(s).replace(/\s+/g, " ").trim();
 // Composed form, so an accent is one character rather than a letter followed by
 // a combining mark — which is what makes the fold below a character-for-character
 // swap, and so a match found in folded text still points at the same offset in

@@ -7,6 +7,7 @@ import { getScoring } from "./scoring.js";
 import { isModaqGame, modaqToQbj } from "./modaqGame.js";
 import { buildSearchDoc, invalidateSearchDoc, SEARCH_FILE } from "./searchIndex.js";
 import { applyReplacements, scanMissingQuestions, QuestionReplacement } from "./replacements.js";
+import { htmlToText } from "./html.js";
 
 export interface Edition {
   id: string;
@@ -588,7 +589,7 @@ function collectImportedBonuses(editions: Edition[], bonusDiffs: BonusDiffs, rou
   return out;
 }
 
-const stripTxt = (s: string | undefined) => (s || "").replace(/<[^>]+>/g, "").replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+const stripTxt = (s: string | undefined) => htmlToText(s).replace(/\s+/g, " ").trim();
 
 // A compact comparison token for a tossup answer line: the primary answer only
 // (cut before the first bracketed alternate/prompt or parenthetical), lowercased

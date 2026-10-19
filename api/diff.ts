@@ -3,9 +3,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { currentUser } from "./_lib/auth.js";
 import { getSetEntry, readSource, canViewContent, editionsOf } from "./_lib/sets.js";
+import { htmlToText } from "./_lib/html.js";
 
 const strip = (s: string | undefined) =>
-  (s || "").replace(/<[^>]+>/g, "").replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+  htmlToText(s).replace(/\s+/g, " ").trim();
 const arrEq = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 interface TU { question: string; answer: string }

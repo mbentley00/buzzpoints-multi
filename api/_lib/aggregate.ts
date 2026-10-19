@@ -5,6 +5,7 @@
 // breakdowns, buzzer races, first-sentence buzzes, first/top-3 buzzes) generically.
 import { klaxonFile, normName, type GameKlaxon, type KlaxonRaceRec } from "./klaxon.js";
 import { Scoring, classify } from "./scoring.js";
+import { htmlToText } from "./html.js";
 
 /* ----------------------------- input shapes ----------------------------- */
 export interface PacketFile {
@@ -219,7 +220,7 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
 const pct = (n: number, d: number) => (d ? round1((100 * n) / d) : 0);
 
 function stripHtml(s: string): string {
-  return (s || "").replace(/<[^>]+>/g, "").replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&");
+  return htmlToText(s);
 }
 // A question is numbered by the words that were actually READ OUT. What's printed
 // but not read — the power mark, and pronunciation guides (parentheticals opening
