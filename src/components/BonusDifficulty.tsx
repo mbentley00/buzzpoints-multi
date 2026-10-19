@@ -146,8 +146,7 @@ export function BonusDifficultyEditor({ slug, warnings }: { slug: string; warnin
             </button>
           </div>
           <p className="muted srcfiles-note">
-            Saving re-marks the parts and rebuilds every figure built on them. The packet file itself isn't touched, so
-            uploading a corrected packet later replaces the fix rather than fighting it.
+            Saving rebuilds the stats. The packet file isn't changed.
           </p>
           <div className="table-wrap">
             <table className="data-table srcfiles-table bndiff-table">

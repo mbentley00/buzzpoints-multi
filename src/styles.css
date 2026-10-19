@@ -1233,10 +1233,17 @@ a.auth-user:hover { color: #fff; text-decoration: underline; }
 .combine-order .btn-link { margin-left: 6px; }
 .field { display: flex; flex-direction: column; gap: 5px; }
 .field > span { font-weight: 600; font-size: 13.5px; }
-.field input[type="text"], .field input:not([type]), .field input[type="file"], .field select {
+.field input[type="text"], .field input:not([type]), .field input[type="file"], .field select,
+.field input[type="date"], .field input[type="url"], .field input[type="email"], .field input[type="number"] {
   border: 1px solid var(--line-strong); background: var(--surface); border-radius: 4px; padding: 8px 10px; font-size: 14px; color: var(--ink);
+  font-family: inherit;
 }
 .field-inline { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13.5px; }
+.field-inline input[type="date"] {
+  border: 1px solid var(--line-strong); background: var(--surface); border-radius: 4px; padding: 6px 10px; font-size: 14px; color: var(--ink);
+  font-family: inherit; font-weight: 400;
+}
+.field-inline input[type="date"]:disabled { opacity: 0.55; }
 .field small { font-size: 12px; }
 
 /* New tournament: several sites / packet versions, and the data-folder preview */
@@ -1404,3 +1411,28 @@ a.auth-user:hover { color: #fff; text-decoration: underline; }
 /* The headline column of a stats table (PPG on the players list). */
 .data-table td.col-emph { font-weight: 700; font-size: 1.06em; color: var(--ink); background: var(--emph-bg); }
 .data-table th.col-emph { color: var(--ink); background: var(--emph-bg); }
+
+/* ---- Settings: one-line sections, folding tools, needs-attention list ---- */
+.settings-page .set-sec { margin-top: 26px; }
+.settings-page .set-h { font-size: 18px; margin: 0 0 2px; display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.settings-page .set-line { margin: 0 0 10px; font-size: 14px; }
+.settings-page .set-flag { font-size: 12px; font-weight: 600; color: var(--warn-ink); background: var(--warn-bg); border-radius: 999px; padding: 1px 8px; }
+.settings-page .set-fold > summary { cursor: pointer; list-style: none; }
+.settings-page .set-fold > summary::-webkit-details-marker { display: none; }
+/* The fold marker trails the title so folded and open sections share one left edge. */
+.settings-page .set-fold > summary .set-h::after { content: "▸"; font-size: 13px; color: var(--muted); order: 99; }
+.settings-page .set-fold[open] > summary .set-h::after { content: "▾"; }
+.settings-page .set-fold > summary:hover .set-h::after { color: var(--ink); }
+.settings-page .set-fold:not([open]) > summary .set-line { margin-bottom: 0; }
+.settings-page .set-sub { margin: 8px 0; }
+.settings-page .set-sub > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.settings-page .set-sub[open] > summary { margin-bottom: 6px; }
+.settings-page .set-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.settings-page .set-row > .field { flex: 1 1 150px; min-width: 0; }
+.settings-page .set-input { padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: 4px; min-width: min(260px, 100%); background: var(--surface); color: var(--ink); }
+.settings-page .set-help-tab { margin-left: auto; }
+.set-attn { border: 1px solid var(--warn-rule); background: var(--warn-bg); color: var(--warn-ink); border-radius: 6px; padding: 10px 14px; margin: 0 0 16px; }
+.set-attn ul { margin: 4px 0 0; padding-left: 18px; }
+.set-attn li { margin: 2px 0; }
+.help-item { scroll-margin-top: 16px; }
+.help-item h3 { margin: 20px 0 6px; font-size: 16px; }

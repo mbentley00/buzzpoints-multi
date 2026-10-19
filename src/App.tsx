@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { SetLayout } from "./components/Layout";
 import { Landing } from "./pages/Landing";
 import { About } from "./pages/About";
+import { SettingsHelp } from "./pages/SettingsHelp";
 import { Search } from "./pages/Search";
 import { CreateSet } from "./pages/CreateSet";
 import { CombineSets } from "./pages/CombineSets";
@@ -39,6 +40,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/about" element={<About />} />
+      <Route path="/help/settings" element={<SettingsHelp />} />
       <Route path="/search" element={<Search />} />
       <Route path="/login" element={<Login />} />
       <Route path="/verify" element={<Verify />} />

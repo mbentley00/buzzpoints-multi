@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useSetCtx } from "../components/Layout";
 import { clearSetCache, refreshIndex } from "../data";
@@ -41,10 +41,12 @@ const SETTINGS_TABS = [
   { id: "questions", label: "Questions & categories", sourceOnly: true },
   { id: "files", label: "Rounds & files", sourceOnly: true },
   { id: "renames", label: "Players & teams", sourceOnly: true },
+  { id: "maintenance", label: "Maintenance" },
 ] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number]["id"];
 const TAB_OF_SECTION: Record<string, SettingsTab> = {
-  rename: "general", categories: "questions", bonusdiff: "questions", bonustext: "questions", questionedits: "questions",
+  rename: "general", details: "general", visibility: "access", yf: "maintenance", maintenance: "maintenance", delete: "maintenance",
+  requests: "access", people: "access", links: "access", phases: "questions", roundsgames: "files", replace: "files", categories: "questions", bonusdiff: "questions", bonustext: "questions", questionedits: "questions",
   rounds: "files", addrounds: "files", uploads: "files", games: "files", replacements: "files", renames: "renames", dupes: "renames", discussion: "access", revoke: "access",
 };
 
@@ -64,9 +66,10 @@ export function Settings() {
   const [allowRequests, setAllowRequests] = useState(true);
   const [date, setDate] = useState("");
   const [invites, setInvites] = useState<string[]>([]);
-  const [newInvite, setNewInvite] = useState("");
+  // People: one add box for viewers and co-owners.
+  const [newPerson, setNewPerson] = useState("");
+  const [newRole, setNewRole] = useState<"viewer" | "coowner">("viewer");
   const [coOwners, setCoOwners] = useState<string[]>([]);
-  const [newCoOwner, setNewCoOwner] = useState("");
   // Co-owners who were invited before they had an account and haven't signed up.
   const [coOwnersPending, setCoOwnersPending] = useState<string[]>([]);
   // The creator alone may edit the co-owner list and delete the set; a co-owner
@@ -155,6 +158,7 @@ export function Settings() {
     if (loading || !loc.hash) return;
     const el = document.getElementById(loc.hash.slice(1));
     if (!el) return;
+    for (let d = el.closest("details"); d; d = d.parentElement?.closest("details") ?? null) d.open = true;
     // A frame's grace so the section has laid out before we measure it.
     const t = setTimeout(() => el.scrollIntoView({ block: "start", behavior: "smooth" }), 0);
     const ro = new ResizeObserver(() => el.scrollIntoView({ block: "start" }));
@@ -182,70 +186,64 @@ export function Settings() {
   if (!isOwner) return <p className="caveat">Only the set owner can change settings.</p>;
   if (loading) return <Loading />;
 
-  async function saveSettings() {
-    setErr(null); setMsg(null); setBusy(true);
-    try {
-      const autoPublicAt = visibility === "public" || level === "practice" ? null : autoPublish ? new Date(date).toISOString() : null;
-      const d = await postJson("/api/manage", { slug, op: "settings", visibility, autoPublicAt, allowRequests });
-      refreshIndex();
-      if (d.publicPending) {
-        // The switch to public wasn't applied — it's queued for a moderator.
-        setPublicPending(true);
-        setPendingVis(d.pendingVisibility || "public");
-        setVisibility(d.visibility);
-        setAutoPublish(!!d.autoPublicAt);
-        setMsg(d.pendingVisibility === "listed"
-          ? "Settings saved. Your first tournament was posted Private without a moderator's review, so listing it needs one — your request has been sent, and you'll get an email when it's decided."
-          : "Settings saved. Making a newly uploaded tournament public needs a moderator's approval — your request has been sent, and you'll get an email when it's decided.");
-      } else {
-        setPublicPending(false);
-        setMsg("Settings saved.");
-      }
-    } catch (e) {
-      setErr(String((e as Error).message || e));
-    } finally { setBusy(false); }
-  }
-
+  // The General tab's one Save. Names are only sent when they changed (a
+  // rename rebuilds the stats); the details always are.
   async function saveDetails() {
     setErr(null); setMsg(null); setBusy(true);
     try {
+      if (!nameDraft.trim()) throw new Error("Enter a tournament name.");
       if (!level) throw new Error("Choose a tournament type.");
+      const notes: string[] = [];
+      let rebuilt = false;
+      if (renameDirty) {
+        const changedEds = Object.fromEntries(
+          editions.filter((e) => (edLabels[e.id] ?? e.label).trim() !== e.label).map((e) => [e.id, (edLabels[e.id] ?? e.label).trim()])
+        );
+        const nameChanged = nameDraft.trim() !== (meta?.setName ?? "");
+        await postJson("/api/manage", {
+          slug, op: "rename",
+          ...(nameChanged ? { name: nameDraft.trim() } : {}),
+          ...(Object.keys(changedEds).length ? { editions: changedEds } : {}),
+        });
+        rebuilt = true;
+      }
       const d = await postJson("/api/manage", { slug, op: "details", level, tdLink: tdLink.trim(), difficulty, tournamentDate, individual });
       setTournamentDate(d.tournamentDate || "");
       setDifficulty(d.difficulty || "");
-      // Reclassifying can change whether going public needs approval (practice
-      // tournaments don't), and may have granted a pending request outright.
+      if (d.rebuilt) rebuilt = true;
+      // Reclassifying as practice can take a public set down to listed, and
+      // changes whether going public needs a moderator.
+      if (d.visibility && d.visibility !== visibility) {
+        setVisibility(d.visibility);
+        if (d.level === "practice") notes.push("Practice tournaments can't be public, so it's listed now.");
+      }
+      if (d.level === "practice") setAutoPublish(false);
       setPublicPending(!!d.publicPending);
       setPublicNeedsApproval(!!d.publicNeedsApproval);
-      if (d.visibility) setVisibility(d.visibility);
-      if (d.level === "practice") setAutoPublish(false);
+      if (rebuilt) clearSetCache(slug);
       refreshIndex();
-      // The format changed, so the stats were rebuilt and every page under this
-      // set is showing the old shape until it refetches.
-      if (d.rebuilt) clearSetCache(slug);
-      setMsg(d.level === "practice" && visibility === "public" ? "Tournament details saved. Practice tournaments can't be public, so it's now listed." : d.rebuilt ? "Tournament details saved and stats rebuilt." : "Tournament details saved.");
+      setMsg(["Saved.", ...notes].join(" "));
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally { setBusy(false); }
   }
 
-  async function saveNames() {
+  async function saveVisibility() {
     setErr(null); setMsg(null); setBusy(true);
     try {
-      const changedEds = Object.fromEntries(
-        editions.filter((e) => (edLabels[e.id] ?? e.label).trim() !== e.label).map((e) => [e.id, (edLabels[e.id] ?? e.label).trim()])
-      );
-      const nameChanged = nameDraft.trim() !== (meta?.setName ?? "");
-      const d = await postJson("/api/manage", {
-        slug, op: "rename",
-        ...(nameChanged ? { name: nameDraft.trim() } : {}),
-        ...(Object.keys(changedEds).length ? { editions: changedEds } : {}),
-      });
+      const notes: string[] = [];
+      const autoPublicAt = visibility === "public" || level === "practice" ? null : autoPublish ? new Date(date).toISOString() : null;
+      const s = await postJson("/api/manage", { slug, op: "settings", visibility, autoPublicAt, allowRequests });
+      if (s.publicPending) {
+        // The switch wasn't applied: it's queued for a moderator.
+        setPublicPending(true);
+        setPendingVis(s.pendingVisibility || "public");
+        setVisibility(s.visibility);
+        setAutoPublish(!!s.autoPublicAt);
+        notes.push(`Making it ${s.pendingVisibility === "listed" ? "listed" : "public"} needs a moderator; you'll get an email when it's decided.`);
+      } else setPublicPending(false);
       refreshIndex();
-      // The name is baked into every published file, so what's on screen is now
-      // out of date everywhere, not just here.
-      clearSetCache(slug);
-      setMsg(`Renamed to “${(d as any).name}”. The address of this tournament hasn't changed, so existing links still work.`);
+      setMsg(["Saved.", ...notes].join(" "));
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally { setBusy(false); }
@@ -255,7 +253,7 @@ export function Settings() {
     setErr(null); setMsg(null); setBusy(true);
     try {
       await postJson("/api/manage", { slug, op: "reaggregate" });
-      setMsg("Stats rebuilt. Reload the pages to see the latest.");
+      setMsg("Stats rebuilt. Reload to see them.");
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally { setBusy(false); }
@@ -280,7 +278,6 @@ export function Settings() {
     try {
       const d = await postJson("/api/manage", { slug, op, email });
       setInvites(d.invites || []);
-      if (op === "invite") setNewInvite("");
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally { setBusy(false); }
@@ -296,10 +293,9 @@ export function Settings() {
       // everything now, so listing them twice would be confusing.
       setInvites(d.invites || []);
       if (op === "coowner") {
-        setNewCoOwner("");
-        if (d.invited === undefined) setMsg(`${email} can now manage this tournament.`);
-        else if (d.invited) setMsg(`${email} doesn't have a Buzzpoints account yet, so we've emailed them an invitation to create one. They'll be a co-owner as soon as they sign up with that address.`);
-        else setMsg(`${email} is on the co-owner list, but the invitation email couldn't be sent. Ask them to sign up at Buzzpoints with that address — they'll be a co-owner as soon as they do.`);
+        if (d.invited === undefined) setMsg(`${email} is now a co-owner.`);
+        else if (d.invited) setMsg(`${email} has no account yet, so we emailed them an invitation. They become a co-owner when they sign up.`);
+        else setMsg(`${email} is on the list, but the invitation email failed. Ask them to sign up with that address.`);
       }
       refreshIndex();
     } catch (e) {
@@ -332,7 +328,7 @@ export function Settings() {
       setRevokeConfirm(false);
       refreshIndex();
       const n = (k: number, one: string) => `${k} ${one}${k === 1 ? "" : "s"}`;
-      setMsg(`Access revoked: removed ${n(d.removed, "invited person")}, revoked ${n(d.revokedLinks, "invite link")}, declined ${n(d.declined, "pending request")}. Only you and your co-owners can see this tournament now; it's ${d.visibility}.`);
+      setMsg(`Access revoked: removed ${n(d.removed, "person")}, ${n(d.revokedLinks, "link")} and ${n(d.declined, "request")}. It's ${d.visibility} now.`);
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally { setBusy(false); }
@@ -355,28 +351,55 @@ export function Settings() {
 
   const visDesc = VIS_OPTIONS.find((v) => v.id === visibility)?.desc;
   const activeLinks = links.filter((l) => !l.revoked);
+  const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-  const accessSection = (
-    <>
-      <h2 style={{ marginTop: reviewingAccess ? 0 : 28 }}>Access requests ({accessRequests.length})</h2>
-      {accessRequests.length === 0 ? (
-        <p className="muted">
-          No pending requests.
-          {resolved.some((r) => r.via === "link") &&
-            " If you followed a request email here, the person has since let themselves in with an invite link — see below."}
-        </p>
-      ) : (
+  // What needs fixing, from the warnings the stats build already records. These
+  // replace the big banners the rest of the tournament shows an owner.
+  const roundWarn = meta?.roundWarnings?.length ?? 0;
+  const crossTeams = meta?.crossMirrorTeams?.length ?? 0;
+  const missingQs = meta?.missingQuestions?.length ?? 0;
+  const bonusDiff = meta?.bonusDiffWarnings?.length ?? 0;
+  const needsMap = !!meta?.needsCategoryMapping;
+  const attention: { text: string; to: string }[] = [
+    ...(roundWarn ? [{ text: `${plural(roundWarn, "packet round")} not lined up with ${roundWarn === 1 ? "its" : "their"} games`, to: "files#rounds" }] : []),
+    ...(crossTeams ? [{ text: `${plural(crossTeams, "team")} played in more than one edition`, to: "files#games" }] : []),
+    ...(missingQs ? [{ text: `${plural(missingQs, "question")} read that ${missingQs === 1 ? "isn't" : "aren't"} in the packets`, to: "files#replacements" }] : []),
+    ...(bonusDiff ? [{ text: `${plural(bonusDiff, "bonus", "bonuses")} with impossible difficulty marks`, to: "questions#bonusdiff" }] : []),
+    ...(needsMap ? [{ text: "Category fields need confirming", to: "questions#categories" }] : []),
+  ];
+  const tabCount: Partial<Record<SettingsTab, number>> = {
+    access: accessRequests.length,
+    files: (roundWarn ? 1 : 0) + (crossTeams ? 1 : 0) + (missingQs ? 1 : 0),
+    questions: (bonusDiff ? 1 : 0) + (needsMap ? 1 : 0),
+  };
+
+  // People: co-owners and invited viewers in one list. A public tournament
+  // needs no viewers, and only the creator manages co-owners.
+  const canAddViewer = visibility !== "public";
+  const roleChoices = [...(canAddViewer ? ["viewer"] : []), ...(isPrimary ? ["coowner"] : [])] as ("viewer" | "coowner")[];
+  const role = roleChoices.includes(newRole) ? newRole : roleChoices[0];
+  const people = [
+    ...coOwners.map((e) => ({ email: e, role: "coowner" as const })),
+    ...(canAddViewer ? invites.filter((e) => !coOwners.includes(e)).map((e) => ({ email: e, role: "viewer" as const })) : []),
+  ];
+  async function addPerson() {
+    const email = newPerson.trim();
+    if (!email) return;
+    if (role === "coowner") await coOwner("coowner", email);
+    else await invite("invite", email);
+    setNewPerson("");
+  }
+
+  const accessSection = (accessRequests.length > 0 || resolved.length > 0) && (
+    <Sec id="requests" title={`Access requests (${accessRequests.length})`}>
+      {accessRequests.length > 0 && (
         <ul className="invite-list">
           {accessRequests.map((a) => (
             <li key={a.email}>
               <span>
                 <strong>{a.name}</strong> <span className="muted">· {a.email}</span>
-                {(a.role || a.team) && (
-                  <span className="muted"> · {[a.role, a.team].filter(Boolean).join(" — ")}</span>
-                )}
-                {a.fromLink !== undefined && (
-                  <span className="muted"> · via invite link{a.fromLink ? ` "${a.fromLink}"` : ""}</span>
-                )}
+                {(a.role || a.team) && <span className="muted"> · {[a.role, a.team].filter(Boolean).join(" — ")}</span>}
+                {a.fromLink !== undefined && <span className="muted"> · via invite link{a.fromLink ? ` "${a.fromLink}"` : ""}</span>}
               </span>
               <span className="req-actions">
                 <button className="btn-primary btn-sm" disabled={busy} onClick={() => decide(a.email, true)}>Approve</button>
@@ -387,38 +410,43 @@ export function Settings() {
         </ul>
       )}
       {resolved.length > 0 && (
-        <>
-          <h3 className="settings-sub">Recently settled</h3>
+        <details className="set-sub">
+          <summary>Recently settled ({resolved.length})</summary>
           <ul className="invite-list">
             {resolved.map((r) => (
               <li key={r.email}>
-                <span>
-                  <strong>{r.name}</strong> <span className="muted">· {r.email}</span>
-                </span>
+                <span><strong>{r.name}</strong> <span className="muted">· {r.email}</span></span>
                 <span className="muted">
-                  {r.status === "denied"
-                    ? "denied"
-                    : r.via === "link"
-                    ? "joined via invite link — request auto-approved"
-                    : "approved by you"}
+                  {r.status === "denied" ? "denied" : r.via === "link" ? "joined by invite link" : "approved"}
                   {r.resolvedAt ? ` · ${new Date(r.resolvedAt).toLocaleDateString()}` : ""}
                 </span>
               </li>
             ))}
           </ul>
-        </>
+        </details>
       )}
-    </>
+    </Sec>
   );
 
+  const isResults = meta?.kind === "results";
+
   return (
-    <div className="detail">
+    <div className="detail settings-page">
       <h1>Settings</h1>
       {err && <div className="error-box">{err}</div>}
       {msg && <div className="caveat"><span className="ok-msg">{msg}</span></div>}
 
-      {reviewingAccess && visibility !== "public" && (
-        <div className="caveat" style={{ marginBottom: 28 }}>{accessSection}</div>
+      {reviewingAccess && accessSection && <div className="caveat" style={{ marginBottom: 20 }}>{accessSection}</div>}
+
+      {attention.length > 0 && (
+        <div className="set-attn" role="status">
+          <strong>Needs attention</strong>
+          <ul>
+            {attention.map((a) => (
+              <li key={a.to}><span>{a.text}</span> <Link className="link" to={`/set/${slug}/settings/${a.to}`}>Fix</Link></li>
+            ))}
+          </ul>
+        </div>
       )}
 
       <nav className="admin-tabs" aria-label="Settings sections">
@@ -426,507 +454,345 @@ export function Settings() {
           <NavLink key={t.id} to={t.id === "general" ? `/set/${slug}/settings` : `/set/${slug}/settings/${t.id}`} end
             className={() => "admin-tab" + (tab === t.id ? " active" : "")}>
             {t.label}
-            {t.id === "access" && accessRequests.length > 0 && (
-              <span className="badge-new" title={`${accessRequests.length} access request${accessRequests.length === 1 ? "" : "s"} waiting`}>{accessRequests.length}</span>
-            )}
+            {!!tabCount[t.id] && <span className="badge-new">{tabCount[t.id]}</span>}
           </NavLink>
         ))}
+        <a className="admin-tab set-help-tab" href="/help/settings" target="_blank" rel="noreferrer">Help ↗</a>
       </nav>
 
       {/* Every tab stays mounted and is only hidden, so an upload or repair in one
           keeps going while you look at another. */}
       <section hidden={tab !== "general"}>
-
-      <h2 id="rename">Name</h2>
-      <p className="muted">
-        Renaming changes what this tournament is called everywhere its stats are published. Its web address stays as
-        it is, so links people have already shared keep working.
-      </p>
-      <div className="create-form" style={{ maxWidth: 520 }}>
-        <label className="field">
-          <span>Tournament name</span>
-          <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} placeholder="e.g. 2026 PACE NSC" />
-        </label>
-        {!!nameDraft.trim() && !hasYearFirst(nameDraft) && (
-          <p className="caveat name-hint">
-            Tournaments here are named <strong>year first</strong> — “2026 PACE NSC”, not “PACE NSC 2026”.{" "}
-            {yearFirstSuggestion(nameDraft)
-              ? <>Did you mean <button type="button" className="btn-link" onClick={() => setNameDraft(yearFirstSuggestion(nameDraft)!)}>{yearFirstSuggestion(nameDraft)}</button>?</>
-              : <>You can still use this name.</>}
-          </p>
-        )}
-        {editions.length > 0 && (
-          <>
-            <span className="field-label">Edition names</span>
-            {byLabel(editions).map((e) => (
-              <label className="field" key={e.id}>
-                <input
-                  value={edLabels[e.id] ?? e.label}
-                  aria-label={`Name for edition ${e.label}`}
-                  onChange={(ev) => setEdLabels((m) => ({ ...m, [e.id]: ev.target.value }))}
-                />
-              </label>
-            ))}
-          </>
-        )}
-        <button className="btn-primary" disabled={busy || !nameDraft.trim() || !renameDirty} onClick={saveNames}>
-          {busy ? "Saving…" : "Save names & rebuild"}
-        </button>
-      </div>
-
-      <h2 style={{ marginTop: 28 }}>Tournament details</h2>
-      <div className="create-form" style={{ maxWidth: 520 }}>
-        <label className="field">
-          <span>Tournament type</span>
-          <select value={level} onChange={(e) => { setLevel(e.target.value); setDifficulty(""); }}>
-            <option value="" disabled>Choose a type…</option>
-            {TOURNAMENT_LEVELS.map((l) => (
-              <option key={l.id} value={l.id}>{l.label}</option>
-            ))}
-          </select>
-        </label>
-        {difficultyOptions(level).length > 0 && (
-          <label className="field">
-            <span>Question difficulty (optional)</span>
-            <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
-              <option value="">Not set</option>
-              {difficultyOptions(level).map((d) => (
-                <option key={d.id} value={d.id}>{d.label}</option>
-              ))}
-            </select>
-            {level !== "hs" && (
-              <small className="muted">
-                The <a className="link" href="https://collegequizbowlcalendar.com/difficulty-scale/" target="_blank" rel="noreferrer">College Quizbowl Calendar scale</a>, in half steps.
-              </small>
+        <Sec id="details" title="Tournament" line="Renaming keeps the web address, so shared links still work." help="details">
+          <div className="create-form" style={{ maxWidth: 560 }}>
+            <label className="field" id="rename">
+              <span>Name</span>
+              <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} placeholder="e.g. 2026 PACE NSC" />
+            </label>
+            {!!nameDraft.trim() && !hasYearFirst(nameDraft) && (
+              <p className="caveat name-hint">
+                Names here go year first.{" "}
+                {yearFirstSuggestion(nameDraft) && <>Use <button type="button" className="btn-link" onClick={() => setNameDraft(yearFirstSuggestion(nameDraft)!)}>{yearFirstSuggestion(nameDraft)}</button>?</>}
+              </p>
             )}
-          </label>
-        )}
-        <label className="field">
-          <span>Tournament date (optional)</span>
-          <input type="date" value={tournamentDate} onChange={(e) => setTournamentDate(e.target.value)} style={{ maxWidth: 200 }} />
-          <small className="muted">When it was first played — the earliest mirror, not when it was added here.</small>
-        </label>
-        <label className="field">
-          <span>Tournament Database link (optional)</span>
-          <input type="url" value={tdLink} onChange={(e) => setTdLink(e.target.value)} placeholder="https://hsquizbowl.org/db/tournaments/…" />
-        </label>
-        <label className="field-inline">
-          <input type="checkbox" checked={individual} onChange={(e) => setIndividual(e.target.checked)} />
-          <span>Individual shootout (players compete for themselves, like IPNCT)</span>
-        </label>
-        <small className="muted">
-          Reads every player as their own competitor, whatever "teams" the scoresheets were filed under, and ranks
-          players rather than teams. Changing this rebuilds the stats.
-        </small>
-        <button className="btn-primary" disabled={busy} onClick={saveDetails}>Save details</button>
-      </div>
-
-      <h2 style={{ marginTop: 28 }}>Visibility</h2>
-      <div className="create-form" style={{ maxWidth: 520 }}>
-        <label className="field">
-          <span>Who can see this tournament</span>
-          <select value={visibility} onChange={(e) => setVisibility(e.target.value as Visibility)}>
-            {VIS_OPTIONS.filter((o) => o.id !== "public" || level !== "practice").map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-          </select>
-          <small className="muted">{visDesc}</small>
-          {level === "practice" ? (
-            <small className="muted">Practice tournaments stay listed or private — they can't be made public.</small>
-          ) : publicPending ? (
-            <small className="muted">Your request to make this tournament {pendingVis === "listed" ? "listed" : "public"} is awaiting a moderator's approval. Until then it stays {visibility}.</small>
-          ) : publicNeedsApproval && visibility !== "public" ? (
-            <small className="muted">This tournament was uploaded less than three months ago, so making it public needs a moderator's approval — selecting Public sends them a request.</small>
-          ) : null}
-        </label>
-
-        {visibility !== "public" && level !== "practice" && (
-          <div className="field">
-            <label className="field-inline">
-              <input type="checkbox" checked={autoPublish} onChange={(e) => setAutoPublish(e.target.checked)} />
-              <span>Automatically make public on</span>
-              <input type="date" value={date} disabled={!autoPublish} onChange={(e) => setDate(e.target.value)} />
+            {editions.length > 0 && (
+              <details className="set-sub">
+                <summary>Edition names ({editions.length})</summary>
+                {byLabel(editions).map((e) => (
+                  <label className="field" key={e.id}>
+                    <input value={edLabels[e.id] ?? e.label} aria-label={`Name for edition ${e.label}`}
+                      onChange={(ev) => setEdLabels((m) => ({ ...m, [e.id]: ev.target.value }))} />
+                  </label>
+                ))}
+              </details>
+            )}
+            <div className="set-row">
+              <label className="field">
+                <span>Type</span>
+                <select value={level} onChange={(e) => { setLevel(e.target.value); setDifficulty(""); }}>
+                  <option value="" disabled>Choose a type…</option>
+                  {TOURNAMENT_LEVELS.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
+                </select>
+              </label>
+              {difficultyOptions(level).length > 0 && (
+                <label className="field">
+                  <span>Difficulty</span>
+                  <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
+                    <option value="">Not set</option>
+                    {difficultyOptions(level).map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+                  </select>
+                </label>
+              )}
+              <label className="field">
+                <span>Date first played</span>
+                <input type="date" value={tournamentDate} onChange={(e) => setTournamentDate(e.target.value)} />
+              </label>
+            </div>
+            <label className="field">
+              <span>Tournament Database link</span>
+              <input type="url" value={tdLink} onChange={(e) => setTdLink(e.target.value)} placeholder="https://hsquizbowl.org/db/tournaments/…" />
             </label>
-            <small className="muted">
-              {autoPublish ? "On this date it becomes public and open to all." : "Off — it stays restricted until you change visibility yourself."}
-            </small>
-          </div>
-        )}
-        <div className="field">
-          <label className="field-inline">
-            <input type="checkbox" checked={allowRequests} onChange={(e) => setAllowRequests(e.target.checked)} />
-            <span>Let viewers suggest corrections</span>
-          </label>
-          <small className="muted">
-            {allowRequests
-              ? "Anyone who can view this tournament can propose a buzz fix, a bonus-parts fix, or a rename, and you approve or reject it on the Corrections page."
-              : "Off — the Edit and rename controls are hidden from viewers, and no new requests can be submitted. You and any co-owners still edit directly."}
-          </small>
-        </div>
-        <button className="btn-primary" disabled={busy} onClick={saveSettings}>Save settings</button>
-      </div>
+            <label className="field-inline">
+              <input type="checkbox" checked={individual} onChange={(e) => setIndividual(e.target.checked)} />
+              <span>Individual shootout: rank players, not teams</span>
+            </label>
 
+            <button className="btn-primary" disabled={busy || !nameDraft.trim()} onClick={saveDetails}>{busy ? "Saving…" : "Save"}</button>
+          </div>
+        </Sec>
       </section>
 
-      <section hidden={tab !== "questions"}>
-      {meta?.kind !== "results" && (meta?.rounds?.length ?? 0) > 0 && (
-        <>
-          <h2 style={{ marginTop: 28 }}>Round phases / tags</h2>
-          <p className="muted">
-            Tag rounds with phases (e.g. Prelims, Playoffs, Finals). Viewers can then filter every page to a phase. A
-            round can carry more than one tag. Mirrors that ran different schedules — different packets in the
-            playoffs, say — can each have their own, so a phase only ever collects the games actually played in it.
-          </p>
-          <RoundTagsEditor slug={slug} rounds={meta!.rounds} />
-        </>
-      )}
+      <section hidden={tab !== "maintenance"}>
+        <Sec id="maintenance" title="Rebuild stats" line="Recompute every stat from the uploaded files." help="delete">
+          <div><button className="btn-secondary" disabled={busy} onClick={rebuild}>Rebuild stats</button></div>
+        </Sec>
 
-      {meta?.kind !== "results" && (
-        <>
-          <h2 id="categories" style={{ marginTop: 28 }}>Question categories &amp; tags</h2>
-          <p className="muted">
-            Each question's metadata is a comma-separated line, but sets order it differently — some lead with the
-            writer, some with the category — so a set can end up filed under a writer's initials. Say what each field
-            means here and every question is re-read. Fields marked <strong>Tag</strong> become extra dimensions you can
-            filter and compare on, like the writer.
-          </p>
-          <MetaMapEditor slug={slug} />
+        {hasYf && (
+          <Sec id="yf" title="YellowFruit export" line="Your .yft with buzz corrections applied.">
+            <div><a className="btn-secondary" href={`/api/yf-export?slug=${encodeURIComponent(slug)}`}>Download .yft</a></div>
+          </Sec>
+        )}
 
-          <h2 id="questionedits" style={{ marginTop: 28 }}>Edit individual questions</h2>
-          <p className="muted">
-            When a set tags its rounds inconsistently, the same subject lands under several categories. Filter to the
-            questions you mean, tick them, and file them under one category, or add or drop a tag. Your edits sit on
-            top of the packet's metadata, so re-uploading or remapping keeps them; "Reset to packet's" undoes one.
-          </p>
-          <QuestionEditor slug={slug} hasBonuses={!!meta?.hasBonuses} />
+        {isPrimary && (
+          <Sec id="delete" title="Delete this tournament" line="Removes every stat, correction and uploaded file for good." help="delete">
+            <div className="danger-zone">
+              <label className="field-inline" style={{ flexWrap: "wrap" }}>
+                <span>Type <strong>{meta.setName}</strong> to confirm</span>
+                <input value={confirmDelete} onChange={(e) => setConfirmDelete(e.target.value)} placeholder={meta.setName} className="set-input" />
+              </label>
+              <div style={{ marginTop: 10 }}>
+                <button className="btn-primary btn-sm danger-btn" disabled={busy || confirmDelete.trim() !== meta.setName} onClick={deleteSet}>
+                  {busy ? "Deleting…" : "Delete tournament"}
+                </button>
+              </div>
+            </div>
+          </Sec>
+        )}
+      </section>
 
-          {meta?.hasBonuses && (
-            <>
-              <h2 id="bonusdiff" style={{ marginTop: 28 }}>Bonus difficulty marks</h2>
-              <p className="muted">
-                A three-part bonus is written easy, medium and hard — in some order. When a packet tags one
-                "medium, easy, easy" the mistake is invisible everywhere except{" "}
-                <Link to={`/set/${slug}/bonus-order`} className="link">Difficulty order</Link>, where the bonus turns up
-                under an order nobody wrote: its real hard part is counted as an easy one, and every easy/medium/hard
-                figure in the tournament is averaged with a part that was never that difficulty. Re-mark the parts here
-                and the stats are rebuilt — the packet file itself is left alone.
-              </p>
-              <BonusDifficultyEditor slug={slug} warnings={meta?.bonusDiffWarnings ?? []} />
+      <section hidden={tab !== "access"}>
+        {!reviewingAccess && accessSection}
 
-              <h2 id="bonustext" style={{ marginTop: 28 }}>Fill bonus text from the packets</h2>
-              <p className="muted">
-                A tournament imported from another Buzzpoints site can arrive with bonus answers and conversion but
-                blank lead-ins and parts. If that site no longer has the text, pick a fill file made from this
-                tournament's packets. It applies only to this tournament: only lead-ins and part text change, and each
-                bonus is checked against its stored answer lines first.
-              </p>
-              <PacketTextFill slug={slug} name={meta?.setName ?? slug} />
-            </>
+        <Sec id="visibility" title="Visibility" help="visibility">
+          <div className="create-form" style={{ maxWidth: 560 }}>
+            <label className="field">
+              <span>Who can see it</span>
+              <select value={visibility} onChange={(e) => setVisibility(e.target.value as Visibility)}>
+                {VIS_OPTIONS.filter((o) => o.id !== "public" || level !== "practice").map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+              <small className="muted">
+                {visDesc}
+                {level === "practice" ? " Practice tournaments can't be public."
+                  : publicPending ? ` Waiting for a moderator to approve making it ${pendingVis === "listed" ? "listed" : "public"}.`
+                  : publicNeedsApproval && visibility !== "public" ? " Going public needs a moderator's approval." : ""}
+              </small>
+            </label>
+            {visibility !== "public" && level !== "practice" && (
+              <label className="field-inline">
+                <input type="checkbox" checked={autoPublish} onChange={(e) => setAutoPublish(e.target.checked)} />
+                <span>Make public on</span>
+                <input type="date" value={date} disabled={!autoPublish} onChange={(e) => setDate(e.target.value)} />
+              </label>
+            )}
+            <label className="field-inline">
+              <input type="checkbox" checked={allowRequests} onChange={(e) => setAllowRequests(e.target.checked)} />
+              <span>Let viewers suggest corrections</span>
+            </label>
+            <button className="btn-primary" disabled={busy} onClick={saveVisibility}>{busy ? "Saving…" : "Save"}</button>
+          </div>
+        </Sec>
+
+
+        <Sec id="people" title={`People (${people.length})`} line={canAddViewer ? "Viewers can open it and suggest fixes. Co-owners can manage everything but this list and deleting." : "Co-owners can manage everything but this list and deleting."} help="people">
+          {roleChoices.length > 0 && (
+            <div className="buzz-edit" style={{ marginBottom: 10 }}>
+              <input type="email" placeholder="person@example.com" value={newPerson} onChange={(e) => setNewPerson(e.target.value)} className="set-input" />
+              {roleChoices.length > 1 ? (
+                <select value={role} onChange={(e) => setNewRole(e.target.value as "viewer" | "coowner")} aria-label="Role">
+                  <option value="viewer">Viewer</option>
+                  <option value="coowner">Co-owner</option>
+                </select>
+              ) : <span className="muted">{role === "coowner" ? "as co-owner" : "as viewer"}</span>}
+              <button className="btn-primary btn-sm" disabled={busy || !newPerson.trim()} onClick={addPerson}>Add</button>
+            </div>
           )}
-
-        </>
-      )}
-      </section>
-
-      <section hidden={tab !== "files"}>
-      {meta?.kind !== "results" && (
-        <>
-          <h2 id="rounds" style={{ marginTop: 28 }}>Round alignment</h2>
-          <p className="muted">
-            Each packet's round is taken from its <strong>filename</strong> when you upload it ("Round_3.json" → round
-            3); a file with no number in its name falls back to round 0. Games carry their own round from inside the QBJ.
-            If the two don't match, the buzzes never reach the questions — the packet shows 0 heard everywhere while
-            player and team stats still look normal. Fix it by setting the right round below.
-          </p>
-          <RoundAlignEditor slug={slug} />
-
-          <h2 id="addrounds" style={{ marginTop: 28 }}>Add rounds or games</h2>
-          <p className="muted">
-            A tournament that runs over several days or weeks doesn't have to arrive in one upload — add each round's
-            packets and games as they're played and every figure here catches up. The same form replaces a round you
-            need to redo: upload the corrected files and tick the replace box, so the fix lands instead of stacking a
-            second copy alongside the first.
-          </p>
-          {/* A set uploaded before editions existed has no summary row; it still has
-              the one edition every set has. */}
-          <AddFilesForm slug={slug} editions={editions.length ? editions : [{ id: "e0", label: "Original" }]} />
-
-          <h2 id="uploads" style={{ marginTop: 28 }}>Remove uploaded rounds</h2>
-          <p className="muted">
-            Adding files to an edition <strong>appends</strong> them, so uploading the same files twice stores them
-            twice, and a wrong upload lands alongside the right one. Clear a round, an edition, or everything — the
-            tournament keeps its address, settings, invites and corrections, so you can upload replacements into it
-            instead of starting a new one.
-          </p>
-          <UploadCleanup slug={slug} />
-
-          <h2 id="replace" style={{ marginTop: 28 }}>Replace all data</h2>
-          <p className="muted">
-            Swap every edition's packets and games for a new export — a buzzpoint-migrator <code>.db</code>, its data
-            folder, or a .zip of that folder. Use it when a better copy of the data turns up (for example, one with every
-            team's bonus results). The tournament keeps its address, name, owners, visibility, invites and corrections.
-          </p>
-          <ReplaceData
-            slug={slug} setName={meta?.setName ?? ""} scoring={meta?.scoring ?? ""}
-            editions={editions.length ? editions : [{ id: "e0", label: "Original" }]}
-            onDone={() => setTimeout(() => window.location.reload(), 1500)}
-          />
-
-          <h2 id="games" style={{ marginTop: 28 }}>Individual games</h2>
-          <p className="muted">
-            For a single stray game rather than a whole round — a duplicate matchup, or one file that shouldn't be here.
-            You can also correct a game filed under the wrong round: type the right one and save. A game's round comes
-            from the QBJ's own round field or else its filename, and when that's wrong its buzzes never reach the
-            questions that were read, so the packet shows 0 heard while the teams' totals still look normal.
-          </p>
-          <GameFilesEditor slug={slug} />
-
-          <h2 id="replacements" style={{ marginTop: 28 }}>Tiebreakers &amp; replacement questions</h2>
-          <p className="muted">
-            Game files record only <em>which number</em> a room read — "round 7, tossup 22" or "bonus 21" — and the
-            question itself is looked up in that round's packet. When a room read a tiebreaker or a replacement the
-            packet doesn't have, those buzzes and bonus results don't count toward any question. Drop the tiebreaker packet into the upload
-            box below (it's filed on a round of its own, whatever the file is called), then pick the question each one
-            really was. Where rooms read different
-            questions under the same number, map them game by game. The game files are never changed, so Undo puts
-            everything back.
-          </p>
-          <ReplacementEditor slug={slug} />
-
-        </>
-      )}
-      </section>
-
-      <section hidden={tab !== "renames"}>
-      {meta?.kind !== "results" && (
-        <>
-          <h2 id="renames" style={{ marginTop: 28 }}>Rename players and teams</h2>
-          <p className="muted">
-            A rename folds every buzz, box score and roster entry for a player or a team onto one spelling — fixing a
-            typo, or joining two spellings of the same person or school that split their stats. Pick one below (or use
-            the Rename link on a player’s or team’s page). Viewers can suggest a rename too; it lands on the{" "}
-            <Link to={`/set/${slug}/requests`} className="link">Corrections</Link> page for approval.
-          </p>
-          <RenamePicker slug={slug} individual={!!meta.individual} returnTo={`${loc.pathname}#renames`} />
-
-          <h2 id="dupes" style={{ marginTop: 28 }}>Possible duplicates</h2>
-          <p className="muted">
-            Hand-entered scoresheets spell the same team or person slightly differently from room to room, and each
-            spelling gets its own row. These pairs look like the same one — never suggested for two teams that met or
-            played the same round, or two players who appeared in one game. Tick the real ones and merge; each merge is a
-            rename you can undo below.
-          </p>
-          <DupeFinder slug={slug} individual={!!meta.individual} />
-          <h3 style={{ marginTop: 18 }}>Applied renames</h3>
-          <RenamesEditor slug={slug} />
-        </>
-      )}
-      </section>
-
-      <section hidden={tab !== "general"}>
-      {hasYf && (
-        <>
-          <h2 style={{ marginTop: 28 }}>YellowFruit export</h2>
-          <p className="muted">
-            Download the uploaded YellowFruit file with your buzz corrections applied to its box scores, ready to
-            re-import into YellowFruit.
-          </p>
-          <a className="btn-primary" href={`/api/yf-export?slug=${encodeURIComponent(slug)}`}>
-            Download updated .yft
-          </a>
-        </>
-      )}
-
-      </section>
-
-      <section hidden={tab !== "access"}>
-      <h2 id="discussion" style={{ marginTop: 28 }}>Discussion</h2>
-      <div className="create-form" style={{ maxWidth: 640 }}>
-        <label className="field-inline">
-          <input type="checkbox" checked={forum} onChange={async (e) => {
-            const on = e.target.checked; setForum(on); setErr(null);
-            try { await postJson("/api/manage", { slug, op: "settings", forum: on }); refreshIndex(); setMsg(on ? "Discussion is open." : "Discussion is closed."); }
-            catch (err) { setForum(!on); setErr(String((err as Error).message || err)); }
-          }} />
-          <span>Open a discussion for this tournament</span>
-        </label>
-        <small className="muted">
-          Off by default. When it's on, signed-in viewers with access to the tournament can read the threads, and can
-          post once you've approved them here — you'll get an email when someone asks. Everyone who has written in a
-          thread is emailed when it gets a reply. Posts are stored as BBCode, phpBB's own markup, so the discussion can
-          later be synced to a phpBB forum.
-        </small>
-        {forum && <ForumMembers slug={slug} enabled={forum} />}
-      </div>
-
-      </section>
-
-      <section hidden={tab !== "general"}>
-      <h2 style={{ marginTop: 28 }}>Maintenance</h2>
-      <p className="muted">Recompute all stats from the uploaded files (use this to pick up new stats pages or fixes).</p>
-      <button className="btn-primary" disabled={busy} onClick={rebuild}>Rebuild stats</button>
-
-      </section>
-
-      <section hidden={tab !== "access"}>
-      {visibility !== "public" && (
-        <>
-          {!reviewingAccess && accessSection}
-
-          <h2 style={{ marginTop: 28 }}>Invite links</h2>
-          <p className="muted">
-            Anyone with an account who opens an active link gets access to this tournament — or, for a link that needs
-            your approval, sends you an access request to approve or deny above.
-          </p>
-          <div className="buzz-edit">
-            <label className="field-inline">
-              <input type="checkbox" checked={linkApproval} onChange={(e) => setLinkApproval(e.target.checked)} />{" "}
-              Require my approval for people who use this link
-            </label>
-            <button className="btn-primary btn-sm" disabled={busy} onClick={createLink}>Create invite link</button>
-          </div>
-          {activeLinks.length > 0 && (
-            <ul className="invite-list" style={{ marginTop: 12 }}>
-              {activeLinks.map((l) => (
-                <li key={l.id}>
-                  <span className="mono" style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis" }}>{linkUrl(l.id)}</span>
+          {people.length === 0 ? <p className="muted">Nobody yet.</p> : (
+            <ul className="invite-list">
+              {people.map((p) => (
+                <li key={p.role + p.email}>
+                  <span>
+                    {p.email} <span className="muted">· {p.role === "coowner" ? "co-owner" : "viewer"}</span>
+                    {p.role === "coowner" && coOwnersPending.includes(p.email) && <span className="muted"> · no account yet</span>}
+                  </span>
                   <span className="req-actions">
-                    {l.approval && <span className="muted">needs approval ·</span>}
-                    <span className="muted">{l.uses} use{l.uses === 1 ? "" : "s"}</span>
-                    <button className="btn-link" onClick={() => copyLink(l.id)}>{copiedId === l.id ? "Copied!" : "Copy"}</button>
-                    <button className="btn-link danger" disabled={busy} onClick={() => revokeLink(l.id)}>Revoke</button>
+                    {p.role === "coowner" && isPrimary && coOwnersPending.includes(p.email) && <button className="btn-link" disabled={busy} onClick={() => coOwner("coowner", p.email)}>Resend</button>}
+                    {(p.role === "viewer" || isPrimary) && (
+                      <button className="btn-link" disabled={busy} onClick={() => (p.role === "viewer" ? invite("uninvite", p.email) : coOwner("uncoowner", p.email))}>Remove</button>
+                    )}
                   </span>
                 </li>
               ))}
             </ul>
           )}
+        </Sec>
 
-          <h2 style={{ marginTop: 28 }}>Invited people ({invites.length})</h2>
-          <p className="muted">Invited accounts can view this tournament and submit correction requests.</p>
-          <div className="buzz-edit" style={{ marginBottom: 12 }}>
-            <input
-              type="email"
-              placeholder="person@example.com"
-              value={newInvite}
-              onChange={(e) => setNewInvite(e.target.value)}
-              style={{ padding: "6px 8px", border: "1px solid #cdd5e0", borderRadius: 4, minWidth: 260 }}
-            />
-            <button className="btn-primary btn-sm" disabled={busy || !newInvite.trim()} onClick={() => invite("invite", newInvite.trim())}>
-              Add invite
-            </button>
-          </div>
-          {invites.length === 0 ? (
-            <p className="muted">No one invited yet.</p>
-          ) : (
-            <ul className="invite-list">
-              {invites.map((e) => (
-                <li key={e}>
-                  <span>{e}</span>
-                  <button className="btn-link" disabled={busy} onClick={() => invite("uninvite", e)}>Remove</button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      )}
-
-      <h2 style={{ marginTop: 28 }}>Co-owners ({coOwners.length})</h2>
-      <p className="muted">
-        Co-owners manage this tournament alongside you: uploading files, fixing buzzes, approving edit and access
-        requests, and changing these settings. Only you can delete the tournament or change who co-owns it.
-        If they don't have a Buzzpoints account yet, they'll get an email inviting them to create one.
-      </p>
-      {isPrimary && (
-        <div className="buzz-edit" style={{ marginBottom: 12 }}>
-          <input
-            type="email"
-            placeholder="person@example.com"
-            value={newCoOwner}
-            onChange={(e) => setNewCoOwner(e.target.value)}
-            style={{ padding: "6px 8px", border: "1px solid #cdd5e0", borderRadius: 4, minWidth: 260 }}
-          />
-          <button className="btn-primary btn-sm" disabled={busy || !newCoOwner.trim()} onClick={() => coOwner("coowner", newCoOwner.trim())}>
-            Add co-owner
-          </button>
-        </div>
-      )}
-      {coOwners.length === 0 ? (
-        <p className="muted">No co-owners yet.</p>
-      ) : (
-        <ul className="invite-list">
-          {coOwners.map((e) => (
-            <li key={e}>
-              <span>{e}{coOwnersPending.includes(e) && <span className="muted"> · invited — no account yet</span>}</span>
-              {isPrimary && coOwnersPending.includes(e) && <button className="btn-link" disabled={busy} onClick={() => coOwner("coowner", e)}>Resend invite</button>}
-              {isPrimary && <button className="btn-link" disabled={busy} onClick={() => coOwner("uncoowner", e)}>Remove</button>}
-            </li>
-          ))}
-        </ul>
-      )}
-      {!isPrimary && <p className="muted">You're a co-owner here — only the tournament's owner can change this list.</p>}
-
-      <h2 id="revoke" style={{ marginTop: 28 }}>Revoke all access</h2>
-      <div className="danger-zone">
-        <p style={{ margin: 0 }}>
-          Take this tournament back to its owners. Everyone you've invited is removed, every invite link stops working,
-          and pending access requests are declined without emailing anyone. Any auto-publish date or pending request to
-          go public is cancelled. You and your co-owners keep access; nobody else can see the questions or stats until
-          you let them back in.
-          {visibility === "public" ? " It's public now, so it can't stay that way:" : ` It stays ${visibility}.`}
-        </p>
-        {visibility === "public" && (
-          <label className="field" style={{ marginTop: 10, maxWidth: 420 }}>
-            <select value={revokeTo} onChange={(e) => setRevokeTo(e.target.value as "listed" | "private")} disabled={busy}>
-              <option value="listed">Listed: still in the tournament list, content hidden</option>
-              <option value="private">Private: hidden from the list too</option>
-            </select>
-          </label>
+        {visibility !== "public" && (
+          <Sec id="links" title="Invite links" line="Anyone with an account who opens a link gets in, or asks you first." help="links">
+            <div className="buzz-edit">
+              <label className="field-inline">
+                <input type="checkbox" checked={linkApproval} onChange={(e) => setLinkApproval(e.target.checked)} /> Ask me first
+              </label>
+              <button className="btn-primary btn-sm" disabled={busy} onClick={createLink}>Create link</button>
+            </div>
+            {activeLinks.length > 0 && (
+              <ul className="invite-list" style={{ marginTop: 10 }}>
+                {activeLinks.map((l) => (
+                  <li key={l.id}>
+                    <span className="mono" style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis" }}>{linkUrl(l.id)}</span>
+                    <span className="req-actions">
+                      {l.approval && <span className="muted">asks first ·</span>}
+                      <span className="muted">{plural(l.uses, "use")}</span>
+                      <button className="btn-link" onClick={() => copyLink(l.id)}>{copiedId === l.id ? "Copied!" : "Copy"}</button>
+                      <button className="btn-link danger" disabled={busy} onClick={() => revokeLink(l.id)}>Revoke</button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Sec>
         )}
-        <div style={{ marginTop: 12, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          {!revokeConfirm ? (
-            <button className="btn-primary btn-sm danger-btn" disabled={busy} onClick={() => setRevokeConfirm(true)}>Revoke all access…</button>
-          ) : (
-            <>
-              <span>Remove everyone but the owners?</span>
-              <button className="btn-primary btn-sm danger-btn" disabled={busy} onClick={revokeAll}>{busy ? "Revoking…" : "Yes, revoke all access"}</button>
-              <button className="btn-link" disabled={busy} onClick={() => setRevokeConfirm(false)}>Cancel</button>
-            </>
-          )}
-        </div>
-      </div>
 
+        <Sec id="discussion" title="Discussion" line="Signed-in viewers can read; people you approve can post." help="discussion">
+          <label className="field-inline">
+            <input type="checkbox" checked={forum} onChange={async (e) => {
+              const on = e.target.checked; setForum(on); setErr(null);
+              try { await postJson("/api/manage", { slug, op: "settings", forum: on }); refreshIndex(); setMsg(on ? "Discussion is open." : "Discussion is closed."); }
+              catch (err) { setForum(!on); setErr(String((err as Error).message || err)); }
+            }} />
+            <span>Open a discussion for this tournament</span>
+          </label>
+          {forum && <ForumMembers slug={slug} enabled={forum} />}
+        </Sec>
+
+        <Sec id="revoke" title="Revoke all access" line="Remove everyone but the owners, stop every invite link and decline pending requests." help="revoke" fold>
+          <div className="danger-zone">
+            {visibility === "public" && (
+              <label className="field" style={{ marginBottom: 10, maxWidth: 420 }}>
+                <span>It's public now, so it becomes</span>
+                <select value={revokeTo} onChange={(e) => setRevokeTo(e.target.value as "listed" | "private")} disabled={busy}>
+                  <option value="listed">Listed: in the list, content hidden</option>
+                  <option value="private">Private: hidden from the list too</option>
+                </select>
+              </label>
+            )}
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              {!revokeConfirm ? (
+                <button className="btn-primary btn-sm danger-btn" disabled={busy} onClick={() => setRevokeConfirm(true)}>Revoke all access…</button>
+              ) : (
+                <>
+                  <span>Remove everyone but the owners?</span>
+                  <button className="btn-primary btn-sm danger-btn" disabled={busy} onClick={revokeAll}>{busy ? "Revoking…" : "Yes, revoke"}</button>
+                  <button className="btn-link" disabled={busy} onClick={() => setRevokeConfirm(false)}>Cancel</button>
+                </>
+              )}
+            </div>
+          </div>
+        </Sec>
       </section>
 
-      <section hidden={tab !== "general"}>
-      {isPrimary && (
-        <>
-      <h2 style={{ marginTop: 28 }}>Delete this tournament</h2>
-      <div className="danger-zone">
-        <p style={{ margin: 0 }}>
-          Deleting removes <strong>{meta.setName}</strong> for good: every stat page, buzz correction and uploaded
-          packet and game file goes with it. Links to it stop working, and there's no undo — putting it back means
-          uploading everything again.
-        </p>
-        <label className="field-inline" style={{ marginTop: 12, flexWrap: "wrap" }}>
-          <span>Type <strong>{meta.setName}</strong> to confirm</span>
-          <input
-            value={confirmDelete}
-            onChange={(e) => setConfirmDelete(e.target.value)}
-            placeholder={meta.setName}
-            style={{ padding: "6px 8px", border: "1px solid #cdd5e0", borderRadius: 4, minWidth: 260 }}
-          />
-        </label>
-        <div style={{ marginTop: 12 }}>
-          <button
-            className="btn-primary btn-sm danger-btn"
-            disabled={busy || confirmDelete.trim() !== meta.setName}
-            onClick={deleteSet}
-          >
-            {busy ? "Deleting…" : "Delete tournament"}
-          </button>
-        </div>
-      </div>
-        </>
-      )}
+      <section hidden={tab !== "questions"}>
+        {!isResults && (meta?.rounds?.length ?? 0) > 0 && (
+          <Sec id="phases" title="Round phases" line="Tag rounds as Prelims, Playoffs and so on so viewers can filter by phase." help="phases">
+            <RoundTagsEditor slug={slug} rounds={meta!.rounds} />
+          </Sec>
+        )}
+        {!isResults && (
+          <>
+            <Sec id="categories" title="Category fields" line="Say what each metadata field means. Tag fields become filters." help="categories"
+              fold open={needsMap} flag={needsMap ? "needs confirming" : undefined}>
+              <MetaMapEditor slug={slug} />
+            </Sec>
+            <Sec id="questionedits" title="Edit questions" line="File selected questions under one category or tag. Edits survive re-uploads." help="questionedits" fold>
+              <QuestionEditor slug={slug} hasBonuses={!!meta?.hasBonuses} />
+            </Sec>
+            {meta?.hasBonuses && (
+              <>
+                <Sec id="bonusdiff" title="Bonus difficulty marks" line="Fix bonuses whose parts aren't marked easy, medium and hard once each." help="bonusdiff"
+                  fold open={bonusDiff > 0} flag={bonusDiff ? plural(bonusDiff, "bonus", "bonuses") : undefined}>
+                  <BonusDifficultyEditor slug={slug} warnings={meta?.bonusDiffWarnings ?? []} />
+                </Sec>
+                <Sec id="bonustext" title="Fill bonus text" line="Add missing bonus lead-ins and parts from a fill file." help="bonustext" fold>
+                  <PacketTextFill slug={slug} name={meta?.setName ?? slug} />
+                </Sec>
+              </>
+            )}
+          </>
+        )}
+      </section>
+
+      <section hidden={tab !== "files"}>
+        {!isResults && (
+          <>
+            <Sec id="addrounds" title="Add rounds or games" line="Upload more rounds, or tick Replace to redo one." help="addrounds">
+              {/* A set uploaded before editions existed has no summary row; it still has
+                  the one edition every set has. */}
+              <AddFilesForm slug={slug} editions={editions.length ? editions : [{ id: "e0", label: "Original" }]} />
+            </Sec>
+
+            <Sec id="roundsgames" title="Rounds & games" line="Fix a wrong round number, or remove duplicate or misfiled uploads." help="rounds">
+              <details id="rounds" className="set-sub" open={roundWarn > 0 || undefined}>
+                <summary>Round numbers{roundWarn > 0 && <span className="warn-text"> · {plural(roundWarn, "problem")}</span>}</summary>
+                <RoundAlignEditor slug={slug} />
+              </details>
+              <details id="games" className="set-sub" open={crossTeams > 0 || undefined}>
+                <summary>Games{crossTeams > 0 && <span className="warn-text"> · {plural(crossTeams, "team")} in more than one edition</span>}</summary>
+                <GameFilesEditor slug={slug} />
+              </details>
+              <details id="uploads" className="set-sub">
+                <summary>Remove rounds</summary>
+                <UploadCleanup slug={slug} />
+              </details>
+            </Sec>
+
+            <Sec id="replacements" title="Tiebreakers & replacements" line="Point tiebreakers and replacement questions at the question the room actually read." help="replacements"
+              fold open={missingQs > 0} flag={missingQs ? plural(missingQs, "question") : undefined}>
+              <ReplacementEditor slug={slug} />
+            </Sec>
+
+            <Sec id="replace" title="Replace all data" line="Swap in a new .db or data folder. Settings and corrections are kept." help="replace" fold>
+              <ReplaceData
+                slug={slug} setName={meta?.setName ?? ""} scoring={meta?.scoring ?? ""}
+                editions={editions.length ? editions : [{ id: "e0", label: "Original" }]}
+                onDone={() => setTimeout(() => window.location.reload(), 1500)}
+              />
+            </Sec>
+          </>
+        )}
+      </section>
+
+      <section hidden={tab !== "renames"}>
+        {!isResults && (
+          <>
+            <Sec id="renames" title="Rename players and teams" line="Merge two spellings of a player or team. Viewers can suggest renames too." help="renames">
+              <RenamePicker slug={slug} individual={!!meta.individual} returnTo={`${loc.pathname}#renames`} />
+              <details className="set-sub">
+                <summary>Applied renames</summary>
+                <RenamesEditor slug={slug} />
+              </details>
+            </Sec>
+            <Sec id="dupes" title="Possible duplicates" line="These look like the same team or player. Tick and merge." help="dupes" fold>
+              <DupeFinder slug={slug} individual={!!meta.individual} />
+            </Sec>
+          </>
+        )}
       </section>
     </div>
   );
+}
+
+// One Settings section: a heading, one line saying what it does, a Help link to
+// the longer explanation, and its tool. A `fold` section collapses to that
+// heading and line unless it has something to fix (`open`).
+function Sec({ id, title, line, help, fold, open, flag, children }: {
+  id: string; title: string; line?: string; help?: string; fold?: boolean; open?: boolean; flag?: string; children?: ReactNode;
+}) {
+  const head = (
+    <>
+      <h2 className="set-h">{title}{flag && <span className="set-flag">{flag}</span>}</h2>
+      {(line || help) && (
+        <p className="muted set-line">
+          {line}
+          {help && <> <a className="link" href={`/help/settings#${help}`} target="_blank" rel="noreferrer">Help</a></>}
+        </p>
+      )}
+    </>
+  );
+  if (fold)
+    return (
+      <details id={id} className="set-sec set-fold" open={open || undefined}>
+        <summary>{head}</summary>
+        <div className="set-body">{children}</div>
+      </details>
+    );
+  return <div id={id} className="set-sec">{head}<div className="set-body">{children}</div></div>;
 }

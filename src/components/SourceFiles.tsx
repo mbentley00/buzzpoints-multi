@@ -122,8 +122,7 @@ export function RoundAlignEditor({ slug }: { slug: string }) {
             )}
             <p className="muted srcfiles-note">
               Games were played in round{ed.gameRounds.length === 1 ? "" : "s"}{" "}
-              <strong>{ed.gameRounds.length ? ed.gameRounds.map((g) => roundLabel(g.round)).join(", ") : "— (no games)"}</strong>. A
-              packet only collects buzzes when its round matches the round its games were played in.
+              <strong>{ed.gameRounds.length ? ed.gameRounds.map((g) => roundLabel(g.round)).join(", ") : "— (no games)"}</strong>.
             </p>
             <table className="data-table srcfiles-table">
               <thead>
@@ -366,10 +365,7 @@ export function UploadCleanup({ slug }: { slug: string }) {
                       Remove by team — {teams.length} team{teams.length === 1 ? "" : "s"} in this edition
                       {selTeams.length > 0 && <span className="muted"> · {selTeams.length} selected</span>}
                     </summary>
-                    <p className="muted srcfiles-note">
-                      Removes every game the chosen teams played, whatever round it fell in. Packets are left alone.
-                      Use this when games that belong to a different tournament were uploaded here.
-                    </p>
+                    <p className="muted srcfiles-note">Removes every game the chosen teams played. Packets are kept.</p>
                     <div className="srcfiles-scroll">
                       <table className="data-table srcfiles-table">
                         <thead>
@@ -538,9 +534,7 @@ export function GameFilesEditor({ slug }: { slug: string }) {
       {err && <div className="error-box">{err}</div>}
       {dupCount > 0 && (
         <div className="srcfiles-warn srcfiles-warn-block">
-          <strong>{dupCount} duplicate game{dupCount === 1 ? "" : "s"}.</strong> The same matchup is stored more than
-          once in the same round — the usual cause is uploading the same files again (adding files <em>appends</em> to an
-          edition rather than replacing it). Every extra copy inflates games played, tossups heard, and totals.
+          <strong>{dupCount} duplicate game{dupCount === 1 ? "" : "s"}:</strong> the same matchup stored twice in one round.
           <div style={{ marginTop: 8 }}>
             <button type="button" className="btn-primary btn-sm danger-btn" disabled={busy} onClick={removeAllDupes}>
               {busy ? "Removing…" : `Remove every extra copy & rebuild`}
@@ -556,9 +550,8 @@ export function GameFilesEditor({ slug }: { slug: string }) {
       )}
       {crossTeams.length > 0 && (
         <div className="srcfiles-warn srcfiles-warn-block">
-          <strong>{crossTeams.length} team{crossTeams.length === 1 ? "" : "s"} played in more than one edition.</strong> A
-          team normally plays a single mirror, so this usually means games were uploaded into the wrong edition, or into
-          two of them. Games whose matchup appears in another edition in the same round are marked below.
+          <strong>{crossTeams.length} team{crossTeams.length === 1 ? "" : "s"} played in more than one edition.</strong> Games
+          also found in another edition are marked below.
           <ul style={{ margin: "6px 0 0 18px" }}>
             {crossTeams.slice(0, 12).map((t) => <li key={t.name}>{t.name} — {t.editions.map(edLabel).join(", ")}</li>)}
             {crossTeams.length > 12 && <li>…and {crossTeams.length - 12} more</li>}

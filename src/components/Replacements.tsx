@@ -89,9 +89,7 @@ function TiebreakerUpload({ slug, editions, defaultEd }: { slug: string; edition
     <details className="srcfiles-fold" open={!editions.some((e) => e.packets.some((p) => !p.played))}>
       <summary>Upload a tiebreaker packet</summary>
       <p className="muted srcfiles-note">
-        Drop the tiebreaker or replacement packet JSON here — whatever it's named, and even if you aren't uploading
-        any other rounds. It's filed on a round of its own and its questions are offered below, in order, for the
-        numbers the packets were missing.
+        Drop the tiebreaker or replacement packet here. It's filed on a round of its own, whatever it's named.
       </p>
       {editions.length > 1 && (
         <label className="field">

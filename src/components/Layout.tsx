@@ -196,7 +196,7 @@ export function SetLayout() {
             </div>
           </div>
         )}
-        {isOwner && (meta?.roundWarnings?.length ?? 0) > 0 && (
+        {isOwner && !onSettings && (meta?.roundWarnings?.length ?? 0) > 0 && (
           <div className="cat-warn round-warn" role="status">
             <strong>Some packets aren't lined up with the games.</strong>
             <p className="muted">
@@ -211,7 +211,7 @@ export function SetLayout() {
             </div>
           </div>
         )}
-        {isOwner && (meta?.crossMirrorTeams?.length ?? 0) > 0 && (
+        {isOwner && !onSettings && (meta?.crossMirrorTeams?.length ?? 0) > 0 && (
           <div className="cat-warn round-warn" role="status">
             <strong>
               {meta!.crossMirrorTeams!.length === 1
@@ -231,7 +231,7 @@ export function SetLayout() {
             </div>
           </div>
         )}
-        {isOwner && (meta?.missingQuestions?.length ?? 0) > 0 && (
+        {isOwner && !onSettings && (meta?.missingQuestions?.length ?? 0) > 0 && (
           <div className="cat-warn round-warn" role="status">
             <strong>
               {meta!.missingQuestions!.length === 1
@@ -263,7 +263,7 @@ export function SetLayout() {
             </div>
           </div>
         )}
-        {isOwner && (meta?.bonusDiffWarnings?.length ?? 0) > 0 && (
+        {isOwner && !onSettings && (meta?.bonusDiffWarnings?.length ?? 0) > 0 && (
           <div className="cat-warn bndiff-warn" role="status">
             <strong>
               {meta!.bonusDiffWarnings!.length === 1

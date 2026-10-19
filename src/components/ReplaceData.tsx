@@ -184,8 +184,7 @@ export function ReplaceData({ slug, setName, scoring, editions, onDone }: {
             </small>
           )}
           <small className="muted">
-            "Replaces" carries an edition's name and its per-edition settings over to the new data. Corrections and renames
-            are kept and re-applied; any that pointed at a buzz or game the new file doesn't have simply stop showing.
+            "Replaces" keeps that edition's name and settings.
           </small>
 
           {!confirm ? (
