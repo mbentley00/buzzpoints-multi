@@ -18,6 +18,8 @@ import { DupeFinder } from "../components/DupeFinder";
 import { ReplacementEditor } from "../components/Replacements";
 import { ReplaceData } from "../components/ReplaceData";
 import { KlaxonUpload } from "../components/KlaxonUpload";
+import { SettingsSearch, SETTINGS_INDEX } from "../components/SettingsSearch";
+import { buildSetExport, saveBlob } from "../setExport";
 
 const VIS_OPTIONS: { id: Visibility; label: string; desc: string }[] = [
   { id: "listed", label: "Listed (login + invite)", desc: "Shown in the list; only invited, logged-in people can view." },
@@ -49,6 +51,8 @@ const TAB_OF_SECTION: Record<string, SettingsTab> = {
   rename: "general", details: "general", visibility: "access", yf: "maintenance", maintenance: "maintenance", delete: "maintenance",
   requests: "access", people: "access", links: "access", phases: "questions", roundsgames: "files", replace: "files", klaxon: "files", categories: "questions", bonusdiff: "questions", bonustext: "questions", questionedits: "questions",
   rounds: "files", addrounds: "files", uploads: "files", games: "files", replacements: "files", renames: "renames", dupes: "renames", discussion: "access", revoke: "access",
+  // and every field the settings search can land on
+  ...Object.fromEntries(SETTINGS_INDEX.map((e) => [e.id, e.tab])),
 };
 
 export function Settings() {
@@ -101,6 +105,7 @@ export function Settings() {
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
   // Deleting is irreversible and takes the uploaded files with it, so the name
   // has to be typed out — a stray click can't do it.
   const [confirmDelete, setConfirmDelete] = useState("");
@@ -161,7 +166,16 @@ export function Settings() {
     if (!el) return;
     for (let d = el.closest("details"); d; d = d.parentElement?.closest("details") ?? null) d.open = true;
     // A frame's grace so the section has laid out before we measure it.
-    const t = setTimeout(() => el.scrollIntoView({ block: "start", behavior: "smooth" }), 0);
+    const t = setTimeout(() => {
+      el.scrollIntoView({ block: "start", behavior: "smooth" });
+      // Show where the search (or a Fix link) landed, and put the cursor in the
+      // field when it's a single one.
+      el.classList.remove("set-flash");
+      void el.offsetWidth;
+      el.classList.add("set-flash");
+      if (el.matches("label, .field, .field-inline"))
+        el.querySelector<HTMLElement>("input, select, textarea")?.focus({ preventScroll: true });
+    }, 0);
     const ro = new ResizeObserver(() => el.scrollIntoView({ block: "start" }));
     ro.observe(document.body);
     const stop = () => {
@@ -171,7 +185,8 @@ export function Settings() {
     for (const ev of ["wheel", "touchstart", "keydown", "mousedown"]) window.addEventListener(ev, stop, { passive: true });
     const done = setTimeout(stop, 5000);
     return () => { clearTimeout(t); clearTimeout(done); stop(); };
-  }, [loading, loc.hash]);
+    // loc.key: picking the same search result twice should still go there.
+  }, [loading, loc.hash, loc.key]);
 
   const tabs = SETTINGS_TABS.filter((t) => !("sourceOnly" in t) || meta?.kind !== "results");
   const hashTab = loc.hash ? TAB_OF_SECTION[loc.hash.slice(1)] : undefined;
@@ -258,6 +273,15 @@ export function Settings() {
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally { setBusy(false); }
+  }
+
+  async function exportAll() {
+    setErr(null); setMsg(null); setExporting(true);
+    try {
+      saveBlob(await buildSetExport(slug), `${slug}-all-data.zip`);
+    } catch (e) {
+      setErr(String((e as Error).message || e));
+    } finally { setExporting(false); }
   }
 
   async function deleteSet() {
@@ -350,6 +374,7 @@ export function Settings() {
     try { await navigator.clipboard.writeText(linkUrl(id)); setCopiedId(id); setTimeout(() => setCopiedId(null), 1500); } catch { /* ignore */ }
   }
 
+  const isResults = meta?.kind === "results";
   const visDesc = VIS_OPTIONS.find((v) => v.id === visibility)?.desc;
   const activeLinks = links.filter((l) => !l.revoked);
   const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -438,8 +463,6 @@ export function Settings() {
     </Sec>
   );
 
-  const isResults = meta?.kind === "results";
-
   return (
     <div className="detail settings-page">
       <h1>Settings</h1>
@@ -458,6 +481,11 @@ export function Settings() {
           </ul>
         </div>
       )}
+
+      <SettingsSearch slug={slug} ctx={{
+        isResults, hasYf, isPrimary, isPublic: visibility === "public",
+        hasBonuses: !!meta?.hasBonuses, hasRounds: (meta?.rounds?.length ?? 0) > 0,
+      }} />
 
       <nav className="admin-tabs" aria-label="Settings sections">
         {tabs.map((t) => (
@@ -486,7 +514,7 @@ export function Settings() {
               </p>
             )}
             {editions.length > 0 && (
-              <details className="set-sub">
+              <details className="set-sub" id="f-editions">
                 <summary>Edition names ({editions.length})</summary>
                 {byLabel(editions).map((e) => (
                   <label className="field" key={e.id}>
@@ -497,7 +525,7 @@ export function Settings() {
               </details>
             )}
             <div className="set-row">
-              <label className="field">
+              <label className="field" id="f-type">
                 <span>Type</span>
                 <select value={level} onChange={(e) => { setLevel(e.target.value); setDifficulty(""); }}>
                   <option value="" disabled>Choose a type…</option>
@@ -505,7 +533,7 @@ export function Settings() {
                 </select>
               </label>
               {difficultyOptions(level).length > 0 && (
-                <label className="field">
+                <label className="field" id="f-difficulty">
                   <span>Difficulty</span>
                   <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
                     <option value="">Not set</option>
@@ -513,16 +541,16 @@ export function Settings() {
                   </select>
                 </label>
               )}
-              <label className="field">
+              <label className="field" id="f-date">
                 <span>Date first played</span>
                 <input type="date" value={tournamentDate} onChange={(e) => setTournamentDate(e.target.value)} />
               </label>
             </div>
-            <label className="field">
+            <label className="field" id="f-tdlink">
               <span>Tournament Database link</span>
               <input type="url" value={tdLink} onChange={(e) => setTdLink(e.target.value)} placeholder="https://hsquizbowl.org/db/tournaments/…" />
             </label>
-            <label className="field-inline">
+            <label className="field-inline" id="f-individual">
               <input type="checkbox" checked={individual} onChange={(e) => setIndividual(e.target.checked)} />
               <span>Individual shootout: rank players, not teams</span>
             </label>
@@ -542,6 +570,11 @@ export function Settings() {
             <div><a className="btn-secondary" href={`/api/yf-export?slug=${encodeURIComponent(slug)}`}>Download .yft</a></div>
           </Sec>
         )}
+
+        <Sec id="exportall" title="Export all data"
+          line={`One zip of everything stored: packet JSONs, game QBJs, rosters, Klaxon presses${hasYf ? ", the YellowFruit file" : ""} and your edits.`}>
+          <div><button className="btn-secondary" disabled={exporting} onClick={exportAll}>{exporting ? "Preparing…" : "Download .zip"}</button></div>
+        </Sec>
 
         {isPrimary && (
           <Sec id="delete" title="Delete this tournament" line="Removes every stat, correction and uploaded file for good." help="delete">
@@ -565,7 +598,7 @@ export function Settings() {
 
         <Sec id="visibility" title="Visibility" help="visibility">
           <div className="create-form" style={{ maxWidth: 560 }}>
-            <label className="field">
+            <label className="field" id="f-visibility">
               <span>Who can see it</span>
               <select value={visibility} onChange={(e) => setVisibility(e.target.value as Visibility)}>
                 {VIS_OPTIONS.filter((o) => o.id !== "public" || level !== "practice").map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
@@ -578,13 +611,13 @@ export function Settings() {
               </small>
             </label>
             {visibility !== "public" && level !== "practice" && (
-              <label className="field-inline">
+              <label className="field-inline" id="f-autopublish">
                 <input type="checkbox" checked={autoPublish} onChange={(e) => setAutoPublish(e.target.checked)} />
                 <span>Make public on</span>
                 <input type="date" value={date} disabled={!autoPublish} onChange={(e) => setDate(e.target.value)} />
               </label>
             )}
-            <label className="field-inline">
+            <label className="field-inline" id="f-suggest">
               <input type="checkbox" checked={allowRequests} onChange={(e) => setAllowRequests(e.target.checked)} />
               <span>Let viewers suggest corrections</span>
             </label>
@@ -776,7 +809,7 @@ export function Settings() {
           <>
             <Sec id="renames" title="Rename players and teams" line="Merge two spellings of a player or team. Viewers can suggest renames too." help="renames">
               <RenamePicker slug={slug} individual={!!meta.individual} returnTo={`${loc.pathname}#renames`} />
-              <details className="set-sub">
+              <details className="set-sub" id="f-appliedrenames">
                 <summary>Applied renames</summary>
                 <RenamesEditor slug={slug} />
               </details>

@@ -4,7 +4,7 @@
 // been) uploaded in. Everything is derived from `_source.json`, which the
 // admin backup endpoint already serves; corrections and renames deliberately
 // stay out, since MODAQ and the stats tools expect the raw files.
-import { zipFiles } from "./zip";
+import { zipFiles, type ZipEntry } from "./zip";
 import { roundLabel } from "./util";
 
 interface SourcePacket { round: number; tossups?: any[]; bonuses?: any[] }
@@ -46,8 +46,9 @@ function packetJson(p: SourcePacket): Uint8Array {
 
 // The stored game IS the uploaded QBJ match, plus the round/edition bookkeeping
 // Buzzpoints added — strip that and the original file is back.
+// (A game's Klaxon presses ride on it too; they aren't QBJ, so they go.)
 function gameJson(g: SourceGame): Uint8Array {
-  const { round, _round, editionId, ...rest } = g;
+  const { round, _round, editionId, klaxon, ...rest } = g;
   return json(rest);
 }
 
@@ -83,11 +84,18 @@ function rosterJson(name: string, games: SourceGame[]): Uint8Array {
 // Build the archive. Multi-edition sets get one folder per mirror; a
 // single-edition set keeps everything at the top level.
 export async function buildModaqExport(source: SetSourceLike, slug: string): Promise<Blob> {
+  return zipFiles(modaqEntries(source, slug));
+}
+
+// The archive's entries, for callers that add files of their own (the owner's
+// "Export all data"). With `klaxon`, each game that has Klaxon presses gets a
+// klaxon/<same name>.json beside its QBJ.
+export function modaqEntries(source: SetSourceLike, slug: string, opts: { klaxon?: boolean } = {}): ZipEntry[] {
   const editions: SourceEdition[] =
     source.editions?.length ? source.editions : [{ id: "e0", label: "Original", packets: source.packets, games: source.games }];
   const multi = editions.length > 1;
   const usedDirs = new Set<string>();
-  const entries: { name: string; data: Uint8Array }[] = [];
+  const entries: ZipEntry[] = [];
 
   for (const ed of editions) {
     let dir = "";
@@ -110,10 +118,11 @@ export async function buildModaqExport(source: SetSourceLike, slug: string): Pro
       perRound.set(base, n);
       if (n > 1) base += `_${n}`; // same pairing twice in a round (e.g. replayed)
       entries.push({ name: `${dir}games/${base}.qbj`, data: gameJson(g) });
+      if (opts.klaxon && g.klaxon) entries.push({ name: `${dir}klaxon/${base}.json`, data: json(g.klaxon) });
     }
 
     const label = multi ? `${source.name || slug} — ${ed.label || ed.id}` : source.name || slug;
     entries.push({ name: `${dir}roster.qbj`, data: rosterJson(label, ed.games || []) });
   }
-  return zipFiles(entries);
+  return entries;
 }
