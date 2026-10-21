@@ -1744,13 +1744,14 @@ export function aggregate(
     // so a sub isn't charged for tossups read while on the bench.
     const tmStats = tm.get(s.team);
     const lineups = tmLineups.get(s.team);
-    let g = s.games.size, tuh = s.tuh;
+    // gp: games played, counting part of a game as that fraction (YellowFruit's GP).
+    let g = s.games.size, tuh = s.tuh, gp = g;
     if (tmStats && lineups) {
-      g = 0; tuh = 0;
+      g = 0; tuh = 0; gp = 0;
       for (const L of lineups) {
         const rec = L.listed.get(k);
         const h = rec ? Math.min(rec, L.gameTuh) : L.complete ? 0 : L.gameTuh;
-        if (h > 0) { g++; tuh += h; }
+        if (h > 0) { g++; tuh += h; gp += L.gameTuh ? h / L.gameTuh : 1; }
       }
     }
     plShare.set(k, tmStats?.fullTuh ? tuh / tmStats.fullTuh : 1);
@@ -1759,9 +1760,9 @@ export function aggregate(
     const rebounds = (plBuzzes.get(k) || []).filter((b) => b.rebound).length;
     const row = {
       id: pid, name: s.name, team: s.team, teamId: teamId.get(s.team) ?? null,
-      games: g, tuh, powers: s.powers, gets: s.gets, incorrect: s.incorrect, pts: s.pts,
+      games: round1(gp), tuh, powers: s.powers, gets: s.gets, incorrect: s.incorrect, pts: s.pts,
       firstBuzzes: firstPl.get(k) || 0, top3Buzzes: top3Pl.get(k) || 0, rebounds,
-      ppg: g ? round1(s.pts / g) : 0, pPerTuh: tuh ? Math.round((100 * s.pts) / tuh) / 100 : 0,
+      ppg: gp ? round1(s.pts / gp) : 0, pPerTuh: tuh ? Math.round((100 * s.pts) / tuh) / 100 : 0,
       // Over the same tossups-heard the rest of this row uses, so BPA and PPG are
       // talking about the same denominator.
       bpa: bpaOf(s.unread, tuh),
