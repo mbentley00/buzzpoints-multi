@@ -36,7 +36,7 @@ export function CategoriesBonus() {
 
   return (
     <div>
-      <PageHeader title="Categories — Bonuses" subtitle="PPB & part conversion by subject" />
+      <PageHeader title="Categories — Bonuses" />
       <CategoryMappingNotice slug={slug} show={!!isOwner && !!meta.needsCategoryMapping} />
       {loading && <Loading />}
       {error && <ErrorBox error={error} />}

@@ -221,7 +221,7 @@ function BuzzEditor({ d, b, slug, isOwner, teammates, cols, onClose, onApplied }
     setBusy(true);
     try {
       if (isOwner) { await postJson("/api/correct", { slug, correction }); clearSetCache(slug); onApplied(); }
-      else { await postJson("/api/requests", { slug, action: "submit", correction, desc: desc.trim() || undefined }); setDone("Request submitted — the owner will review it."); }
+      else { await postJson("/api/requests", { slug, action: "submit", correction, desc: desc.trim() || undefined }); setDone("Sent to the owner for review."); }
     } catch (e) { setErr(String((e as Error).message || e)); } finally { setBusy(false); }
   }
 
@@ -349,7 +349,6 @@ export function TossupDetailPage() {
             <option value="all">All editions (latest)</option>
             {versions.map((v) => <option key={v.editionId} value={v.editionId}>{v.label}{v.differs ? " — revised" : ""}</option>)}
           </select>
-          {version !== "all" && <span className="muted">showing this edition's wording &amp; its buzzes</span>}
         </div>
       )}
 
@@ -367,18 +366,16 @@ export function TossupDetailPage() {
           <h2 style={{ marginTop: 0 }}>Buzzes ({d.buzzes.length})</h2>
           {!user && allowRequests && (
             <p className="muted">
-              <Link to={`/login?next=${encodeURIComponent(`/set/${slug}/tossup/${id}`)}`} className="link">Log in</Link> to correct a buzz or request a change.
+              <Link to={`/login?next=${encodeURIComponent(`/set/${slug}/tossup/${id}`)}`} className="link">Log in</Link> to suggest a correction.
             </p>
           )}
-          {user && !isOwner && allowRequests && <p className="muted">Spot a mistake in this data? Use <strong>Edit</strong> to send the owner a correction request.</p>}
-          {!isOwner && !allowRequests && <p className="muted">This tournament's owner isn't taking correction requests.</p>}
           <div className={scrollBuzzes ? "buzz-scroll" : "table-wrap"}>
             <table className="data-table">
               <thead>
                 <tr>
                   {meta.individual ? <th>Player</th> : <><th>Player / Team</th><th>Opponent</th></>}
-                  {showEdition && <th title="Edition (mirror) this buzz was played in">Edition</th>}
-                  <th className="right" title="Buzz position (word #)">Buzz</th><th className="right">Val</th>
+                  {showEdition && <th>Edition</th>}
+                  <th className="right" title="Word #">Buzz</th><th className="right">Val</th>
                 </tr>
               </thead>
               <tbody>
@@ -412,7 +409,7 @@ export function TossupDetailPage() {
               {meta.hasPower && <th className="right">Power%</th>}
               {(meta.hasNeg || negs > 0) && <th className="right">Neg%</th>}
               <th className="right">Avg Buzz</th>
-              <th className="right" title="Average position of conversions that came while the question was still live — the first buzz of a reading, before anyone had negged">Avg Live Buzz</th>
+              <th className="right" title="Avg correct buzz before any neg">Avg Live Buzz</th>
             </tr>
           </thead>
           <tbody>

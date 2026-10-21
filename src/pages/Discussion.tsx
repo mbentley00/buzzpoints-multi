@@ -50,11 +50,11 @@ function JoinBox({ slug, status, onChange }: { slug: string; status: ForumStatus
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  if (status === "pending") return <p className="caveat">Your request to post is waiting for the tournament owner. You can read everything in the meantime.</p>;
+  if (status === "pending") return <p className="caveat">Your request to post is waiting for the owner.</p>;
   return (
     <div className="caveat forum-join">
       <p style={{ margin: 0 }}>
-        {status === "declined" ? "The owner declined your earlier request to post. You can ask again." : "You can read this discussion. To post, ask the tournament owner to approve you."}
+        {status === "declined" ? "The owner declined your request. You can ask again." : "To post, ask the owner."}
       </p>
       <div className="field-inline" style={{ marginTop: 8, flexWrap: "wrap" }}>
         <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Who you are (optional)" style={{ minWidth: 260 }} maxLength={300} />
@@ -82,9 +82,7 @@ function Composer({ label, placeholder, busyLabel, withTitle, onSubmit, onCancel
     <div className="forum-composer">
       {withTitle && <input className="forum-title-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Thread title" maxLength={120} />}
       <BBEditor value={body} onChange={setBody} placeholder={placeholder} autoFocus={!withTitle} />
-      <div className="forum-composer-foot">
-        <small className="muted">BBCode, as on phpBB — the buttons wrap whatever you've selected.</small>
-        <div className="buzz-edit-actions">
+      <div className="forum-composer-foot">        <div className="buzz-edit-actions">
           {onCancel && <button type="button" className="btn-link" onClick={onCancel}>Cancel</button>}
           <button className="btn-primary btn-sm" disabled={!ok || busy} onClick={async () => {
             setBusy(true); setErr(null);
@@ -111,10 +109,10 @@ export function Discussion() {
   const [starting, setStarting] = useState(false);
 
   if (!user)
-    return <p className="caveat">Discussion is for signed-in viewers. <Link className="link" to={`/login?next=${encodeURIComponent(`/set/${slug}/discussion`)}`}>Log in →</Link></p>;
+    return <p className="caveat">Log in to view the discussion. <Link className="link" to={`/login?next=${encodeURIComponent(`/set/${slug}/discussion`)}`}>Log in →</Link></p>;
   if (error) return <ErrorBox error={error} />;
   if (!data) return <Loading />;
-  if (!data.enabled) return <p className="caveat">This tournament's owner hasn't turned on discussion.</p>;
+  if (!data.enabled) return <p className="caveat">Discussion is off for this tournament.</p>;
 
   const canPost = data.status === "owner" || data.status === "member";
   const t = data.thread;
@@ -186,7 +184,7 @@ export function Discussion() {
         {canPost && !starting && <button className="btn-primary" onClick={() => setStarting(true)}>New thread</button>}
       </PageHeader>
       {starting && (
-        <Composer label="Start thread" busyLabel="Posting…" placeholder="What's on your mind about this tournament?" withTitle onCancel={() => setStarting(false)}
+        <Composer label="Start thread" busyLabel="Posting…" placeholder="Your post…" withTitle onCancel={() => setStarting(false)}
           onSubmit={async (title, body) => { const d = await post({ slug, action: "forum-thread", title, body }); setStarting(false); navigate(`/set/${slug}/discussion/${d.id}`); }} />
       )}
       {!canPost && <JoinBox slug={slug} status={data.status} onChange={refresh} />}

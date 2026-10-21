@@ -29,7 +29,7 @@ export function Packets() {
     { key: "heard", label: "Heard", align: "right", sortVal: (t) => t.heard, render: (t) => t.heard },
     { key: "conv", label: "Conv%", align: "right", sortVal: (t) => t.convPct, render: (t) => pct(t.convPct) },
     ...(meta.hasPower ? [{ key: "pwr", label: "Pwr%", align: "right" as const, sortVal: (t: TossupRow) => t.powerPct, render: (t: TossupRow) => pct(t.powerPct) }] : []),
-    { key: "inc", label: "Inc%", align: "right", sortVal: (t) => t.incorrectPct, render: (t) => pct(t.incorrectPct), title: "Rate of interrupting incorrect buzzes per play" },
+    { key: "inc", label: "Inc%", align: "right", sortVal: (t) => t.incorrectPct, render: (t) => pct(t.incorrectPct), title: "Neg rate" },
     { key: "buzz", label: "Avg Buzz", align: "right", sortVal: (t) => t.avgBuzzPct ?? 999, render: (t) => (t.avgBuzzPct === null ? "—" : `${num(t.avgBuzzPct)}%`) },
   ];
 
@@ -52,7 +52,7 @@ export function Packets() {
 
   return (
     <div>
-      <PageHeader title="Packets" subtitle={`Round ${roundLabel(round)} — questions in packet order`}>
+      <PageHeader title="Packets" subtitle={`Round ${roundLabel(round)}`}>
         <label className="filter">
           Round:{" "}
           <select value={round} onChange={(e) => setRound(Number(e.target.value))}>

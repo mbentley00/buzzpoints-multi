@@ -98,9 +98,6 @@ export function BuzzCurve({ d, onHoverWord }: { d: TossupDetail; onHoverWord?: (
 
   return (
     <figure className="buzzcurve">
-      <figcaption>
-        Cumulative buzzes as the question is read: the gap between the two is interrupted wrong buzzes.
-      </figcaption>
       {avgIdx !== null && (
         <div className="bc-key">
           <svg width="8" height="13" viewBox="0 0 8 13" aria-hidden="true" className="bc-key-mark">

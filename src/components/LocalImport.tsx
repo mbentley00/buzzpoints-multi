@@ -43,7 +43,7 @@ export function LocalImport() {
       setReading("");
       const skipped = [scan.noGames && `${scan.noGames} had no usable games`, scan.unmatched && `${scan.unmatched} matched no question set`].filter(Boolean).join(", ");
       addLog(`Found ${list.length} sets, ${scan.mirrorCount} mirrors${skipped ? ` (${skipped})` : ""}, ${scan.packetCount} packet files.`);
-      if (!list.length && !scan.packetCount) addLog("No packet files were found — check that question_sets/<set>/…/packet_files/*.json is inside the folder you picked.");
+      if (!list.length && !scan.packetCount) addLog("No packet files found. Pick the folder containing question_sets/.");
     } catch (e) { setErr(String((e as Error).message || e)); setReading(""); }
   }
 
@@ -92,11 +92,6 @@ export function LocalImport() {
 
   return (
     <div className="bulk-import">
-      <p className="muted">
-        Import from a local quizbowlstats data export (the folder with <code>question_sets/</code> and <code>tournaments/</code>).
-        These native files give full tossup &amp; bonus text and per-team results — no scraping. Each set's mirror sites become
-        editions. Keep this tab open; a full run uploads many files.
-      </p>
       <div className="create-form" style={{ maxWidth: 620 }}>
         <div style={{ display: "flex", gap: 12 }}>
           <label className="field" style={{ flex: 1 }}>
@@ -114,7 +109,7 @@ export function LocalImport() {
         </div>
         <label className="field-inline">
           <input type="checkbox" checked={refreshExisting} onChange={(e) => setRefreshExisting(e.target.checked)} disabled={running} />
-          <span>Refresh sets already here, in place (keep slug, visibility, invites, corrections)</span>
+          <span>Refresh sets already here</span>
         </label>
         <div>
           <button className="btn-secondary" disabled={running || !!reading} onClick={() => dirInput.current?.click()}>

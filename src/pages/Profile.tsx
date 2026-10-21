@@ -44,13 +44,11 @@ export function Profile() {
             </p>
             <label className="field">
               <span>Name</span>
-              <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} maxLength={80} placeholder="How you're shown on posts and corrections" />
+              <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} maxLength={80} placeholder="Shown on posts" />
             </label>
             <label className="field">
               <span>Affiliation (optional)</span>
-              <input value={instDraft} onChange={(e) => setInstDraft(e.target.value)} maxLength={120} placeholder="School, club, or team" />
-              <small className="muted">Shown to tournament owners when you ask for access or to post, so they know who's asking.</small>
-            </label>
+              <input value={instDraft} onChange={(e) => setInstDraft(e.target.value)} maxLength={120} placeholder="School, club, or team" />            </label>
             <div className="buzz-edit-actions">
               <button className="btn-primary" disabled={busy || !dirty || !nameDraft.trim()} onClick={async () => {
                 setBusy(true); setErr(null); setMsg(null);
@@ -61,7 +59,7 @@ export function Profile() {
               {err && <span className="error-inline">{err}</span>}
             </div>
             <p className="muted" style={{ marginTop: 18 }}>
-              Your email address is your login and can't be changed here. To change your password, log out and use{" "}
+              To change your password, log out and use{" "}
               <Link className="link" to="/login?mode=forgot">Forgot password</Link>.
             </p>
           </div>

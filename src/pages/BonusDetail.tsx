@@ -67,7 +67,7 @@ function BonusPartsEditor({ slug, d, r, parts, isOwner, onClose }: {
         window.location.reload();
       } else {
         await postJson("/api/requests", { slug, action: "submit", bonus, desc: desc.trim() || undefined });
-        setDone("Correction suggested — the owner will review it.");
+        setDone("Sent to the owner for review.");
       }
     } catch (e) { setErr(String((e as Error).message || e)); } finally { setBusy(false); }
   }
@@ -99,8 +99,7 @@ function BonusPartsEditor({ slug, d, r, parts, isOwner, onClose }: {
           </label>
         )}
         <small className="muted" style={{ flexBasis: "100%" }}>
-          {nGot} of {parts.length} parts · the bonus's per-part conversion, this team's PPB, and the difficulty
-          breakdowns are all rebuilt from this.
+          {nGot} of {parts.length} parts
         </small>
         <div className="buzz-edit-actions">
           <button className="btn-primary btn-sm" disabled={!changed || busy} onClick={submit}>
@@ -139,7 +138,6 @@ function PartTeams({ part, results }: { part: PartConv; results: BonusResult[] }
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
       onClick={(e) => { e.stopPropagation(); setPinned((p) => !p); }}
-      title="Teams that converted this part"
     >
       {got.length}/{results.length} teams
       {(open || pinned) && (
@@ -205,7 +203,7 @@ export function BonusDetailPage() {
     },
     ...(showEdition
       ? [{
-          key: "edition", label: "Edition", title: "Edition (mirror) this team heard the bonus in",
+          key: "edition", label: "Edition",
           sortVal: (r: BonusResult) => edLabel(r.editionId).toLowerCase(),
           render: (r: BonusResult) => (r.editionId ? <EditionBadges ids={[r.editionId]} editions={editions} /> : <span className="muted">—</span>),
         } as Column<BonusResult>]
@@ -300,11 +298,9 @@ export function BonusDetailPage() {
             <h2 style={{ marginTop: 0 }}>Conversion ({d.results.length})</h2>
             {!user && allowRequests && (
               <p className="muted">
-                <Link to={`/login?next=${encodeURIComponent(`/set/${slug}/bonus/${d.id}`)}`} className="link">Log in</Link> to suggest a fix to which parts a team got.
+                <Link to={`/login?next=${encodeURIComponent(`/set/${slug}/bonus/${d.id}`)}`} className="link">Log in</Link> to suggest a correction.
               </p>
             )}
-            {user && !isOwner && allowRequests && <p className="muted">Wrong parts recorded for a team? Use <strong>Suggest</strong> on its row to send the owner a correction.</p>}
-            {!isOwner && !allowRequests && <p className="muted">This tournament&apos;s owner isn&apos;t taking correction requests.</p>}
             <DataTable
               rows={d.results}
               columns={columns}

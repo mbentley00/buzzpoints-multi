@@ -53,7 +53,7 @@ export function BackupPanel({ sets }: { sets: SetRow[] }) {
       setStatus("Compressing…");
       const zip = await zipFiles(entries);
       save(zip, `buzzpoints-backup-${stamp()}.zip`);
-      setStatus(`Saved one archive: ${entries.length} file${entries.length === 1 ? "" : "s"}, ${(zip.size / 1e6).toFixed(1)} MB.`);
+      setStatus(`Saved ${entries.length} file${entries.length === 1 ? "" : "s"}, ${(zip.size / 1e6).toFixed(1)} MB.`);
     } catch (e) { setErr(String((e as Error).message || e)); } finally { setBusy(false); }
   }
 
@@ -87,7 +87,7 @@ export function BackupPanel({ sets }: { sets: SetRow[] }) {
         : `${setCount} tournament${setCount === 1 ? "" : "s"}${hasCore ? " and the accounts file" : ""}`;
       if (!window.confirm(
         `Restore ${what} from a backup taken ${String(backups[0].at).slice(0, 10)}?\n\n` +
-        `This overwrites what's on the site now with the backup's copy. Stats are rebuilt from it.`
+        `This overwrites the current data.`
       )) { setStatus(null); setBusy(false); return; }
 
       let n = 0;
@@ -96,18 +96,12 @@ export function BackupPanel({ sets }: { sets: SetRow[] }) {
         try { const d = await restoreOne(b); say(`${b.slug || "core"}: ${d.restored} file${d.restored === 1 ? "" : "s"}`); }
         catch (e) { say(`${b.slug || "core"}: ${(e as Error).message}`); }
       }
-      setStatus(`Finished — ${backups.length} restored.`);
+      setStatus(`${backups.length} restored.`);
     } catch (e) { setErr(String((e as Error).message || e)); setStatus(null); } finally { setBusy(false); }
   }
 
   return (
     <div className="bulk-import">
-      <p className="muted">
-        Saves what can't be recomputed — the uploaded packets and games, plus every correction, rename, category
-        mapping and invite — as a single zip: one entry per tournament plus one for accounts and the tournament
-        list. Stat pages aren't in it; a restore rebuilds them. Restoring takes the whole zip back, or one entry
-        pulled out of it.
-      </p>
       <div className="cat-toolbar">
         <button className="btn-primary btn-sm" disabled={busy || !sets.length} onClick={backupAll}>
           {busy ? "Working…" : `Download backup (.zip, ${sets.length + 1} files)`}
@@ -129,8 +123,7 @@ export function BackupPanel({ sets }: { sets: SetRow[] }) {
       <label className="field-inline" style={{ marginTop: 6, fontWeight: 400 }}>
         <input type="checkbox" checked={includeIndex} onChange={(e) => setIncludeIndex(e.target.checked)} />
         <span className="muted">
-          When restoring accounts, also roll the tournament list back — this un-publishes anything created since the
-          backup, so leave it off unless you're rebuilding the site.
+          Also restore the tournament list. Un-publishes sets created since the backup.
         </span>
       </label>
       {status && <p className="muted">{status}</p>}

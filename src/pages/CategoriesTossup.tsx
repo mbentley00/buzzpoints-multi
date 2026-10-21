@@ -43,16 +43,16 @@ export function CategoriesTossup() {
     ...(meta.hasPower
       ? [{ label: "Pwr%", align: "right" as const, main: (g: CatTossupRow) => pct(g.powerPct), sub: (s: CatTossupSub) => pct(s.powerPct), sortMain: (g: CatTossupRow) => g.powerPct, sortSub: (s: CatTossupSub) => s.powerPct }]
       : []),
-    { label: "Inc%", align: "right", title: "Rate of interrupting incorrect buzzes per play", main: (g) => pct(g.incorrectPct), sub: (s) => pct(s.incorrectPct), sortMain: (g) => g.incorrectPct, sortSub: (s) => s.incorrectPct },
-    { label: "1st Sent%", align: "right", title: "Share of plays converted by a correct buzz within the first sentence", main: (g) => pct(g.firstSentConvPct), sub: (s) => pct(s.firstSentConvPct), sortMain: (g) => g.firstSentConvPct, sortSub: (s) => s.firstSentConvPct },
-    { label: "2nd Sent%", align: "right", title: "Share of plays converted by the end of the second sentence", main: (g) => pct(g.secondSentConvPct), sub: (s) => pct(s.secondSentConvPct), sortMain: (g) => g.secondSentConvPct, sortSub: (s) => s.secondSentConvPct },
+    { label: "Inc%", align: "right", title: "Neg rate", main: (g) => pct(g.incorrectPct), sub: (s) => pct(s.incorrectPct), sortMain: (g) => g.incorrectPct, sortSub: (s) => s.incorrectPct },
+    { label: "1st Sent%", align: "right", title: "Converted in first sentence", main: (g) => pct(g.firstSentConvPct), sub: (s) => pct(s.firstSentConvPct), sortMain: (g) => g.firstSentConvPct, sortSub: (s) => s.firstSentConvPct },
+    { label: "2nd Sent%", align: "right", title: "Converted by end of second sentence", main: (g) => pct(g.secondSentConvPct), sub: (s) => pct(s.secondSentConvPct), sortMain: (g) => g.secondSentConvPct, sortSub: (s) => s.secondSentConvPct },
     { label: "Avg Buzz", align: "right", main: (g) => buzz(g.avgBuzzPct), sub: (s) => buzz(s.avgBuzzPct), sortMain: (g) => g.avgBuzzPct, sortSub: (s) => s.avgBuzzPct },
-    { label: "Players", align: "center", title: "How players did in this category", main: (g) => playersLink(g.playersId), sub: (s) => playersLink(s.playersId), overall: () => null },
+    { label: "Players", align: "center", main: (g) => playersLink(g.playersId), sub: (s) => playersLink(s.playersId), overall: () => null },
   ];
 
   return (
     <div>
-      <PageHeader title="Categories — Tossups" subtitle="Conversion & buzz speed by subject" />
+      <PageHeader title="Categories — Tossups" />
       <CategoryMappingNotice slug={slug} show={!!isOwner && !!meta.needsCategoryMapping} />
       {loading && <Loading />}
       {error && <ErrorBox error={error} />}

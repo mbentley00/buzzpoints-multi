@@ -15,7 +15,7 @@ export function ThemeToggle() {
     <button
       className="nav-link btn-nav theme-toggle"
       onClick={() => set(NEXT[theme])}
-      title={`Theme: ${LABEL[theme]}${theme === "system" ? " (follows your device)" : ""} — click for ${LABEL[NEXT[theme]]}`}
+      title={`Switch to ${LABEL[NEXT[theme]]}`}
       aria-label={`Theme: ${LABEL[theme]}. Switch to ${LABEL[NEXT[theme]]}.`}
     >
       <span aria-hidden="true">{ICON[theme]}</span> {LABEL[theme]}

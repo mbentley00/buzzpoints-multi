@@ -78,14 +78,14 @@ export function MetaMapEditor({ slug }: { slug: string }) {
 
   if (err && !scan) return <div className="error-box">{err}</div>;
   if (!scan) return <p className="muted">Scanning question metadata…</p>;
-  if (!scan.total) return <p className="muted">These questions carry no metadata to read categories from.</p>;
+  if (!scan.total) return <p className="muted">No metadata in these questions.</p>;
 
   return (
     <div className="srcfiles">
       {err && <div className="error-box">{err}</div>}
       <p className="muted srcfiles-note">
-        Read from {scan.total} question{scan.total === 1 ? "" : "s"}
-        {scan.shapes.length > 1 && <> in {scan.shapes.length} different shapes</>}. Example:{" "}
+        {scan.total} question{scan.total === 1 ? "" : "s"}
+        {scan.shapes.length > 1 && <>, {scan.shapes.length} shapes</>}. Example:{" "}
         <span className="mono">{scan.shapes[0]?.examples[0]}</span>
       </p>
 
@@ -126,7 +126,7 @@ export function MetaMapEditor({ slug }: { slug: string }) {
 
       <p className="muted srcfiles-note">
         {catCount === 1
-          ? <>Categories will come from field <strong>{Array.from({ length: width }, (_, i) => i).find((i) => at(i).role === "category")! + 1}</strong>. A field marked <strong>Tag</strong> becomes its own dimension you can filter and compare on.</>
+          ? <>Category: field <strong>{Array.from({ length: width }, (_, i) => i).find((i) => at(i).role === "category")! + 1}</strong>.</>
           : <span className="error-inline">Pick exactly one field to be the category.</span>}
         {missingTagName && <span className="error-inline"> Every tag field needs a name.</span>}
       </p>
@@ -135,7 +135,6 @@ export function MetaMapEditor({ slug }: { slug: string }) {
         <button className="btn-primary btn-sm" disabled={!canSave} onClick={save}>
           {busy ? "Re-reading questions…" : "Save & rebuild stats"}
         </button>
-        <span className="muted">Re-reads every question and recomputes the set.</span>
       </div>
     </div>
   );

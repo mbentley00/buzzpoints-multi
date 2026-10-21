@@ -69,13 +69,13 @@ export function QuestionNav({ nav, hrefOf, label }: {
   return (
     <div className="qnav" role="navigation" aria-label={`Adjacent ${label.toLowerCase()}s`}>
       {prev ? (
-        <Link className="qnav-link" to={hrefOf(prev.id)} title="Previous question (← or p)">← {name(prev)}</Link>
+        <Link className="qnav-link" to={hrefOf(prev.id)} title="← or p">← {name(prev)}</Link>
       ) : (
         <span className="qnav-link qnav-off">← {label}</span>
       )}
       {nav.total > 0 && <span className="qnav-pos muted">{nav.pos} of {nav.total}</span>}
       {next ? (
-        <Link className="qnav-link" to={hrefOf(next.id)} title="Next question (→ or n)">{name(next)} →</Link>
+        <Link className="qnav-link" to={hrefOf(next.id)} title="→ or n">{name(next)} →</Link>
       ) : (
         <span className="qnav-link qnav-off">{label} →</span>
       )}

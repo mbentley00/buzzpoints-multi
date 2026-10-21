@@ -76,7 +76,7 @@ export function ReplaceData({ slug, setName, scoring, editions, onDone }: {
       else files = list ? filesFromPicker(list) : [];
       if (!files.length) { setScanMsg(""); return; }
       const sc = await scanDataFolder(files, setScanMsg);
-      if (!sc.sets.length) throw new Error("No question set in that file matched any site's games.");
+      if (!sc.sets.length) throw new Error("No question set matched any site's games.");
       // Prefer the set whose name matches this tournament, else the biggest.
       const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
       const pick = sc.sets.find((g) => norm(g.name) === norm(setName)) || [...sc.sets].sort((a, b) => b.mirrors.length - a.mirrors.length)[0];
@@ -106,7 +106,7 @@ export function ReplaceData({ slug, setName, scoring, editions, onDone }: {
       const r = await ingestPostRetry({
         op: "local-finish", jobId, editionCount, refreshSlug: slug,
         name: setName, scoring: group.scoring || scoring, hasBonuses: group.hasBonuses,
-      }, (s) => setStatus(`The server is busy; retrying in ${s}s…`));
+      }, (s) => setStatus(`Server busy; retrying in ${s}s…`));
       // The new games replaced the old ones, Klaxon presses and all, so attach
       // any buzz points that came with this export.
       const kx = scan.klaxonLogs.length ? await attachKlaxonLogs(slug, scan.klaxonLogs, setStatus) : [];
@@ -142,7 +142,7 @@ export function ReplaceData({ slug, setName, scoring, editions, onDone }: {
 
       {scan && group && (
         <div className="field">
-          {scan.klaxonLogs.length > 0 && <small className="muted">Klaxon buzz points found ({scan.klaxonLogs.map((l) => l.name).join(", ")}); they're added after the replace.</small>}
+          {scan.klaxonLogs.length > 0 && <small className="muted">Klaxon logs found: {scan.klaxonLogs.map((l) => l.name).join(", ")}</small>}
           {scan.sets.length > 1 && (
             <label className="field">
               <span>Question set</span>
@@ -184,22 +184,18 @@ export function ReplaceData({ slug, setName, scoring, editions, onDone }: {
               </tbody>
             </table>
           </div>
-          {dupIds.size > 0 && <small className="warn-text">Two sites are set to replace the same edition; only the first keeps its settings.</small>}
+          {dupIds.size > 0 && <small className="warn-text">Two sites replace the same edition. Only the first keeps its settings.</small>}
           {dropped.length > 0 && (
             <small className="warn-text">
-              Not replaced, so removed: {dropped.map((e) => e.label).join(", ")}. Settings made for {dropped.length === 1 ? "it" : "them"} (phases,
-              replacement mappings) stop applying.
+              Will be removed with their settings: {dropped.map((e) => e.label).join(", ")}
             </small>
           )}
-          <small className="muted">
-            "Replaces" keeps that edition's name and settings.
-          </small>
 
           {!confirm ? (
             <div><button type="button" className="btn-primary" disabled={busy || !chosen.length} onClick={() => setConfirm(true)}>Replace data…</button></div>
           ) : (
             <div className="error-box" style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-              <span>This replaces every uploaded packet and game in this tournament and can't be undone.</span>
+              <span>Replace every packet and game in this tournament? This can't be undone.</span>
               <button type="button" className="btn-primary" disabled={busy} onClick={run}>{busy ? "Replacing…" : "Yes, replace"}</button>
               <button type="button" className="btn-link" disabled={busy} onClick={() => setConfirm(false)}>Cancel</button>
             </div>

@@ -168,7 +168,7 @@ export async function scanDataFolder(files: PathFile[], onProgress?: (msg: strin
     } catch { /* folder name only */ }
   }
   if (!mirrorFiles.size)
-    throw new Error("No tournaments/<site>/game_files/*.qbj found. Choose the data folder that holds question_sets/ and tournaments/.");
+    throw new Error("No tournaments/<site>/game_files/*.qbj found. Pick the folder holding question_sets/ and tournaments/.");
 
   const groups = new Map<string, SetGroup>();
   const setValues = new Map<string, Set<number>>();

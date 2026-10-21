@@ -121,7 +121,7 @@ export function RoundTagsEditor({ slug, rounds }: { slug: string; rounds: number
       setDoc(d.roundTags || {});
       setSavedDoc(d.roundTags || {});
       refreshIndex();
-      setMsg("Round phases saved. Reload the tournament to use the phase filter.");
+      setMsg("Saved. Reload to use the phase filter.");
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally {
@@ -152,19 +152,19 @@ export function RoundTagsEditor({ slug, rounds }: { slug: string; rounds: number
             </select>
           </label>
           {target === SHARED ? (
-            <small className="muted">
-              Every edition follows this unless you give it its own schedule.
-              {Object.keys(doc.editions || {}).length > 0 &&
-                ` ${Object.keys(doc.editions!).length} edition(s) already have one and won't be affected.`}
-            </small>
+            Object.keys(doc.editions || {}).length > 0 && (
+              <small className="muted">
+                {`${Object.keys(doc.editions!).length} edition(s) have their own schedule.`}
+              </small>
+            )
           ) : ownSchedule ? (
             <small className="muted">
-              This edition runs its own schedule — the shared one doesn't apply to it.{" "}
+              Own schedule.{" "}
               <button type="button" className="btn-link" onClick={reattach}>Go back to the shared schedule</button>
             </small>
           ) : (
             <small className="muted">
-              Following the shared schedule (shown below, read-only).{" "}
+              Shared schedule (read-only).{" "}
               <button type="button" className="btn-link" onClick={detach}>Give this edition its own schedule</button>
             </small>
           )}
@@ -193,7 +193,7 @@ export function RoundTagsEditor({ slug, rounds }: { slug: string; rounds: number
             </div>
           </div>
         ))}
-        {shownRounds.length === 0 && <p className="muted">This edition has no rounds yet.</p>}
+        {shownRounds.length === 0 && <p className="muted">No rounds yet.</p>}
       </div>
 
       <div className="rt-actions">

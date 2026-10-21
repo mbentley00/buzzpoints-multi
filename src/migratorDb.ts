@@ -44,7 +44,7 @@ const REQUIRED = ["question_set", "question_set_edition", "packet", "packet_ques
 export function migratorDbToFiles(db: SqlDb): { files: PathFile[]; report: DbConvertReport } {
   const missing = REQUIRED.filter((t) => !hasTable(db, t));
   if (missing.length)
-    throw new Error(`This doesn't look like a buzzpoint-migrator database (no ${missing.slice(0, 3).join(", ")} table${missing.length > 1 ? "s" : ""}).`);
+    throw new Error(`Not a buzzpoint-migrator database (no${missing.slice(0, 3).join(", ")} table${missing.length > 1 ? "s" : ""}).`);
 
   const files: PathFile[] = [];
   const report: DbConvertReport = { games: 0, unpairedBonuses: 0, movedGames: 0 };

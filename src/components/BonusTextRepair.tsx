@@ -78,7 +78,7 @@ export function BonusTextRepair() {
         } catch { /* a set we can't read isn't a repair candidate */ }
       }
       setScans(out);
-      setStatus(out.length ? null : list.length === 1 ? `${list[0].name} already has its bonus text.` : "Every tournament has its bonus text.");
+      setStatus(out.length ? null : list.length === 1 ? `${list[0].name} has its bonus text.` : "Every tournament has its bonus text.");
     } catch (e) { setErr(String((e as Error).message || e)); } finally { setBusy(false); }
   }
 
@@ -92,13 +92,13 @@ export function BonusTextRepair() {
         if (guard++ > 60) { say(`${where}: gave up after 60 chunks`); break; }
         const d = await post({ op: "bonus-text-chunk", slug: s.slug, edition: ed.index, importUrl: url.trim() });
         setStatus(`${where}: ${d.remaining} bonuses left…`);
-        if (d.stalled) { say(`${where}: the source returned no bonus pages — ${d.remaining} still missing`); break; }
+        if (d.stalled) { say(`${where}: no bonus pages returned, ${d.remaining} still missing`); break; }
         if (d.done) break;
         // A chunk that fetched text but didn't lower the count is going in
         // circles; say so rather than spin quietly until the guard trips.
         flat = d.remaining < last ? 0 : flat + 1;
         last = d.remaining;
-        if (flat >= 2) { say(`${where}: no progress — stuck at ${d.remaining} missing; moving on`); break; }
+        if (flat >= 2) { say(`${where}: stuck at ${d.remaining} missing`); break; }
       }
     }
     await post({ op: "bonus-text-finish", slug: s.slug });
@@ -106,7 +106,7 @@ export function BonusTextRepair() {
   }
 
   async function repairAll(list: Scan[]) {
-    if (!url.trim()) { setErr("Paste the Buzzpoints site you imported these from."); return; }
+    if (!url.trim()) { setErr("Paste the source site's URL."); return; }
     setBusy(true); setErr(null); setLog([]);
     try {
       for (const s of list) {
@@ -119,11 +119,6 @@ export function BonusTextRepair() {
 
   return (
     <div className="bulk-import">
-      <p className="muted">
-        Imported sets often arrive with bonus answers and conversion but no leadin or part prompts: that text lives
-        only on the source's per-bonus pages, which are slow and frequently fail — and when they do, the import
-        finishes anyway without saying so. This refetches just that text and rebuilds the affected sets.
-      </p>
       <div className="cat-toolbar">
         <input
           value={url}
@@ -144,18 +139,15 @@ export function BonusTextRepair() {
           </button>
         )}
       </div>
-      <p className="muted" style={{ marginTop: 6 }}>
-        {unmatched ? (
-          <span className="warn-text">
-            That link names “{target}”, but no tournament here matches it — check the name, or use
-            “check every tournament”.
-          </span>
-        ) : scoped ? (
-          <>Scoped to <strong>{scoped.name}</strong>, and its text will be refetched from that link.</>
-        ) : (
-          <>A link to the whole site checks every tournament here. Link one set or tournament to check just that one.</>
-        )}
-      </p>
+      {(unmatched || scoped) && (
+        <p className="muted" style={{ marginTop: 6 }}>
+          {unmatched ? (
+            <span className="warn-text">No tournament here matches “{target}”.</span>
+          ) : (
+            <>Checking only <strong>{scoped!.name}</strong>.</>
+          )}
+        </p>
+      )}
       {unmatched && (
         <p><button className="btn-link" disabled={busy || !ready} onClick={() => scan(sets)}>Check every tournament anyway</button></p>
       )}
@@ -207,7 +199,7 @@ export function PacketTextFill({ slug, name }: { slug: string; name: string }) {
     try {
       const d = JSON.parse(await file.text());
       if (typeof d?.slug !== "string" || !Array.isArray(d?.bonuses)) throw new Error("Not a bonus-text fill file.");
-      if (d.slug !== slug) throw new Error(`That file is for a different tournament ("${d.slug}"), not ${name}. Nothing was applied.`);
+      if (d.slug !== slug) throw new Error(`That file is for "${d.slug}", not ${name}.`);
       setFill(d);
     } catch (e) { setErr((e as Error).message); }
   }
@@ -219,9 +211,9 @@ export function PacketTextFill({ slug, name }: { slug: string; name: string }) {
       const d = await post({ op: "bonus-text-fill", slug, fileSlug: fill.slug, bonuses: fill.bonuses });
       clearSetCache(slug);
       const skipped: string[] = d.skipped || [];
-      setMsg(`Filled ${d.applied} of ${fill.bonuses.length} bonuses and rebuilt the stats.` +
-        (skipped.length ? ` Skipped (answer lines didn't match): ${skipped.join(", ")}.` : "") +
-        (d.stillBlank ? ` ${d.stillBlank} stored ${d.stillBlank === 1 ? "copy is" : "copies are"} still without text (a mirror whose answer lines differ).` : ""));
+      setMsg(`Filled ${d.applied} of ${fill.bonuses.length} bonuses.` +
+        (skipped.length ? ` Skipped, answer lines didn't match: ${skipped.join(", ")}.` : "") +
+        (d.stillBlank ? ` ${d.stillBlank} stored ${d.stillBlank === 1 ? "copy is" : "copies are"} still without text.` : ""));
     } catch (e) { setErr(String((e as Error).message || e)); } finally { setBusy(false); }
   }
 

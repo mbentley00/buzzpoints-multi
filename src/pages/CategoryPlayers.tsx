@@ -19,11 +19,11 @@ export function CategoryPlayersPage() {
     { key: "gets", label: "Get", align: "right", sortVal: (p) => p.gets, render: (p) => p.gets },
     { key: "inc", label: "Inc", align: "right", sortVal: (p) => p.incorrect, render: (p) => p.incorrect, title: "Incorrect buzzes" },
     { key: "pts", label: "Points", align: "right", sortVal: (p) => p.points, render: (p) => p.points },
-    { key: "early", label: "Earliest Buzz", align: "right", sortVal: (p) => p.earliest ?? 1e9, render: (p) => (p.earliest === null ? "—" : p.earliest), title: "Earliest word position of a correct buzz" },
+    { key: "early", label: "Earliest Buzz", align: "right", sortVal: (p) => p.earliest ?? 1e9, render: (p) => (p.earliest === null ? "—" : p.earliest), title: "Word #" },
     { key: "avg", label: "Avg Buzz", align: "right", sortVal: (p) => p.avgBuzz ?? 1e9, render: (p) => (p.avgBuzz === null ? "—" : num(p.avgBuzz)) },
     { key: "bpa", label: "BPA", align: "right", sortVal: (p) => p.bpa ?? -1, render: (p) => num(p.bpa),
-      title: "Buzz point area-under-the-curve for this category: how much of each question went unread thanks to early correct buzzes, per tossup heard in the category" },
-    { key: "first", label: "First Buzzes", align: "right", sortVal: (p) => p.firstBuzzes, render: (p) => p.firstBuzzes, title: "Times the earliest buzzer on a tossup in this category" },
+      title: "Buzz point area under the curve" },
+    { key: "first", label: "First Buzzes", align: "right", sortVal: (p) => p.firstBuzzes, render: (p) => p.firstBuzzes, title: "Fastest correct buzz on a tossup" },
     { key: "top3", label: "Top 3 Buzzes", align: "right", sortVal: (p) => p.top3Buzzes, render: (p) => p.top3Buzzes },
   ];
 
@@ -37,7 +37,7 @@ export function CategoryPlayersPage() {
       {all && !data && <ErrorBox error="Category not found." />}
       {data && (
         <>
-          <PageHeader title={data.category} subtitle={`${data.players.length} players · tossup performance in this category`} />
+          <PageHeader title={data.category} subtitle={`${data.players.length} players`} />
           <DataTable rows={data.players} columns={columns} initialSort="pts" initialDir="desc" rowKey={(p) => `${p.name}|${p.team}`} />
         </>
       )}

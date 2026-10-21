@@ -37,14 +37,14 @@ export function Verify() {
         {state === "working" && <p className="loading">Verifying…</p>}
         {state === "ok" && (
           <p className="caveat">
-            <span className="ok-msg">Verified — you're signed in.</span>{" "}
-            {dest.startsWith("/join/") ? "Opening the tournament you were invited to…" : "Redirecting…"}
+            <span className="ok-msg">Verified. You're signed in.</span>{" "}
+            {dest.startsWith("/join/") ? "Opening the tournament…" : "Redirecting…"}
           </p>
         )}
         {state === "error" && (
           <>
             <div className="error-box">{msg}</div>
-            <p className="muted"><Link to="/login" className="link">Back to log in</Link> (you can resend the link there).</p>
+            <p className="muted"><Link to="/login" className="link">Back to log in</Link> to resend the link.</p>
           </>
         )}
       </main>

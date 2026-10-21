@@ -13,7 +13,7 @@ import { formatDate, relativeTime, searchable } from "../util";
 const GROUP_LABELS = [
   "Your tournaments & shared with you",
   "Public tournaments",
-  "Restricted — log in and request access",
+  "Restricted",
 ];
 // 0 = owned or granted access, 1 = public, 2 = invite-only without access yet.
 function groupOf(s: SetEntry, user: string | null): 0 | 1 | 2 {
@@ -32,8 +32,8 @@ const VisBadge = ({ s }: { s: SetEntry }) =>
     <span
       className={`vis-badge vis-${s.visibility}`}
       title={s.visibility === "private"
-        ? "Private — hidden from this list; only the owner, invitees and admins see it"
-        : "Listed — anyone can see it here, but viewing it needs an invite"}
+        ? "Hidden from this list"
+        : "Viewing needs an invite"}
     >
       {s.visibility === "private" ? "Private" : "Listed"}
     </span>
@@ -44,7 +44,7 @@ const VisBadge = ({ s }: { s: SetEntry }) =>
 // looks far busier to them than it does to the public.
 const AdminOnlyBadge = ({ s, isAdmin }: { s: SetEntry; isAdmin: boolean }) =>
   isAdmin && s.visibility === "private" && !s.hasAccess ? (
-    <span className="vis-badge vis-adminonly" title="Only visible to you because you're an admin">admin view</span>
+    <span className="vis-badge vis-adminonly" title="Visible to admins only">admin view</span>
   ) : null;
 
 // Short labels for the scoring filter; mirrors api/_lib/scoring.ts ids.
@@ -137,8 +137,7 @@ export function Landing() {
         <div className="hero">
           <h1>Buzzpoints</h1>
           <p>
-            Upload packets and game files (.qbj or .json) to generate a quiz-bowl stats site for any tournament.{" "}
-            <Link to="/about" className="link">Learn more</Link>.
+            <Link to="/about" className="link">About</Link>
           </p>
         </div>
         <div className="page-header">
@@ -216,17 +215,15 @@ export function Landing() {
         {error && <ErrorBox error={error} />}
         {data?.needsSetup && (
           <div className="caveat">
-            <strong>Data store not connected.</strong> Add a Vercel Blob store to this
-            project (Storage → Create → Blob → connect to <code>buzzpoints-multi</code>),
-            then redeploy. That sets <code>BLOB_READ_WRITE_TOKEN</code> and enables creating
-            and viewing tournaments.
+            <strong>Data store not connected.</strong> Connect a Vercel Blob store
+            to <code>buzzpoints-multi</code>, then redeploy.
           </div>
         )}
         {data && !data.needsSetup && sets.length === 0 && (
-          <p className="muted">No tournaments yet. Create one to get started.</p>
+          <p className="muted">No tournaments yet.</p>
         )}
         {showControls && filtered.length === 0 && (
-          <p className="muted">No tournaments match your search.</p>
+          <p className="muted">No matches.</p>
         )}
         {/* Every match is rendered — no paging. The list is the main way people
             find a tournament, and a browser's own Ctrl+F only searches what's in
@@ -242,13 +239,13 @@ export function Landing() {
                 {s.editions && s.editions.length > 1 && <span className="edition-count">{s.editions.length} editions</span>}
                 {!!s.forumUnread && <span className="badge-new" title={`${s.forumUnread} new forum post${s.forumUnread === 1 ? "" : "s"}`}>{s.forumUnread} new</span>}
                 {!!s.pendingAccess && (
-                  <span className="badge-new" title={`${s.pendingAccess} access request${s.pendingAccess === 1 ? "" : "s"} waiting for your approval`}>
+                  <span className="badge-new" title={`${s.pendingAccess} access request${s.pendingAccess === 1 ? "" : "s"} waiting`}>
                     {s.pendingAccess} request{s.pendingAccess === 1 ? "" : "s"}
                   </span>
                 )}
               </span>
               <span className="set-row-meta">
-                {s.tournamentDate && <span className="set-row-level" title="When the tournament was first played">{playedLabel(s.tournamentDate)}</span>}
+                {s.tournamentDate && <span className="set-row-level" title="First played">{playedLabel(s.tournamentDate)}</span>}
                 {s.level && <span className="set-row-level">{levelLabel(s.level)}</span>}
                 {difficultyLabel(s.level, s.difficulty) && <span className="set-row-level" title="Question difficulty">{difficultyLabel(s.level, s.difficulty)}</span>}
                 {s.individual

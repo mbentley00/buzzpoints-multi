@@ -67,12 +67,11 @@ export function Login() {
         <main className="content">
           <h1>Check your email</h1>
           <p>
-            If an account exists for <strong>{sentReset.email}</strong>, a link to choose a new password is on its way.
-            It expires in an hour.
+            If an account exists for <strong>{sentReset.email}</strong>, we sent a reset link. It expires in an hour.
           </p>
           {sentReset.devUrl && (
             <div className="caveat">
-              Email delivery isn't configured yet, so here's your link directly:{" "}
+              Email isn't set up.{" "}
               <a className="link" href={sentReset.devUrl}>Reset password →</a>
             </div>
           )}
@@ -92,15 +91,14 @@ export function Login() {
           <h1>Verify your email</h1>
           {pending.delivered === false && !pending.devUrl ? (
             <div className="error-box">
-              We couldn't send a verification email to <strong>{pending.email}</strong>. Check the address,
-              or try Resend below in a few minutes.
+              We couldn't email <strong>{pending.email}</strong>. Check the address, or resend in a few minutes.
             </div>
           ) : (
-            <p>We sent a verification link to <strong>{pending.email}</strong>. Click it to finish and sign in.</p>
+            <p>We sent a link to <strong>{pending.email}</strong>. Click it to sign in.</p>
           )}
           {pending.devUrl && (
             <div className="caveat">
-              Email delivery isn't configured yet, so here's your link directly:{" "}
+              Email isn't set up.{" "}
               <a className="link" href={pending.devUrl}>Verify now →</a>
             </div>
           )}
@@ -130,19 +128,14 @@ export function Login() {
         <h1>{mode === "signup" ? "Create an account" : mode === "forgot" ? "Reset your password" : "Log in"}</h1>
         {reason === "access" && mode !== "forgot" && (
           <div className="caveat">
-            <strong>To request access to a restricted tournament, you need an account.</strong>
-            <div>
-              {mode === "signup" ? "Create one" : "Log in"} and you'll be taken back to the tournament, where you can tell
-              its owner how you were involved and send a request. Owners get an email and decide who can view it.
-            </div>
+            You need an account to request access to this tournament.
           </div>
         )}
         {reason === "coowner" && mode !== "forgot" && (
           <div className="caveat">
             <strong>You've been added as a co-owner of a tournament.</strong>
             <div>
-              {mode === "signup" ? "Create an account" : "Log in"} with the email address the invitation was sent to. Once
-              it's verified, you'll be taken to the tournament and can manage it.
+              {mode === "signup" ? "Create an account" : "Log in"} with the email the invitation was sent to.
             </div>
           </div>
         )}
@@ -154,7 +147,7 @@ export function Login() {
         ) : (
           <form className="create-form" onSubmit={submit} style={{ maxWidth: 380 }}>
             {mode === "forgot" && (
-              <p className="muted" style={{ margin: 0 }}>Enter your email and we'll send you a link to choose a new one.</p>
+              <p className="muted" style={{ margin: 0 }}>We'll email you a reset link.</p>
             )}
             {mode === "signup" && (
               <>

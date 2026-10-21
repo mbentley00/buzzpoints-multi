@@ -111,15 +111,14 @@ export function Requests() {
       {err && <div className="error-box">{err}</div>}
       {!allowRequests && (
         <p className="caveat">
-          You've turned off correction requests for this tournament, so viewers can't submit new ones. Anything already
-          submitted is still below, and you can still edit buzzes directly.{" "}
-          <Link className="link" to={`/set/${slug}/settings`}>Change this in Settings</Link>.
+          Correction requests are off.{" "}
+          <Link className="link" to={`/set/${slug}/settings`}>Settings</Link>
         </p>
       )}
 
       <h2>Pending ({pending.length})</h2>
       {pending.length === 0 ? (
-        <p className="muted">No pending requests.</p>
+        <p className="muted">None.</p>
       ) : (
         <div className="req-list">
           {pending.map((r) => (

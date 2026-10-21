@@ -8,10 +8,8 @@ export function CategoryMappingNotice({ slug, show }: { slug: string; show: bool
   if (!show) return null;
   return (
     <div className="caveat">
-      <strong>These categories are a guess.</strong> Each question's metadata has more than one field (typically the
-      category and the writer) and nothing here says which is which — so a set written <span className="mono">
-      &lt;Poetry, JL&gt;</span> ends up filed under <span className="mono">JL</span>.{" "}
-      <Link className="link" to={`/set/${slug}/settings#categories`}>Confirm what the fields mean →</Link>
+      <strong>These categories are a guess.</strong>{" "}
+      <Link className="link" to={`/set/${slug}/settings#categories`}>Pick the category field →</Link>
     </div>
   );
 }

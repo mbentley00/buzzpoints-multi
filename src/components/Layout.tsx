@@ -40,21 +40,21 @@ export function setTabs(meta: Meta, base: string, o: { hasEditions: boolean; isO
     ...(meta.individual ? [] : [{ to: `${base}/team`, label: "Teams", desc: n(meta.numTeams, "team") }]),
     { to: `${base}/category/tossup`, label: "Categories (T)", desc: "By subject" },
     ...(meta.hasBonuses ? [{ to: `${base}/category/bonus`, label: "Categories (B)", desc: "By subject" }] : []),
-    { to: `${base}/buzzer-races`, label: "Races", desc: "Tossups many rooms buzzed on at once" },
+    { to: `${base}/buzzer-races`, label: "Races", desc: "Close buzzes" },
     // Klaxon logs record every press, not just the one that got the floor. Kept
     // on a page of its own; a viewer who switched it off sees it struck through.
-    ...(meta.hasKlaxon ? [{ to: `${base}/klaxon`, label: o.klaxonOn === false ? "Klaxon (off)" : "Klaxon", desc: "Every press behind each buzz" }] : []),
-    { to: `${base}/first-sentence`, label: "1st Sentence", desc: "Buzzes on the opening clue" },
+    ...(meta.hasKlaxon ? [{ to: `${base}/klaxon`, label: o.klaxonOn === false ? "Klaxon (off)" : "Klaxon", desc: "Every buzzer press" }] : []),
+    { to: `${base}/first-sentence`, label: "1st Sentence", desc: "Opening-clue buzzes" },
     { to: `${base}/packet`, label: "Packets", desc: "Questions by round" },
     // Only worth a tab once the owner has marked a metadata field as a tag.
-    ...(meta.hasTags ? [{ to: `${base}/tags`, label: "Tags", desc: "By writer, era, or other tag" }] : []),
+    ...(meta.hasTags ? [{ to: `${base}/tags`, label: "Tags", desc: "By tag" }] : []),
     // The YellowFruit-style report — standings, individuals, scoreboard.
     { to: `${base}/standard`, label: "YF Stats", desc: "Standings, individuals, scoreboard" },
     // Only once the owner has opened it (signed-in viewers see the tab; the
     // page itself asks anyone else to log in).
-    ...(o.forum ? [{ to: `${base}/discussion`, label: "Forums", desc: o.forumUnread ? `${o.forumUnread} new post${o.forumUnread === 1 ? "" : "s"}` : "Threads about this tournament", badge: o.forumUnread || 0, badgeTitle: n(o.forumUnread || 0, "new post") }] : []),
+    ...(o.forum ? [{ to: `${base}/discussion`, label: "Forums", desc: o.forumUnread ? `${o.forumUnread} new post${o.forumUnread === 1 ? "" : "s"}` : "Discussion", badge: o.forumUnread || 0, badgeTitle: n(o.forumUnread || 0, "new post") }] : []),
     ...(o.hasEditions || o.isOwner ? [{ to: `${base}/editions`, label: "Editions", desc: o.hasEditions ? "Compare mirrors" : "Add a mirror" }] : []),
-    ...(o.isOwner ? [{ to: `${base}/requests`, label: "Corrections", desc: "Review proposed fixes" }] : []),
+    ...(o.isOwner ? [{ to: `${base}/requests`, label: "Corrections", desc: "Proposed fixes" }] : []),
     ...(o.isOwner ? [{
       to: `${base}/settings`, label: "Settings",
       desc: o.pendingAccess ? `${n(o.pendingAccess, "access request")} waiting` : "Visibility, details, repairs",
@@ -107,7 +107,7 @@ export function SetLayout() {
   const [reqTeam, setReqTeam] = useState("");
   async function requestAccess() {
     if (!reqRole || !reqTeam.trim()) {
-      setReqState("error"); setReqMsg("Select your role and enter the team you were affiliated with.");
+      setReqState("error"); setReqMsg("Select a role and enter your team.");
       return;
     }
     setReqState("sending"); setReqMsg("");
@@ -134,7 +134,7 @@ export function SetLayout() {
   // that report only exists once a response has come back.
   const redactedForAdmin = isAdmin && !!meta && isContentRedacted(slug) && !isRevealed(slug);
   const reveal = () => {
-    if (window.confirm("Reveal the hidden question content for this private tournament? This access is recorded.")) {
+    if (window.confirm("Reveal hidden question content? This access is recorded.")) {
       setRevealed(slug);
       clearSetCache(slug);
       window.location.reload();
@@ -194,7 +194,7 @@ export function SetLayout() {
         {pendingAccess > 0 && !onSettings && (
           <div className="cat-warn access-warn" role="status">
             <strong>
-              {pendingAccess === 1 ? "Someone is waiting for access to this tournament." : `${pendingAccess} people are waiting for access to this tournament.`}
+              {pendingAccess === 1 ? "1 access request waiting." : `${pendingAccess} access requests waiting.`}
             </strong>
             <div className="cat-warn-actions">
               <Link className="btn-primary" to={`${base}/settings?review=access`}>Review requests</Link>
@@ -203,11 +203,7 @@ export function SetLayout() {
         )}
         {isOwner && !onSettings && (meta?.roundWarnings?.length ?? 0) > 0 && (
           <div className="cat-warn round-warn" role="status">
-            <strong>Some packets aren't lined up with the games.</strong>
-            <p className="muted">
-              A packet only collects buzzes when its round matches the round its games were played in — otherwise its
-              questions show 0 heard while player and team stats still look fine.
-            </p>
+            <strong>Some packet rounds don't match their games.</strong>
             <ul className="cat-warn-list">
               {meta!.roundWarnings!.map((w, i) => <li key={i}>{warningText(w)}</li>)}
             </ul>
@@ -223,10 +219,7 @@ export function SetLayout() {
                 ? "A team played in more than one edition."
                 : `${meta!.crossMirrorTeams!.length} teams played in more than one edition.`}
             </strong>
-            <p className="muted">
-              A team normally plays a single mirror, so this usually means some games were uploaded into the wrong
-              edition, or into two of them — and are being counted twice.
-            </p>
+            <p className="muted">Games may be in the wrong edition or counted twice.</p>
             <ul className="cat-warn-list">
               {meta!.crossMirrorTeams!.slice(0, 6).map((t) => <li key={t.name}>{t.name} — {t.editions.join(", ")}</li>)}
               {meta!.crossMirrorTeams!.length > 6 && <li>…and {meta!.crossMirrorTeams!.length - 6} more</li>}
@@ -243,11 +236,7 @@ export function SetLayout() {
                 ? "A question was read that isn't in the packets."
                 : `${meta!.missingQuestions!.length} questions were read that aren't in the packets.`}
             </strong>
-            <p className="muted">
-              Usually tiebreakers or replacements: the game files say which number was read, but the packet for that
-              round stops short of it, so those buzzes and bonus results don't count toward any question. Map each one to the question
-              that was actually read.
-            </p>
+            <p className="muted">Their buzzes and bonus results aren't counted.</p>
             <ul className="cat-warn-list">
               {meta!.missingQuestions!.slice(0, 6).map((m, i) => (
                 <li key={i}>
@@ -276,9 +265,7 @@ export function SetLayout() {
                 : `${meta!.bonusDiffWarnings!.length} bonuses have difficulty marks that can't be right.`}
             </strong>
             <p className="muted">
-              A three-part bonus is written easy, medium and hard. Where a packet tagged one "medium, easy, easy" its
-              real hard part is being counted as an easy one, and every easy/medium/hard figure built on it — including{" "}
-              <Link to={`${base}/bonus-order`} className="link">Difficulty order</Link> — is off by that part.
+              Easy/medium/hard stats and <Link to={`${base}/bonus-order`} className="link">Difficulty order</Link> are off.
             </p>
             <div className="cat-warn-actions">
               <Link className="btn-primary" to={`${base}/settings#bonusdiff`}>Fix difficulty marks</Link>
@@ -287,7 +274,7 @@ export function SetLayout() {
         )}
         {redactedForAdmin && (
           <div className="caveat admin-reveal">
-            <span><strong>Admin view.</strong> Question content is hidden for this {entry?.visibility} tournament. Stats are shown; answers and question text are masked.</span>
+            <span><strong>Admin view.</strong> Question content is hidden for this {entry?.visibility} tournament.</span>
             <button className="btn-primary btn-sm" onClick={reveal}>Reveal content</button>
           </div>
         )}
@@ -297,10 +284,10 @@ export function SetLayout() {
             <strong>This tournament is private.</strong>{" "}
             {user ? (
               reqState === "sent" ? (
-                <span className="ok-msg">Access request sent — the owner will review it.</span>
+                <span className="ok-msg">Access request sent.</span>
               ) : (
                 <>
-                  <div>Your account hasn't been invited to view it. To request access, tell the owner how you were affiliated with this tournament.</div>
+                  <div>Request access from the owner.</div>
                   <div className="request-form">
                     <label className="field">
                       <span>Your role</span>
@@ -328,10 +315,6 @@ export function SetLayout() {
               // possible, or that this very page is where you ask. `reason` is
               // carried so the login page can say what it's for.
               <>
-                <div>
-                  Anyone can ask its owner for access. Log in or create an account, and you'll come straight back here
-                  to send the request.
-                </div>
                 <div className="request-form">
                   <Link className="btn-primary" to={`/login?next=${encodeURIComponent(loc.pathname + loc.search)}&reason=access`}>Log in to request access</Link>
                   <Link className="link" to={`/login?mode=signup&next=${encodeURIComponent(loc.pathname + loc.search)}&reason=access`}>Create an account</Link>

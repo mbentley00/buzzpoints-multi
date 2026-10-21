@@ -22,9 +22,9 @@ const SCORING_OPTIONS = [
 ];
 
 const VISIBILITY_OPTIONS: { id: Visibility; label: string; desc: string }[] = [
-  { id: "listed", label: "Listed (login + invite)", desc: "Shown in the tournament list, but only invited, logged-in people can view it." },
-  { id: "private", label: "Private (invite only)", desc: "Hidden from the list; only you and people you invite can view it." },
-  { id: "public", label: "Public (open to all)", desc: "Shown in the list and viewable by anyone, no login required." },
+  { id: "listed", label: "Listed (login + invite)", desc: "In the list. Invited, logged-in viewers only." },
+  { id: "private", label: "Private (invite only)", desc: "Not in the list. Invited viewers only." },
+  { id: "public", label: "Public (open to all)", desc: "In the list. Anyone can view it." },
 ];
 
 async function readFiles(files: File[]) {
@@ -166,7 +166,7 @@ export function CreateSet() {
       else files = list ? filesFromPicker(list) : [];
       if (!files.length) return;
       const sc = await scanDataFolder(files, setScanMsg);
-      if (!sc.sets.length) throw new Error("No question set in that folder matched any site's games.");
+      if (!sc.sets.length) throw new Error("No question set matched any site's games.");
       // The set with the most sites is almost always the one meant.
       const pick = [...sc.sets].sort((a, b) => b.mirrors.length - a.mirrors.length)[0];
       setScan(sc);
@@ -253,7 +253,7 @@ export function CreateSet() {
   function onCreated(json: any) {
     if (json.pending) {
       // First-time poster: held for moderator review rather than published.
-      setSubmitted(json.message || "Your first tournament was submitted for review. You'll get an email when it's approved.");
+      setSubmitted(json.message || "We'll email you when it's approved.");
       setBusy(false);
       setStatus(null);
       return;
@@ -263,7 +263,7 @@ export function CreateSet() {
     // uploads need approval) — say so, or the owner would just see "listed"
     // and wonder where their choice went.
     if (json.publicPending)
-      window.alert("Your tournament was created. Making a newly uploaded tournament public needs a moderator's approval — your request has been sent, and you'll get an email when it's decided. Until then the tournament is listed (shown in the list, invited viewers only).");
+      window.alert("Tournament created as Listed. Going public needs a moderator's approval. We'll email you when it's decided.");
     // If the category heuristic flagged likely-mislabeled categories, the
     // packets' rounds don't line up with the games', or a bonus carries
     // difficulty marks that can't be right, pause on a review screen so the
@@ -297,7 +297,7 @@ export function CreateSet() {
         op: "local-create", jobId, editionCount,
         name: name.trim(), level, tdLink: tdLink.trim() || undefined, difficulty: difficulty || undefined, tournamentDate: tournamentDate || undefined,
         scoring, hasBonuses, individual, visibility, autoPublicAt, ...(yf ? { yf } : {}),
-      }, (sec) => setStatus(`The server is busy; retrying in ${sec}s…`));
+      }, (sec) => setStatus(`Server busy; retrying in ${sec}s…`));
       // Klaxon buzz points that came in the export: every press behind each
       // buzz, attached to the games now that they exist. A first-time poster's
       // tournament doesn't exist until it's approved, so theirs waits.
@@ -306,9 +306,9 @@ export function CreateSet() {
         const res = await attachKlaxonLogs(json.slug, kx, setStatus);
         const bad = res.filter((r) => r.error || !r.games);
         if (bad.length)
-          window.alert(`The tournament was created, but some Klaxon buzz points couldn't be added (${bad.map((r) => `${r.name}: ${r.error || "no game matched"}`).join("; ")}). You can add them from Settings → Rounds & files → Klaxon buzz logs.`);
+          window.alert(`Tournament created. Couldn't add Klaxon logs: ${bad.map((r) => `${r.name}: ${r.error || "no game matched"}`).join("; ")}. Add them in Settings → Rounds & files → Klaxon buzz logs.`);
       } else if (kx.length && json.pending) {
-        json.message = `${json.message || "Your first tournament was submitted for review."} Once it's approved, add the Klaxon buzz points from Settings → Rounds & files → Klaxon buzz logs.`;
+        json.message = `${json.message ? `${json.message} ` : ""}Once approved, add Klaxon logs in Settings → Rounds & files → Klaxon buzz logs.`;
       }
       onCreated(json);
     } catch (err) {
@@ -321,21 +321,21 @@ export function CreateSet() {
   function validateSites(): string | null {
     for (const [i, v] of versions.entries()) {
       const what = versions.length > 1 ? `packet version ${v.name.trim() || i + 1}` : "the packets";
-      if (versions.length > 1 && !v.name.trim()) return `Name packet version ${i + 1} (e.g. "American" or "British").`;
+      if (versions.length > 1 && !v.name.trim()) return `Name packet version ${i + 1}.`;
       if (!v.packets.length) return `Choose the packet files for ${what}.`;
     }
     const seen = new Set<string>();
     for (const [i, x] of sites.entries()) {
       const label = x.label.trim();
-      if (sites.length > 1 && !label) return `Name site ${i + 1} (e.g. "Chicago" or "Oxford").`;
-      if (label && seen.has(label.toLowerCase())) return `Two sites are both named "${label}". Give each site its own name.`;
+      if (sites.length > 1 && !label) return `Name site ${i + 1}.`;
+      if (label && seen.has(label.toLowerCase())) return `Two sites are named "${label}".`;
       seen.add(label.toLowerCase());
       if (!x.games.length) return `Choose the game files for ${label || `site ${i + 1}`}.`;
     }
     if (versions.length > 1) {
       const used = new Set(sites.map((x) => x.versionId));
       const unused = versions.find((v) => !used.has(v.id));
-      if (unused) return `No site played packet version "${unused.name.trim()}". Pick it for a site, or remove it.`;
+      if (unused) return `No site uses packet version "${unused.name.trim()}". Assign or remove it.`;
     }
     return null;
   }
@@ -434,8 +434,7 @@ export function CreateSet() {
         <h1>New tournament</h1>
         {!authLoading && !user && (
           <p className="caveat">
-            You need to <Link to="/login?next=/new" className="link">log in</Link> to create a tournament. You'll
-            become its owner and can approve edits from others.
+            <Link to="/login?next=/new" className="link">Log in</Link> to create a tournament.
           </p>
         )}
         {!authLoading && user && submitted && (
@@ -448,13 +447,7 @@ export function CreateSet() {
         )}
         {!authLoading && user && warned && warned.rounds.length > 0 && (
           <div className="cat-warn round-warn" role="status">
-            <strong>Your tournament was created — but its packets aren't lined up with the games.</strong>
-            <p className="muted">
-              A packet's round comes from its <strong>filename</strong> ("Round_3.json" → round 3); a file with no
-              number in its name falls back to round 0. Games carry their own round from inside the QBJ. When the two
-              disagree the questions never pick up any buzzes — they'll show 0 heard even though player and team stats
-              look fine. You can set the right rounds without re-uploading.
-            </p>
+            <strong>Tournament created. Packet and game rounds don't match.</strong>
             <ul className="cat-warn-list">
               {warned.rounds.map((w, i) => <li key={i}>{warningText(w)}</li>)}
             </ul>
@@ -467,16 +460,10 @@ export function CreateSet() {
         {!authLoading && user && warned && warned.bonusDiffs.length > 0 && (
           <div className="cat-warn bndiff-warn" role="status">
             <strong>
-              Your tournament was created — but{" "}
-              {warned.bonusDiffs.length === 1 ? "one bonus has" : `${warned.bonusDiffs.length} bonuses have`} difficulty
-              marks that can't be right.
+              Tournament created.{" "}
+              {warned.bonusDiffs.length === 1 ? "One bonus has" : `${warned.bonusDiffs.length} bonuses have`} bad
+              difficulty marks.
             </strong>
-            <p className="muted">
-              A three-part bonus is written easy, medium and hard. Where the packet tagged one "medium, easy, easy" its
-              real hard part will be counted as an easy one, and every easy/medium/hard figure built on it — conversion
-              by category, and the Difficulty order view — is off by that part. Re-mark the parts and the stats are
-              rebuilt; the packet file isn't touched.
-            </p>
             <ul className="cat-warn-list">
               {warned.bonusDiffs.slice(0, 8).map((w) => (
                 <li key={w.id}>
@@ -496,9 +483,7 @@ export function CreateSet() {
           <div className="cat-warn" role="status">
             <strong>Some categories look off.</strong>
             <p className="muted">
-              These parsed categories don't look like real subjects. Often this means the packet's
-              category column actually holds author initials or names. Fix the packet metadata and
-              re-upload (or refresh this tournament) if that's the case — otherwise you can ignore this.
+              They may be author initials. Fix the packets and re-upload, or ignore this.
             </p>
             <ul className="cat-warn-list">
               {warned.warnings.map((w) => (
@@ -530,13 +515,6 @@ export function CreateSet() {
               <option value="folder">Upload a buzzpoint-migrator database or data folder (every site at once)</option>
               <option value="import">Import from an existing Buzzpoints site</option>
             </select>
-            <small className="muted">
-              {mode === "upload"
-                ? "Upload your files for full buzz-level stats: one site, or several sites (mirrors) and packet versions at once. Optionally attach the YellowFruit file you scored from."
-                : mode === "folder"
-                ? <>The <code>.db</code> file buzzpoint-migrator built, or the <code>data</code> folder you fed it (<code>question_sets/</code> with the packets, <code>tournaments/</code> with each site's QBJs). Every site becomes a mirror, matched to the packet version it played.</>
-                : "Paste the link to another Buzzpoints site (e.g. one deployed on Vercel). Every edition listed there is imported as one tournament."}
-            </small>
           </label>
 
           {mode === "import" && (
@@ -547,7 +525,7 @@ export function CreateSet() {
               </label>
               <label className="field-inline">
                 <input type="checkbox" checked={importBonuses} onChange={(e) => setImportBonuses(e.target.checked)} />
-                <span>Import full bonus data — question text + per-team results (slow; scrapes every bonus page, some may 504)</span>
+                <span>Import full bonus data (slow)</span>
               </label>
             </>
           )}
@@ -565,11 +543,8 @@ export function CreateSet() {
               a set that doesn't fit the house style is still worth having. */}
           {!!name.trim() && !hasYearFirst(name) && (
             <p className="caveat name-hint">
-              Tournaments here are named <strong>year first</strong> — “2026 PACE NSC”, not “PACE NSC 2026” — so the
-              list reads chronologically and one tournament's years sit together.{" "}
-              {nameSuggestion
-                ? <>Did you mean <button type="button" className="btn-link" onClick={() => setName(nameSuggestion)}>{nameSuggestion}</button>?</>
-                : <>You can still use this name.</>}
+              Names go <strong>year first</strong>: “2026 PACE NSC”.
+              {nameSuggestion && <>{" "}Use <button type="button" className="btn-link" onClick={() => setName(nameSuggestion)}>{nameSuggestion}</button>?</>}
             </p>
           )}
 
@@ -594,7 +569,7 @@ export function CreateSet() {
               </select>
               {level !== "hs" && (
                 <small className="muted">
-                  The <a className="link" href="https://collegequizbowlcalendar.com/difficulty-scale/" target="_blank" rel="noreferrer">College Quizbowl Calendar scale</a>, in half steps.
+<a className="link" href="https://collegequizbowlcalendar.com/difficulty-scale/" target="_blank" rel="noreferrer">College Quizbowl Calendar scale</a>
                 </small>
               )}
             </label>
@@ -603,22 +578,20 @@ export function CreateSet() {
           <label className="field">
             <span>Tournament date</span>
             <input type="date" required value={tournamentDate} onChange={(e) => setTournamentDate(e.target.value)} style={{ maxWidth: 200 }} />
-            <small className="muted">When it was first played (the earliest mirror). Defaults to today — change it if it was played earlier.</small>
+            <small className="muted">First day played, at any site.</small>
           </label>
           <label className="field">
             <span>Tournament Database link (optional)</span>
             <input type="url" value={tdLink} onChange={(e) => setTdLink(e.target.value)} placeholder="https://hsquizbowl.org/db/tournaments/…" />
-            <small className="muted">Link to this tournament's entry on the hsquizbowl Tournament Database, if it has one.</small>
           </label>
 
           <label className="field-inline">
             <input type="checkbox" checked={individual} onChange={(e) => { setIndividual(e.target.checked); if (e.target.checked) setHasBonuses(false); }} />
-            <span>Individual shootout (players compete for themselves, like IPNCT)</span>
+            <span>Individual shootout (like IPNCT)</span>
           </label>
           {individual && (
             <small className="muted">
-              Every player is scored on their own, whatever "teams" the scoresheets were filed under — a room of six
-              players is read as six competitors, and standings rank players rather than teams.
+              Each player is ranked alone, whatever team the scoresheets list.
             </small>
           )}
 
@@ -634,8 +607,8 @@ export function CreateSet() {
             </select>
             <small className="muted">
               {detected
-                ? `Detected ${detected} from the uploaded games — change it if that's wrong.`
-                : "Auto-detected from the games once you choose them."}
+                ? `Detected ${detected} from the games.`
+                : "Detected from the games."}
             </small>
           </label>
 
@@ -661,7 +634,7 @@ export function CreateSet() {
               <input ref={zipInput} type="file" hidden accept=".zip" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFolder(null, f); e.target.value = ""; }} />
               <input ref={dbInput} type="file" hidden accept=".db,.sqlite,.sqlite3" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFolder(null, undefined, f); e.target.value = ""; }} />
               {scanMsg && <small className="muted">{scanMsg}</small>}
-              {!scan && !scanMsg && <small className="muted">Pick the migrator's <code>.db</code> file, the folder that holds <code>question_sets/</code> and <code>tournaments/</code>, or a .zip of that folder.</small>}
+              {!scan && !scanMsg && <small className="muted">The migrator's <code>.db</code>, or the folder (or .zip) holding <code>question_sets/</code> and <code>tournaments/</code>.</small>}
             </div>
           )}
           {mode === "folder" && scan && scanGroup && (
@@ -672,7 +645,6 @@ export function CreateSet() {
                   <select value={scanSet} onChange={(e) => chooseScanSet(scan, e.target.value)}>
                     {scan.sets.map((g) => <option key={g.key} value={g.key}>{g.name} ({g.mirrors.length} site{g.mirrors.length === 1 ? "" : "s"})</option>)}
                   </select>
-                  <small className="muted">The folder holds several question sets; one tournament is made from the one you pick.</small>
                 </label>
               )}
               <span>{scanGroup.mirrors.length - folderSkip.size} of {scanGroup.mirrors.length} sites included</span>
@@ -691,7 +663,7 @@ export function CreateSet() {
                           <td>{m.games.length}</td>
                           <td className={cov.matched < cov.rounds || isShort(cov.rounds) ? "warn-text" : ""}>
                             {cov.matched} / {cov.rounds}
-                            {isShort(cov.rounds) && <span title={`Most sites have ${typicalRounds} rounds. This site's other games may be missing from the file.`}> — only {cov.rounds} round{cov.rounds === 1 ? "" : "s"}?</span>}
+                            {isShort(cov.rounds) && <span title={`Most sites have ${typicalRounds}`}> (only {cov.rounds}?)</span>}
                           </td>
                         </tr>
                       );
@@ -702,15 +674,12 @@ export function CreateSet() {
               {scanGroup.mirrors.some((m) => isShort(m.roundPacket.size)) && (
                 <small className="warn-text">
                   {scanGroup.mirrors.filter((m) => isShort(m.roundPacket.size)).map((m) => m.label).join(", ")}{" "}
-                  {scanGroup.mirrors.filter((m) => isShort(m.roundPacket.size)).length === 1 ? "has" : "have"} far fewer rounds than the
-                  other sites (most have {typicalRounds}). The file may be missing those sites' other games. You can still go ahead,
-                  and add their games later from the tournament's Editions page.
+                  {scanGroup.mirrors.filter((m) => isShort(m.roundPacket.size)).length === 1 ? "has" : "have"} far fewer rounds
+                  than most sites ({typicalRounds}). Games may be missing.
                 </small>
               )}
               <small className="muted">
-                Each site's packets are filed under the round that site played them, so sites that read the packets in a
-                different order still line up question by question.
-                {scan.klaxonLogs.length > 0 && <> Klaxon buzz points found ({scan.klaxonLogs.map((l) => l.name).join(", ")}): every press behind each buzz is added once the tournament is created.</>}
+                {scan.klaxonLogs.length > 0 && <>Klaxon logs found: {scan.klaxonLogs.map((l) => l.name).join(", ")}.</>}
                 {(scan.noGames > 0 || scan.unmatched > 0) && <> Skipped: {[scan.noGames && `${scan.noGames} site${scan.noGames === 1 ? "" : "s"} with no usable games`, scan.unmatched && `${scan.unmatched} that matched no question set`].filter(Boolean).join(", ")}.</>}
               </small>
             </div>
@@ -720,14 +689,13 @@ export function CreateSet() {
             <>
               <div className="field">
                 <span>Packet files (one JSON per round)</span>
-                <FileDrop accept=".json" value={versions[0].packets} onChange={(f) => updateVersion(versions[0].id, { packets: f })} hint="Standard packet-parser JSON" />
+                <FileDrop accept=".json" value={versions[0].packets} onChange={(f) => updateVersion(versions[0].id, { packets: f })} hint="Packet-parser JSON" />
               </div>
               <div className="field">
                 <span>Game files (.qbj or .json)</span>
-                <FileDrop accept=".json,.qbj" value={sites[0].games} onChange={(f) => onSiteGames(sites[0].id, f)} hint="QBJ files or MODAQ saved games (.qbj / .json)" />
+                <FileDrop accept=".json,.qbj" value={sites[0].games} onChange={(f) => onSiteGames(sites[0].id, f)} hint="QBJ or MODAQ saved games" />
               </div>
               <div className="multi-add">
-                <span className="muted">Played at several sites, or in more than one packet version?</span>
                 <button type="button" className="btn-link" onClick={addSite}>+ Add another site</button>
                 <button type="button" className="btn-link" onClick={addVersion}>+ Add a packet version</button>
               </div>
@@ -738,7 +706,6 @@ export function CreateSet() {
             <>
               <div className="field">
                 <span>Packet versions</span>
-                <small className="muted">One per version of the questions (e.g. American and British). Sites that read the same version share its packets.</small>
                 {versions.map((v, i) => (
                   <div key={v.id} className="site-block">
                     <div className="site-block-head">
@@ -753,7 +720,6 @@ export function CreateSet() {
 
               <div className="field">
                 <span>Sites</span>
-                <small className="muted">One per mirror. Each site's games are matched to packets by the packet name in its QBJs, so sites can play the packets in any order.</small>
                 {sites.map((x, i) => {
                   const plan = sitePlans.get(x.id);
                   const v = versions.find((vv) => vv.id === x.versionId) || versions[0];
@@ -768,15 +734,15 @@ export function CreateSet() {
                         )}
                         {sites.length > 1 && <button type="button" className="btn-link danger" onClick={() => removeSite(x.id)}>Remove</button>}
                       </div>
-                      <FileDrop accept=".json,.qbj" value={x.games} onChange={(f) => onSiteGames(x.id, f)} hint="This site's QBJ files or MODAQ saved games" />
+                      <FileDrop accept=".json,.qbj" value={x.games} onChange={(f) => onSiteGames(x.id, f)} hint="QBJ or MODAQ saved games" />
                       {plan && (
                         <small className={plan.mode === "name" && !plan.unmatched.length ? "muted" : "warn-text"}>
                           {plan.mode === "name"
                             ? <>Packets matched by name for {plan.byRound.size} of {plan.named} rounds.
-                                {plan.unmatched.length > 0 && <> No packet in {v.name.trim() || "this version"} matches {plan.unmatched.slice(0, 3).map((u) => `round ${u.round} ("${u.packet}")`).join(", ")}{plan.unmatched.length > 3 ? `, and ${plan.unmatched.length - 3} more` : ""}, so those rounds will have no questions.</>}</>
+                                {plan.unmatched.length > 0 && <> No packet in {v.name.trim() || "this version"} matches {plan.unmatched.slice(0, 3).map((u) => `round ${u.round} ("${u.packet}")`).join(", ")}{plan.unmatched.length > 3 ? `, and ${plan.unmatched.length - 3} more` : ""}. Those rounds will have no questions.</>}</>
                             : plan.named
-                            ? <>Only {plan.byRound.size} of {plan.named} rounds' packet names match these packet files, so each packet's round comes from its filename (Round_3.json → round 3). Check that's the order this site played them.</>
-                            : <>These games don't name their packets, so each packet's round comes from its filename (Round_3.json → round 3). Check that's the order this site played them.</>}
+                            ? <>Only {plan.byRound.size} of {plan.named} packet names match. Rounds come from filenames (Round_3.json → round 3).</>
+                            : <>Games don't name their packets. Rounds come from filenames (Round_3.json → round 3).</>}
                         </small>
                       )}
                     </div>
@@ -794,7 +760,7 @@ export function CreateSet() {
               multiple={false}
               value={yfFile}
               onChange={setYfFile}
-              hint="Attach the .yft you scored from to download a corrections-applied copy later."
+              hint="The .yft you scored from"
             />
           </div>}
           </>}
@@ -808,10 +774,10 @@ export function CreateSet() {
             </select>
             <small className="muted">{visDesc}</small>
             {level === "practice" && (
-              <small className="muted">Practice tournaments stay listed or private, and don't need a moderator's review.</small>
+              <small className="muted">Practice tournaments can't be public.</small>
             )}
             {level !== "practice" && visibility === "private" && (
-              <small className="muted">Private tournaments go up right away, without waiting for a moderator's review.</small>
+              <small className="muted">No moderator review needed.</small>
             )}
           </label>
 
@@ -827,11 +793,6 @@ export function CreateSet() {
                   onChange={(e) => setAutoPublishDate(e.target.value)}
                 />
               </label>
-              <small className="muted">
-                {autoPublish
-                  ? "On this date it becomes public and open to all."
-                  : "Auto-publish is off — it stays private until you change the visibility yourself."}
-              </small>
             </div>
           )}
 

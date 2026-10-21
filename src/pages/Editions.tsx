@@ -125,7 +125,7 @@ export function Editions() {
 
   return (
     <div>
-      <PageHeader title="Editions" subtitle="Mirrors of this tournament and how their question sets differ" />
+      <PageHeader title="Editions" />
 
       <h2>Editions ({editions.length})</h2>
       <div className="table-wrap" style={{ maxWidth: 560 }}>
@@ -139,7 +139,6 @@ export function Editions() {
           </tbody>
         </table>
       </div>
-      <p className="muted">Use the <strong>Showing</strong> filter at the top to view combined stats or a single edition.</p>
 
       {editions.length >= 2 && (
         <>
@@ -155,8 +154,8 @@ export function Editions() {
           {diff && (
             <>
               <p className="explainer">
-                <strong>{labelOf(diff.a.id)}</strong> (A) → <strong>{labelOf(diff.b.id)}</strong> (B), aligned by question position.{" "}
-                <span className="wd-del">red = removed/old</span>, <span className="wd-add">green = added/new</span>.
+                <strong>{labelOf(diff.a.id)}</strong> (A) → <strong>{labelOf(diff.b.id)}</strong> (B).{" "}
+                <span className="wd-del">Removed</span> · <span className="wd-add">Added</span>
               </p>
               <div className="diff-summary">
                 <span><strong>{diff.summary.tuChanged}</strong> of {diff.summary.tossupTotal} tossups differ</span>
@@ -167,7 +166,7 @@ export function Editions() {
               {diff.tossups.map((c, i) => <ChangedTossup key={i} c={c} ae={labelOf(diff.a.id)} be={labelOf(diff.b.id)} />)}
               {meta.hasBonuses && diff.bonuses.length > 0 && <h3>Bonus changes ({diff.bonuses.length})</h3>}
               {meta.hasBonuses && diff.bonuses.map((c, i) => <ChangedBonus key={i} c={c} ae={labelOf(diff.a.id)} be={labelOf(diff.b.id)} />)}
-              {diff.tossups.length === 0 && diff.bonuses.length === 0 && <p className="caveat">No question differences — these editions are identical.</p>}
+              {diff.tossups.length === 0 && diff.bonuses.length === 0 && <p className="caveat">No differences.</p>}
             </>
           )}
         </>
@@ -176,11 +175,6 @@ export function Editions() {
       {isOwner && editions.length > 0 && (
         <>
           <h2 id="addfiles" style={{ marginTop: 28 }}>Add rounds, or replace a round</h2>
-          <p className="muted">
-            A tournament that runs over several days or weeks doesn't have to be uploaded in one go — add each new
-            round's packets and games as they're played and the stats catch up. The same form fixes a round you got
-            wrong: upload the corrected files and tick the box below.
-          </p>
           <AddFilesForm slug={slug} editions={editions} />
         </>
       )}
@@ -188,7 +182,7 @@ export function Editions() {
       {isOwner && (
         <>
           <h2 style={{ marginTop: 28 }}>Add an edition / mirror</h2>
-          <p className="muted">Upload another mirror's packets and games. It inherits this tournament's name, scoring, and visibility.</p>
+          <p className="muted">Uses this tournament's name, scoring and visibility.</p>
           <form className="create-form" onSubmit={addEdition} style={{ maxWidth: 520 }}>
             <label className="field">
               <span>Edition label <span className="muted">(optional)</span></span>
@@ -200,7 +194,7 @@ export function Editions() {
             </div>
             <div className="field">
               <span>Game files (.qbj or .json)</span>
-              <FileDrop accept=".json,.qbj" value={games} onChange={setGames} hint="QBJ files or MODAQ saved games (.qbj / .json)" />
+              <FileDrop accept=".json,.qbj" value={games} onChange={setGames} hint="QBJ or MODAQ saved games" />
             </div>
             {addErr && <div className="error-box">{addErr}</div>}
             {addStatus && <div className="caveat">{addStatus}</div>}
@@ -247,9 +241,7 @@ function MergeEditions({ slug, name, scoring }: { slug: string; name: string; sc
     const names = chosen.map((s) => `“${s.name}”`).join(", ");
     if (!window.confirm(
       `Merge ${names} into “${name}” as ${chosen.length === 1 ? "an edition" : "editions"}?\n\n` +
-      `${chosen.length === 1 ? "That tournament" : "Those tournaments"} will stop existing separately — ` +
-      `their pages, addresses and stats are replaced by editions of this one. Their buzz corrections, renames and ` +
-      `invited viewers come across. This can't be undone.`
+      `${chosen.length === 1 ? "That tournament" : "Those tournaments"} will stop existing separately. This can't be undone.`
     )) return;
     setBusy(true); setErr("");
     try {
@@ -267,18 +259,14 @@ function MergeEditions({ slug, name, scoring }: { slug: string; name: string; sc
   if (!index) return <p className="muted">Loading tournaments…</p>;
   if (!candidates.length)
     return (
-      <p className="muted">
-        No other tournaments you can merge in. You can merge one you own or co-own; combining two different hosts'
-        uploads needs an admin, since neither host owns the other's.
-      </p>
+      <p className="muted">No other tournaments you own. Ask an admin to merge another host's upload.</p>
     );
 
   return (
     <div className="srcfiles" style={{ maxWidth: 640 }}>
       <p className="muted">
-        Pick the other upload(s) of this same tournament. Each becomes an edition here, keeping its own games and
-        question wording, and its packets are lined up with this one's automatically.
-        {isAdmin && " As an admin you can merge tournaments you don't own."}
+        Each becomes an edition here.
+        {isAdmin && " Admins can merge any tournament."}
       </p>
       {err && <div className="error-box">{err}</div>}
       <div className="srcfiles-scroll">
@@ -309,8 +297,7 @@ function MergeEditions({ slug, name, scoring }: { slug: string; name: string; sc
       {mismatched.length > 0 && (
         <div className="srcfiles-warn srcfiles-warn-block">
           <strong>Different scoring.</strong> {mismatched.map((s) => `“${s.name}” is ${s.scoring}`).join("; ")}, but this
-          tournament is {scoring}. Every edition of a tournament is scored the same way, so merging would re-score those
-          buzzes — powers counted as gets, or negs that were never possible.
+          tournament is {scoring}. Merging would re-score those buzzes.
         </div>
       )}
       <div className="srcfiles-actions">

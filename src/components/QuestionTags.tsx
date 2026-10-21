@@ -61,7 +61,7 @@ export function QuestionTags({ slug, id, kind, tags, isOwner }: {
             </button>
           ))}
           <button className="btn-link" disabled={busy} onClick={() => { setEditing(false); setErr(null); }}>Done</button>
-          <span className="muted">Name it “Dimension: value” so it groups with the others.</span>
+          <span className="muted">Format: “Dimension: value”</span>
         </span>
       )}
       {err && <span className="error-inline">{err}</span>}

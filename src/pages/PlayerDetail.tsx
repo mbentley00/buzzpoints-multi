@@ -46,7 +46,7 @@ export function PlayerDetailPage() {
     { key: "bp", label: "Buzzpoint", align: "right", sortVal: (b) => b.buzzpoint ?? 1e9,
       render: (b) => (b.buzzpoint == null
         ? "—"
-        : <Link className="link" to={`/set/${slug}/tossup/${b.id}?w=${b.buzzpoint}`} title="Show this buzz in the question">{b.buzzpoint}</Link>) },
+        : <Link className="link" to={`/set/${slug}/tossup/${b.id}?w=${b.buzzpoint}`}>{b.buzzpoint}</Link>) },
     { key: "val", label: "Value", align: "right", sortVal: (b) => b.value, render: (b) => b.value },
     { key: "first", label: "First", align: "center", sortVal: (b) => (b.first ? 1 : 0), render: (b) => (b.first ? "✓" : "") },
     { key: "top3", label: "Top 3", align: "center", sortVal: (b) => (b.top3 ? 1 : 0), render: (b) => (b.top3 ? "✓" : "") },
@@ -83,7 +83,7 @@ export function PlayerDetailPage() {
         <Stat label={meta.hasNeg ? "Neg" : "Inc"} value={String(d.incorrect)} />
         <Stat label="Points" value={String(d.pts)} />
         <Stat label="PPG" value={num(d.ppg)} />
-        <Stat label="BPA" value={num(d.bpa)} title="Buzz point area-under-the-curve: how much of each question went unread thanks to early correct buzzes, per tossup heard. Higher is faster." />
+        <Stat label="BPA" value={num(d.bpa)} title="Buzz point area under the curve" />
         <Stat label="1st buzzes" value={String(d.firstBuzzes)} />
         <Stat label="Top 3" value={String(d.top3Buzzes)} />
       </div>

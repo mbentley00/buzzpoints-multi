@@ -103,7 +103,7 @@ export function BonusDifficultyEditor({ slug, warnings }: { slug: string; warnin
       setEdits({});
       // Every difficulty figure in the set was just rebuilt on the new marks.
       clearSetCache(slug);
-      setMsg(`Saved. ${list.length} bonus${list.length === 1 ? "" : "es"} re-marked and the stats rebuilt.`);
+      setMsg(`Saved ${list.length} bonus${list.length === 1 ? "" : "es"}.`);
     } catch (e) { setErr(String((e as Error).message || e)); }
     finally { setBusy(false); }
   }
@@ -115,7 +115,7 @@ export function BonusDifficultyEditor({ slug, warnings }: { slug: string; warnin
       setFixes(d.bonusDiffs || {});
       setRows(d.bonusDiffWarnings || []);
       clearSetCache(slug);
-      setMsg(`Bonus ${id} is back to the marks the packet gave it.`);
+      setMsg(`Bonus ${id} restored.`);
     } catch (e) { setErr(String((e as Error).message || e)); }
     finally { setBusy(false); }
   }
@@ -128,9 +128,7 @@ export function BonusDifficultyEditor({ slug, warnings }: { slug: string; warnin
       {msg && <p className="ok-msg">{msg}</p>}
 
       {rows.length === 0 && (
-        <p className="muted">
-          Nothing to fix — every bonus in this tournament carries one easy, one medium and one hard part.
-        </p>
+        <p className="muted">Nothing to fix.</p>
       )}
 
       {rows.length > 0 && (
@@ -145,9 +143,6 @@ export function BonusDifficultyEditor({ slug, warnings }: { slug: string; warnin
               {changed.length ? `Save ${changed.length} fix${changed.length === 1 ? "" : "es"} & rebuild` : "Save & rebuild"}
             </button>
           </div>
-          <p className="muted srcfiles-note">
-            Saving rebuilds the stats. The packet file isn't changed.
-          </p>
           <div className="table-wrap">
             <table className="data-table srcfiles-table bndiff-table">
               <thead>
@@ -155,7 +150,7 @@ export function BonusDifficultyEditor({ slug, warnings }: { slug: string; warnin
                   <th>Bonus</th>
                   <th>Problem</th>
                   <th className="right">Heard</th>
-                  <th>Parts — answer, conversion, and the mark it should carry</th>
+                  <th>Parts</th>
                 </tr>
               </thead>
               <tbody>
@@ -230,8 +225,8 @@ export function BonusDifficultyEditor({ slug, warnings }: { slug: string; warnin
               <li key={id}>
                 <Link className="link" to={`/set/${slug}/bonus/${id}`}>Round {roundLabel(Number(id.split("-")[0]))}, bonus {id.split("-")[1]}</Link>
                 <span className="muted">
-                  {" "}— now <strong>{marksLine(f.mods)}</strong>
-                  {f.from?.length ? <>, was <span className="bndiff-was">{marksLine(f.from)}</span></> : <> — the packet marked nothing</>}
+                  {" "}now <strong>{marksLine(f.mods)}</strong>
+                  {f.from?.length ? <>, was <span className="bndiff-was">{marksLine(f.from)}</span></> : <>, was unmarked</>}
                 </span>
                 <button className="btn-link" disabled={busy} onClick={() => restore(id)}>Put the packet's marks back</button>
               </li>

@@ -123,8 +123,8 @@ export function BulkImport() {
       const nExisting = fresh.filter((r) => here.has(r.name.trim().toLowerCase())).length;
       addLog(
         `Found ${found.length} at ${siteOf(d.base)}. Queued ${fresh.length}` +
-        (nExisting ? ` (${fresh.length - nExisting} new, ${nExisting} already here — tick those to refresh them)` : "") +
-        (dupes ? `; ${dupes} already in the queue` : "") + ". Nothing has been imported yet."
+        (nExisting ? ` (${fresh.length - nExisting} new, ${nExisting} already here)` : "") +
+        (dupes ? `; ${dupes} already queued` : "") + "."
       );
     } catch (e) { setErr(String((e as Error).message || e)); }
     finally { setDiscovering(false); }
@@ -180,12 +180,6 @@ export function BulkImport() {
 
   return (
     <div className="bulk-import">
-      <p className="muted">
-        Import tournaments from another Buzzpoints site. Paste the site to list every set there, or paste one set or
-        tournament page to queue just that one; either way they collect below, so you can gather from several sites and
-        run them together. Each set becomes one tournament here, with its mirror sites as editions. Keep this tab open —
-        a full run can take a while.
-      </p>
       <div className="create-form" style={{ maxWidth: 640 }}>
         <label className="field">
           <span>Buzzpoints site, set, or tournament URL</span>
@@ -274,11 +268,11 @@ export function BulkImport() {
                       />
                       <div className="import-note muted">
                         {refresh ? (
-                          <span className="warn-text">Already here — will <strong>refresh</strong> “{r.name.trim()}” in place: its data is replaced; its settings, visibility and corrections stay.</span>
+                          <span className="warn-text">Will <strong>refresh</strong> “{r.name.trim()}”. Settings and corrections kept.</span>
                         ) : renamed ? (
-                          <>Will create a new tournament · from “{r.sourceName}”</>
+                          <>New · from “{r.sourceName}”</>
                         ) : (
-                          <>Will create a new tournament</>
+                          <>New</>
                         )}
                       </div>
                     </td>
@@ -316,7 +310,7 @@ export function BulkImport() {
 
           <label className="field-inline" style={{ marginTop: 10 }}>
             <input type="checkbox" checked={bonusResults} onChange={(e) => setBonusResults(e.target.checked)} disabled={busy} />
-            <span>Import full bonus data — question text + per-team results, which team PPB needs (slower: reads every bonus page)</span>
+            <span>Import full bonus data (slow)</span>
           </label>
           <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10 }}>
             <button className="btn-primary" onClick={importAll} disabled={busy || selected.length === 0}>

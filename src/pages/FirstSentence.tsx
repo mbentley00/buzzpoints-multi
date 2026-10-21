@@ -79,7 +79,7 @@ export function FirstSentence() {
 
   return (
     <div>
-      <PageHeader title="First-Sentence Buzzes" subtitle={`${rows.length} tossups · ${totalBuzzes} buzzes landed on the opening sentence`}>
+      <PageHeader title="First-Sentence Buzzes" subtitle={`${rows.length} tossups · ${totalBuzzes} buzzes`}>
         <RoundFilter rounds={meta.rounds} value={round} onChange={setRound} />
         <label className="filter">
           Min buzzes:{" "}
@@ -90,9 +90,6 @@ export function FirstSentence() {
         </label>
         <SearchInput value={q} onChange={setQ} placeholder="Search clue / player / team" />
       </PageHeader>
-      <p className="explainer">
-        Every tossup where at least one team buzzed during the <strong>first sentence</strong>.
-      </p>
       {loading && <Loading />}
       {error && <ErrorBox error={error} />}
       <div className="fs-list">
@@ -103,7 +100,7 @@ export function FirstSentence() {
               <div className="fs-head-right">
                 <CategoryTag cat={x.category} />
                 <Link to={`/set/${slug}/tossup/${x.id}`} className="mono link">{roundLabel(x.round)}-{x.num}</Link>
-                <span className="fs-count" title="First-sentence buzzes">
+                <span className="fs-count">
                   {x.buzzCount}{" "}
                   <span className="mono breakdown">
                     ({meta.hasPower && <><span className="b-pwr">{x.powers}</span>/</>}

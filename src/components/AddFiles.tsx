@@ -72,24 +72,20 @@ export function AddFilesForm({ slug, editions }: { slug: string; editions: { id:
       </div>
       <div className="field">
         <span>Game files (.qbj or .json) <span className="muted">(optional)</span></span>
-        <FileDrop accept=".json,.qbj" value={games} onChange={setGames} hint="QBJ files or MODAQ saved games (.qbj / .json)" />
+        <FileDrop accept=".json,.qbj" value={games} onChange={setGames} hint="QBJ or MODAQ saved games" />
       </div>
       <label className="field-inline" style={{ alignItems: "flex-start" }}>
         <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} />
         <span style={{ fontWeight: 400 }}>
           Replace the rounds these files cover
           {rounds.length > 0 && (
-            <> — <strong>round {rounds.map(roundLabel).join(", ")}</strong></>
+            <>: <strong>round {rounds.map(roundLabel).join(", ")}</strong></>
           )}
-          <span className="muted">
-            {" "}Anything already filed under {rounds.length === 1 ? "that round" : "those rounds"} in this
-            edition is dropped first, so a re-upload fixes the round instead of stacking a second copy.
-          </span>
         </span>
       </label>
       {replace && unnamedRound && (
         <span className="error-inline">
-          Every file has to say which round it is — name them like “Round_09.json” (or “Round A.json”).
+          Each filename needs a round, like “Round_09.json”.
         </span>
       )}
       {err && <div className="error-box">{err}</div>}

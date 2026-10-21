@@ -42,12 +42,12 @@ function teamNameMatch(x: string, y: string): string | null {
   const a = coreWords(x), b = coreWords(y);
   if (!a.length || !b.length) return null;
   const ja = a.join(" "), jb = b.join(" ");
-  if (ja === jb) return "same name once filler is ignored";
+  if (ja === jb) return "same core words";
   const [short, long] = a.length <= b.length ? [a, b] : [b, a];
   // One name is the start of the other: "Pouring monstrous" / "Pouring monstrous moonshine…".
-  if (short.every((w, i) => long[i] === w)) return "one name is the start of the other";
+  if (short.every((w, i) => long[i] === w)) return "one starts the other";
   // Every word of the shorter name appears in the longer: "Jaiden" / "Dan and Geoff and Jaiden".
-  if (short.every((w) => long.includes(w))) return "one name is contained in the other";
+  if (short.every((w) => long.includes(w))) return "one contains the other";
   if (Math.min(ja.length, jb.length) >= 6 && editDistance(ja, jb) <= 2) return "near-identical spelling";
   return null;
 }
@@ -56,7 +56,7 @@ function teamNameMatch(x: string, y: string): string | null {
 function playerNameMatch(x: string, y: string): string | null {
   const a = norm(x), b = norm(y);
   if (!a || !b) return null;
-  if (a === b) return "same name apart from case or punctuation";
+  if (a === b) return "differs only in case or punctuation";
   const pa = a.split(" "), pb = b.split(" ");
   // A first name alone next to a full name: "Stan" / "Stan Melkumian".
   if ((pa.length === 1 && pb.length > 1 && pb[0] === pa[0]) || (pb.length === 1 && pa.length > 1 && pa[0] === pb[0])) return "first name only on one sheet";

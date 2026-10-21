@@ -39,10 +39,10 @@ async function load<T>(slug: string, op: string): Promise<T> {
 
 export function warningText(w: RoundWarning): string {
   if (w.kind === "packet-unplayed")
-    return `Packet round ${roundLabel(w.round)} (${w.tossups} question${w.tossups === 1 ? "" : "s"}) has no games — nothing was ever read from it, so every question there shows 0 heard.`;
+    return `Packet round ${roundLabel(w.round)} (${w.tossups} question${w.tossups === 1 ? "" : "s"}) has no games.`;
   if (w.kind === "games-unmatched")
-    return `${w.games} game${w.games === 1 ? "" : "s"} were played in round ${roundLabel(w.round)}, but no packet is filed under that round, so their buzzes have no questions to attach to.`;
-  return `${w.files} packet files share round ${roundLabel(w.round)} — only the last one's questions survive; the rest are silently dropped.`;
+    return `${w.games} game${w.games === 1 ? "" : "s"} in round ${roundLabel(w.round)} ${w.games === 1 ? "has" : "have"} no packet.`;
+  return `${w.files} packet files share round ${roundLabel(w.round)}. Only the last one's questions are kept.`;
 }
 
 // Stats are stale the moment the source changes, so blow away the cached JSON
@@ -121,7 +121,7 @@ export function RoundAlignEditor({ slug }: { slug: string }) {
               </ul>
             )}
             <p className="muted srcfiles-note">
-              Games were played in round{ed.gameRounds.length === 1 ? "" : "s"}{" "}
+              Game round{ed.gameRounds.length === 1 ? "" : "s"}:{" "}
               <strong>{ed.gameRounds.length ? ed.gameRounds.map((g) => roundLabel(g.round)).join(", ") : "— (no games)"}</strong>.
             </p>
             <table className="data-table srcfiles-table">
@@ -182,7 +182,7 @@ export function RenamesEditor({ slug }: { slug: string }) {
   }, [slug]);
 
   async function undo(r: Rename) {
-    if (!window.confirm(`Undo the rename of "${r.from}" to "${r.to}"? The stats go back to the original spelling.`)) return;
+    if (!window.confirm(`Undo the rename of "${r.from}" to "${r.to}"?`)) return;
     setBusy(true); setErr("");
     try {
       const d = await fetch("/api/correct", {
@@ -198,7 +198,7 @@ export function RenamesEditor({ slug }: { slug: string }) {
   if (err && !renames) return <div className="error-box">{err}</div>;
   if (!renames) return <p className="muted">Loading renames…</p>;
   if (!renames.length)
-    return <p className="muted">Nothing has been renamed yet.</p>;
+    return <p className="muted">Nothing renamed yet.</p>;
 
   return (
     <div className="srcfiles">
@@ -278,7 +278,7 @@ export function UploadCleanup({ slug }: { slug: string }) {
     setPicked((p) => { const n = { ...p }; for (const r of rounds) n[`${edId}:${r}`] = on; return n; });
 
   async function remove(body: Record<string, unknown>, confirmMsg: string) {
-    if (!window.confirm(`${confirmMsg}\n\nStats are rebuilt without them. This can't be undone — you'd have to upload the files again. The tournament itself, and its settings and corrections, are kept.`)) return;
+    if (!window.confirm(`${confirmMsg}\n\nThis can't be undone.`)) return;
     setBusy(true); setErr("");
     try {
       await post({ slug, op: "remove-uploads", ...body });
@@ -291,7 +291,7 @@ export function UploadCleanup({ slug }: { slug: string }) {
 
   const total = editions.reduce((n, ed) => n + roundsOf(ed).reduce((k, r) => k + r.games, 0), 0);
   const totalPk = editions.reduce((n, ed) => n + ed.packets.length, 0);
-  if (!total && !totalPk) return <p className="muted">Nothing uploaded — this tournament has no packets or games.</p>;
+  if (!total && !totalPk) return <p className="muted">Nothing uploaded.</p>;
 
   return (
     <div className="srcfiles">
@@ -340,7 +340,7 @@ export function UploadCleanup({ slug }: { slug: string }) {
                     className="btn-primary btn-sm danger-btn" disabled={busy || !sel.length}
                     onClick={() => remove(
                       { editionId: ed.id, rounds: sel.map((r) => r.round) },
-                      `Remove ${sel.length} round${sel.length === 1 ? "" : "s"} from “${ed.label}” — ${sel.reduce((n, r) => n + r.packets, 0)} packet(s) and ${sel.reduce((n, r) => n + r.games, 0)} game(s)?`
+                      `Remove ${sel.length} round${sel.length === 1 ? "" : "s"} from “${ed.label}” (${sel.reduce((n, r) => n + r.packets, 0)} packet(s), ${sel.reduce((n, r) => n + r.games, 0)} game(s))?`
                     )}
                   >
                     {busy ? "Removing…" : sel.length ? `Remove ${sel.length} round${sel.length === 1 ? "" : "s"} & rebuild` : "Remove selected rounds"}
@@ -349,7 +349,7 @@ export function UploadCleanup({ slug }: { slug: string }) {
                     className="btn-link danger" disabled={busy}
                     onClick={() => remove(
                       { editionId: ed.id },
-                      `Remove EVERYTHING uploaded to “${ed.label}” — all ${ed.packets.length} packet(s) and ${rows.reduce((n, r) => n + r.games, 0)} game(s)?`
+                      `Remove everything in “${ed.label}” (${ed.packets.length} packet(s), ${rows.reduce((n, r) => n + r.games, 0)} game(s))?`
                     )}
                   >
                     Remove everything in {editions.length > 1 ? `“${ed.label}”` : "this tournament"}
@@ -365,7 +365,7 @@ export function UploadCleanup({ slug }: { slug: string }) {
                       Remove by team — {teams.length} team{teams.length === 1 ? "" : "s"} in this edition
                       {selTeams.length > 0 && <span className="muted"> · {selTeams.length} selected</span>}
                     </summary>
-                    <p className="muted srcfiles-note">Removes every game the chosen teams played. Packets are kept.</p>
+                    <p className="muted srcfiles-note">Packets are kept.</p>
                     <div className="srcfiles-scroll">
                       <table className="data-table srcfiles-table">
                         <thead>
@@ -397,7 +397,7 @@ export function UploadCleanup({ slug }: { slug: string }) {
                         onClick={() => remove(
                           { editionId: ed.id, teams: selTeams.map((t) => t.name) },
                           [
-                            `Remove every game played by ${selTeams.length} team${selTeams.length === 1 ? "" : "s"} in “${ed.label}” — ${teamGames} game(s)?`,
+                            `Remove every game played by ${selTeams.length} team${selTeams.length === 1 ? "" : "s"} in “${ed.label}” (${teamGames} game(s))?`,
                             "",
                             ...selTeams.map((t) => `• ${t.name}`),
                           ].join(String.fromCharCode(10))
@@ -419,7 +419,7 @@ export function UploadCleanup({ slug }: { slug: string }) {
             className="btn-link danger" disabled={busy}
             onClick={() => remove(
               { editionId: "*" },
-              `Remove EVERYTHING uploaded to this tournament — all ${totalPk} packet(s) and ${total} game(s) across all ${editions.length} editions?`
+              `Remove everything in all ${editions.length} editions (${totalPk} packet(s), ${total} game(s))?`
             )}
           >
             Remove everything in every edition
@@ -505,7 +505,7 @@ export function GameFilesEditor({ slug }: { slug: string }) {
     const n = Object.values(byEdition).reduce((k, l) => k + l.length, 0);
     if (!n) return;
     const mirrors = Object.keys(byEdition).length;
-    if (!window.confirm(`Remove ${n} extra cop${n === 1 ? "y" : "ies"}${mirrors > 1 ? ` across ${mirrors} editions` : ""}, keeping the first copy of each game? Stats are rebuilt without them.`)) return;
+    if (!window.confirm(`Remove ${n} extra cop${n === 1 ? "y" : "ies"}${mirrors > 1 ? ` across ${mirrors} editions` : ""}, keeping the first of each?`)) return;
     setBusy(true); setErr("");
     try {
       await post({ slug, op: "remove-files", byEdition });
@@ -517,7 +517,7 @@ export function GameFilesEditor({ slug }: { slug: string }) {
     const games = pickedIn(ed).map((g) => g.index);
     if (!games.length) return;
     const plural = games.length === 1 ? "this game" : `these ${games.length} games`;
-    if (!window.confirm(`Remove ${plural} from "${ed.label}"? Stats are rebuilt without them. This can't be undone — you'd have to re-upload the files.`)) return;
+    if (!window.confirm(`Remove ${plural} from "${ed.label}"? This can't be undone.`)) return;
     setBusy(true); setErr("");
     try {
       await post({ slug, op: "remove-files", editionId: ed.id, games });
@@ -534,7 +534,7 @@ export function GameFilesEditor({ slug }: { slug: string }) {
       {err && <div className="error-box">{err}</div>}
       {dupCount > 0 && (
         <div className="srcfiles-warn srcfiles-warn-block">
-          <strong>{dupCount} duplicate game{dupCount === 1 ? "" : "s"}:</strong> the same matchup stored twice in one round.
+          <strong>{dupCount} duplicate game{dupCount === 1 ? "" : "s"}:</strong> same matchup twice in one round.
           <div style={{ marginTop: 8 }}>
             <button type="button" className="btn-primary btn-sm danger-btn" disabled={busy} onClick={removeAllDupes}>
               {busy ? "Removing…" : `Remove every extra copy & rebuild`}
@@ -550,8 +550,7 @@ export function GameFilesEditor({ slug }: { slug: string }) {
       )}
       {crossTeams.length > 0 && (
         <div className="srcfiles-warn srcfiles-warn-block">
-          <strong>{crossTeams.length} team{crossTeams.length === 1 ? "" : "s"} played in more than one edition.</strong> Games
-          also found in another edition are marked below.
+          <strong>{crossTeams.length} team{crossTeams.length === 1 ? "" : "s"} played in more than one edition.</strong>
           <ul style={{ margin: "6px 0 0 18px" }}>
             {crossTeams.slice(0, 12).map((t) => <li key={t.name}>{t.name} — {t.editions.map(edLabel).join(", ")}</li>)}
             {crossTeams.length > 12 && <li>…and {crossTeams.length - 12} more</li>}

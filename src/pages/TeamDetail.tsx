@@ -200,23 +200,23 @@ export function TeamDetailPage() {
   const bonusCats = rv?.bonusCategories ?? d.bonusCategories;
   const catNote = !filtered || canFilterCats ? null
     : tr === undefined ? <p className="muted">Loading these rounds…</p>
-    : <p className="muted">These are season totals: rebuild this tournament's stats to filter categories by round.</p>;
+    : <p className="muted">Season totals. Rebuild stats to filter by round.</p>;
 
   const tossupCols: CatColumn<CatTeamTossupRow, CatTeamTossupSub>[] = [
     ...(meta.hasPower ? [{ label: "Pwr", align: "right" as const, main: (g: CatTeamTossupRow) => g.powers, sub: (s: CatTeamTossupSub) => s.powers }] : []),
     { label: "Get", align: "right", main: (g) => g.gets, sub: (s) => s.gets },
     { label: meta.hasNeg ? "Neg" : "Inc", align: "right", main: (g) => g.incorrect, sub: (s) => s.incorrect },
     { label: "Points", align: "right", main: (g) => g.points, sub: (s) => s.points },
-    { label: "Pts/G", align: "right", title: "Tossup points in this category per game played", main: (g) => num(nGames ? g.points / nGames : null), sub: (s) => num(nGames ? s.points / nGames : null),
+    { label: "Pts/G", align: "right", title: "Tossup points per game", main: (g) => num(nGames ? g.points / nGames : null), sub: (s) => num(nGames ? s.points / nGames : null),
       sortMain: (g) => g.points, sortSub: (s) => s.points },
-    { label: "Rank", align: "right", title: "This team's rank in the category by total points, of the teams that played it", main: (g) => rankCell(g.rank, g.rankOf), sub: (s) => rankCell(s.rank, s.rankOf),
+    { label: "Rank", align: "right", title: "By total points", main: (g) => rankCell(g.rank, g.rankOf), sub: (s) => rankCell(s.rank, s.rankOf),
       // Rank 1 is the best, so ascending is the useful default reading.
       sortMain: (g) => g.rank ?? null, sortSub: (s) => s.rank ?? null },
     { label: "Earliest", align: "right", main: (g) => g.earliest ?? "—", sub: (s) => s.earliest ?? "—",
       sortMain: (g) => g.earliest, sortSub: (s) => s.earliest },
     { label: "Avg Buzz", align: "right", main: (g) => buzz(g.avgBuzz), sub: (s) => buzz(s.avgBuzz),
       sortMain: (g) => g.avgBuzz, sortSub: (s) => s.avgBuzz },
-    { label: "BPA", align: "right", title: "Buzz point area-under-the-curve: how much of each question went unread thanks to early correct buzzes, per tossup heard. Higher is faster.", main: (g) => num(g.bpa), sub: (s) => num(s.bpa),
+    { label: "BPA", align: "right", title: "Buzz point area under the curve", main: (g) => num(g.bpa), sub: (s) => num(s.bpa),
       sortMain: (g) => g.bpa, sortSub: (s) => s.bpa },
     { label: "% Pts", align: "right", main: (g) => num(g.pctPoints, 1), sub: (s) => num(s.pctPoints, 1),
       sortMain: (g) => g.pctPoints, sortSub: (s) => s.pctPoints },
@@ -273,7 +273,7 @@ export function TeamDetailPage() {
             <Stat label="PPG" value={num(n ? sum((m) => m.us.score) / n : null)} />
             {teamBonus && <Stat label="PPB" value={num(bHeard ? sum((m) => m.us.bonusPts) / bHeard : null, 2)} />}
             <Stat label="PP20TUH" value={num(tuh ? (20 * sum((m) => m.us.tuPts)) / tuh : null)} />
-            {rv && <Stat label="BPA" value={num(rv.bpa)} title="Buzz point area-under-the-curve over these rounds" />}
+            {rv && <Stat label="BPA" value={num(rv.bpa)} title="Buzz point area under the curve" />}
             {meta.hasPower && <Stat label="Powers" value={String(sum((m) => m.us.powers))} />}
             <Stat label="Correct" value={String(sum((m) => m.us.gets))} />
             <Stat label={meta.hasNeg ? "Neg" : "Inc"} value={String(sum((m) => m.us.incorrect))} />
@@ -284,7 +284,7 @@ export function TeamDetailPage() {
         <Stat label="PPG" value={num(d.ppg)} />
         {teamBonus && <Stat label="PPB" value={num(d.ppb, 2)} />}
         <Stat label="PP20TUH" value={num(d.pp20tuh)} />
-        <Stat label="BPA" value={num(d.bpa)} title="Buzz point area-under-the-curve: how much of each question went unread thanks to early correct buzzes, per tossup heard. Higher is faster." />
+        <Stat label="BPA" value={num(d.bpa)} title="Buzz point area under the curve" />
         {meta.hasPower && <Stat label="Powers" value={String(d.powers)} />}
         <Stat label="Correct" value={String(d.gets)} />
         <Stat label={meta.hasNeg ? "Neg" : "Inc"} value={String(d.incorrect)} />

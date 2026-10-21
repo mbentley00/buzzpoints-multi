@@ -39,8 +39,7 @@ export function Join() {
         {state === "pending" && (
           <>
             <p className="caveat">
-              <span className="ok-msg">Request sent.</span> This link needs the owner's approval — you'll get an email
-              when they let you in.
+              <span className="ok-msg">Request sent.</span> You'll get an email when the owner approves it.
             </p>
             <p className="muted"><Link to="/" className="link">← All tournaments</Link></p>
           </>

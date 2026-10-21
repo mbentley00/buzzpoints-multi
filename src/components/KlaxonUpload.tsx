@@ -85,7 +85,7 @@ export function KlaxonUpload({ slug, hasKlaxon, multiEdition }: { slug: string; 
   }
 
   async function clearAll() {
-    if (!window.confirm("Remove every Klaxon buzz log from this tournament? The QBJ stats aren't affected.")) return;
+    if (!window.confirm("Remove every Klaxon buzz log from this tournament?")) return;
     setBusy(true); setErr(""); setMsg("");
     try {
       const d = await post({ slug, op: "klaxon-clear" });

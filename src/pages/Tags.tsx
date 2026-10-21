@@ -24,19 +24,17 @@ export function Tags() {
   if (!dims.length)
     return (
       <>
-        <PageHeader title="Tags" subtitle="Conversion & buzz speed by tag" />
+        <PageHeader title="Tags" />
         <p className="caveat">
-          No tags yet. A tournament's metadata often carries more than the category — the writer, say — and marking
-          that field as a <strong>Tag</strong> under{" "}
-          <Link to={`/set/${slug}/settings#categories`} className="link">Settings → Question categories &amp; tags</Link>{" "}
-          turns it into a dimension you can compare on here.
+          No tags yet. Mark a metadata field as a <strong>Tag</strong> in{" "}
+          <Link to={`/set/${slug}/settings#categories`} className="link">Settings → Question categories &amp; tags</Link>.
         </p>
       </>
     );
 
   return (
     <>
-      <PageHeader title="Tags" subtitle="Conversion & buzz speed by tag" />
+      <PageHeader title="Tags" />
       {dims.map((dim) => {
         const t = tuGroups.find((g) => g.dim === dim);
         const b = bnGroups.find((g) => g.dim === dim);
@@ -52,8 +50,8 @@ export function Tags() {
                       <th className="right">Heard</th>
                       <th className="right">Conv%</th>
                       {meta.hasPower && <th className="right">Pwr%</th>}
-                      <th className="right" title="Rate of interrupting incorrect buzzes per play">Inc%</th>
-                      <th className="right" title="Converted within the first sentence">1st Sent%</th>
+                      <th className="right" title="Neg rate">Inc%</th>
+                      <th className="right" title="Converted in first sentence">1st Sent%</th>
                       <th className="right">Avg Buzz</th>
                     </tr>
                   </thead>

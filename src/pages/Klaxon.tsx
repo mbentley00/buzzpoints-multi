@@ -38,7 +38,7 @@ export function Klaxon() {
     return (
       <div className="detail">
         <PageHeader title="Klaxon races" />
-        <p className="muted">Klaxon stats are switched off in this browser.</p>
+        <p className="muted">Klaxon stats are off.</p>
         <button className="btn-primary" onClick={() => setKlaxonOn(true)}>Show Klaxon stats</button>
       </div>
     );
@@ -49,15 +49,15 @@ export function Klaxon() {
   const pcols: Column<KlaxonPlayer>[] = [
     { key: "name", label: "Player", sortVal: (p) => p.name.toLowerCase(), render: (p) => (p.id ? <Link className="link" to={`/set/${slug}/player/${p.id}`}>{p.name}</Link> : p.name) },
     ...(meta.individual ? [] : [{ key: "team", label: "Team", sortVal: (p: KlaxonPlayer) => p.team.toLowerCase(), render: (p: KlaxonPlayer) => (p.teamId ? <Link className="link" to={`/set/${slug}/team/${p.teamId}`}>{p.team}</Link> : p.team) }]),
-    { key: "races", label: "Races", align: "right", sortVal: (p) => p.races, render: (p) => p.races, title: `Buzzes decided against an opponent by under ${fmtMs(raceMs)}` },
+    { key: "races", label: "Races", align: "right", sortVal: (p) => p.races, render: (p) => p.races, title: `Decided by under ${fmtMs(raceMs)}` },
     { key: "won", label: "Won", align: "right", sortVal: (p) => p.won, render: (p) => p.won },
     { key: "lost", label: "Lost", align: "right", sortVal: (p) => p.lost, render: (p) => p.lost },
     { key: "pct", label: "Win %", align: "right", sortVal: (p) => p.winPct ?? -1, render: (p) => (p.winPct === null ? "—" : `${num(p.winPct)}%`) },
-    { key: "lostby", label: "Lost by", align: "right", sortVal: (p) => p.medianLostBy ?? 1e9, render: (p) => fmtMs(p.medianLostBy), title: "Median margin of the races they lost" },
-    { key: "wonby", label: "Won by", align: "right", sortVal: (p) => p.medianWonBy ?? 1e9, render: (p) => fmtMs(p.medianWonBy), title: "Median margin of the races they won" },
-    { key: "word", label: "Word lost", align: "right", sortVal: (p) => p.avgWordLost ?? 1e9, render: (p) => (p.avgWordLost === null ? "—" : num(p.avgWordLost + 1)), title: "Average word of the buzzes they lost races to" },
-    { key: "correct", label: "Lost to correct", align: "right", sortVal: (p) => p.lostToCorrect, render: (p) => p.lostToCorrect, title: "Races lost to a buzz that was right (the rest were negs, so they could still rebound)" },
-    { key: "late", label: "Late presses", align: "right", sortVal: (p) => p.alsoKnew, render: (p) => p.alsoKnew, title: `Pressed more than ${fmtMs(raceMs)} after an opponent, while they were answering` },
+    { key: "lostby", label: "Lost by", align: "right", sortVal: (p) => p.medianLostBy ?? 1e9, render: (p) => fmtMs(p.medianLostBy), title: "Median losing margin" },
+    { key: "wonby", label: "Won by", align: "right", sortVal: (p) => p.medianWonBy ?? 1e9, render: (p) => fmtMs(p.medianWonBy), title: "Median winning margin" },
+    { key: "word", label: "Word lost", align: "right", sortVal: (p) => p.avgWordLost ?? 1e9, render: (p) => (p.avgWordLost === null ? "—" : num(p.avgWordLost + 1)), title: "Avg word of lost races" },
+    { key: "correct", label: "Lost to correct", align: "right", sortVal: (p) => p.lostToCorrect, render: (p) => p.lostToCorrect, title: "Lost to a correct buzz" },
+    { key: "late", label: "Late presses", align: "right", sortVal: (p) => p.alsoKnew, render: (p) => p.alsoKnew, title: `Over ${fmtMs(raceMs)} after an opponent` },
   ];
   const rcols: Column<KlaxonRace>[] = [
     { key: "rn", label: "Rd/#", sortVal: (r) => r.round * 100 + r.num, render: (r) => <Link className="mono link" to={`/set/${slug}/tossup/${r.id}`}>{roundLabel(r.round)}-{r.num}</Link> },
@@ -73,8 +73,7 @@ export function Klaxon() {
     <div className="detail">
       <PageHeader title="Klaxon races" subtitle={<span className="kx-tag">Klaxon</span>} />
       <p className="muted kx-intro">
-        From Klaxon buzz logs: everyone who pressed on a buzz, not only the player who got it. A race is an opponent
-        within {fmtMs(raceMs)}. {data.games} game{data.games === 1 ? "" : "s"}, {data.cycles} buzzes, {data.racedCycles} races.{" "}
+        {data.games} game{data.games === 1 ? "" : "s"}, {data.cycles} buzzes, {data.racedCycles} races under {fmtMs(raceMs)}.{" "}
         <button type="button" className="btn-link" onClick={() => setKlaxonOn(false)}>Hide Klaxon stats</button>
       </p>
       <div className="filter-bar">

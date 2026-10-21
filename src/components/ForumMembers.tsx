@@ -54,7 +54,7 @@ export function ForumMembers({ slug, enabled }: { slug: string; enabled: boolean
       )}
       <h3 className="settings-sub">Approved to post ({members.length})</h3>
       {members.length === 0 ? (
-        <p className="muted" style={{ margin: 0 }}>Nobody yet besides the owners. People who ask to post will appear above.</p>
+        <p className="muted" style={{ margin: 0 }}>Nobody yet besides the owners.</p>
       ) : (
         <ul className="invite-list">
           {members.map((m) => (
@@ -64,7 +64,7 @@ export function ForumMembers({ slug, enabled }: { slug: string; enabled: boolean
       )}
       <p style={{ marginTop: 12 }}>
         <a className="link" href={`/api/requests?slug=${encodeURIComponent(slug)}&forum=1&export=phpbb`} target="_blank" rel="noreferrer">Download discussion (phpBB-shaped JSON)</a>
-        <span className="muted"> — {String(data.threads?.length ?? 0)} thread{(data.threads?.length ?? 0) === 1 ? "" : "s"}; bodies are BBCode, ready for a phpBB import.</span>
+        <span className="muted"> · {String(data.threads?.length ?? 0)} thread{(data.threads?.length ?? 0) === 1 ? "" : "s"}</span>
       </p>
       {err && <span className="error-inline">{err}</span>}
     </div>

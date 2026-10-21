@@ -2,13 +2,13 @@ import { Link } from "react-router-dom";
 import { AuthNav } from "../components/Common";
 
 const FEATURES: [string, string][] = [
-  ["Self-serve hosting", "This site hosts everything. No need for setting up local environments and vercel deployments."],
-  ["Editions and versions", "Combine mirrors of a set and see how questions changed."],
-  ["Merged categories", "Group categories into your own custom buckets. For instance, create a 'Fine Arts - Other - Visual' that wasn't there in the original packets."],
-  ["Round phases", "Tag rounds to easily filter on playoffs, prelims, tiebreakers."],
+  ["Self-serve hosting", "No local setup or deployment."],
+  ["Editions and versions", "Combine mirrors of a set and compare question wording."],
+  ["Merged categories", "Group categories into custom buckets."],
+  ["Round phases", "Filter by prelims, playoffs or tiebreakers."],
   ["Buzz analysis", "Buzzer races, first-sentence buzzes, and first and top-3 tracking."],
-  ["Corrections", "Players can submit stat corrections directly in the site. Hosts can export corrected stats to YellowFruit"],
-  ["Access control", "Public, invite-only, or private, with scheduled auto-publish. Remember that buzz points expose the full question content of a set, so only should be made public once a set is clear."],
+  ["Corrections", "Players submit stat corrections. Hosts export corrected stats to YellowFruit."],
+  ["Access control", "Public, invite-only or private, with scheduled auto-publish. Buzz points expose full question text, so make a set public only once it's clear."],
 ];
 
 export function About() {
@@ -30,16 +30,15 @@ export function About() {
         <article>
           <h1>About Buzzpoints</h1>
           <p className="lead">
-            Buzzpoints is an all-in-one site for showing individual buzzpoints and bonus conversions for quizbowl tournaments.
-            It works with any tournament run via <a href="https://www.qbwiki.com/wiki/MODAQ">MODAQ</a>.
+            Buzz points and bonus conversions for quizbowl tournaments run on{" "}
+            <a href="https://www.qbwiki.com/wiki/MODAQ">MODAQ</a>.
           </p>
 
           <hr />
 
           <h2>How it works</h2>
           <p>
-            Upload your packets (one per round) and match files from MODAQ (.qbj or .json), then choose a scoring format.
-            You can then manage access and invites to the tournament and upload new stats for later mirrors.
+            Upload packets (one per round) and MODAQ game files (.qbj or .json), then choose a scoring format.
           </p>
 
           <h2>What it does</h2>
@@ -54,18 +53,10 @@ export function About() {
 
           <h2>BPA</h2>
           <p>
-            Player and team pages carry <strong>BPA</strong> (buzz point area-under-the-curve), an advanced stat devised
-            by Ryan Rosenberg. It measures how much of each question went unread because of a player's early correct
-            buzzes, spread across every tossup they heard:
+            <strong>BPA</strong> (buzz point area-under-the-curve) is Ryan Rosenberg's measure of how early a player
+            buzzes correctly. Negs don't count.
           </p>
           <p className="about-formula">BPA = 100 × Σ (1 − buzz position ÷ question length) ÷ tossups heard</p>
-          <p>
-            It separates players whose points-per-game or power counts look alike but who buzz at different points in a
-            question. Only correct buzzes count — a neg leaves a question unread too, but that isn't an achievement — and
-            only those whose recorded position can be trusted, the same test the buzz ranks use. A category's BPA is
-            spread over the tossups heard <em>in that category</em>, so it can be read on the same scale as the overall
-            figure rather than being diluted by everything else that was read.
-          </p>
           <p className="about-foot">
             See <a href="https://www.qbwiki.com/wiki/BPA" target="_blank" rel="noreferrer">BPA on QBWiki</a> and the
             original <a href="https://github.com/dhoth/Quizbowl-BPA" target="_blank" rel="noreferrer">Quizbowl-BPA</a>{" "}
@@ -74,7 +65,7 @@ export function About() {
 
           <h2>Credit</h2>
           <p className="about-foot">
-            Buzzpoints.buzz is maintained by <a href="mailto:bentley.michael.j@gmail.com">Mike Bentley</a>.
+            Buzzpoints is maintained by <a href="mailto:bentley.michael.j@gmail.com">Mike Bentley</a>.
             It builds on the open-source{" "}
             <a href="https://github.com/JemCasey/buzzpoints" target="_blank" rel="noreferrer">BuzzPoints</a>{" "}
             project by Jordan Brownstein and other contributors.

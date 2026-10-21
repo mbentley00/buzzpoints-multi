@@ -23,7 +23,7 @@ export function Others({ r, raceMs, slug }: { r: KlaxonRace; raceMs: number; slu
   return (
     <span className="kx-others">
       {r.others.map((o, i) => (
-        <span key={i} className={isRace(o, raceMs) ? "kx-race" : "muted"} title={o.sameTeam ? "Teammate" : o.late ? "Pressed after the buzzer locked" : "Pressed inside the reconcile window"}>
+        <span key={i} className={isRace(o, raceMs) ? "kx-race" : "muted"} title={o.sameTeam ? undefined : o.late ? "After lockout" : "Within reconcile window"}>
           {o.id ? <Link className="link" to={`/set/${slug}/player/${o.id}`}>{o.player}</Link> : o.player}
           {" "}+{fmtMs(o.ms)}{o.sameTeam ? " (teammate)" : ""}{i < r.others.length - 1 ? ", " : ""}
         </span>
@@ -47,12 +47,12 @@ export function KlaxonPlayerPanel({ slug, scope, playerId, show }: { slug: strin
       <KlaxonHead title="Buzzer races" slug={slug} />
       {p && (
         <p className="kx-record">
-          <strong>{p.won}–{p.lost}</strong> in races decided by under {fmtMs(data.raceMs)}
+          <strong>{p.won}–{p.lost}</strong> in races under {fmtMs(data.raceMs)}
           {p.winPct !== null && <> ({p.winPct}% won)</>}
-          {p.medianLostBy !== null && <> · lost by a median {fmtMs(p.medianLostBy)}</>}
-          {p.avgWordLost !== null && <> · at word {p.avgWordLost} on average</>}
-          {p.alsoKnew > 0 && <> · pressed late {p.alsoKnew} more time{p.alsoKnew === 1 ? "" : "s"}</>}
-          {p.lostTo.length > 0 && <> · most often beaten by {p.lostTo.slice(0, 3).map((x) => `${x.name} (${x.n})`).join(", ")}</>}
+          {p.medianLostBy !== null && <> · median loss by {fmtMs(p.medianLostBy)}</>}
+          {p.avgWordLost !== null && <> · avg word {p.avgWordLost}</>}
+          {p.alsoKnew > 0 && <> · {p.alsoKnew} late press{p.alsoKnew === 1 ? "" : "es"}</>}
+          {p.lostTo.length > 0 && <> · beaten most by {p.lostTo.slice(0, 3).map((x) => `${x.name} (${x.n})`).join(", ")}</>}
         </p>
       )}
       {lostRows.length > 0 && (

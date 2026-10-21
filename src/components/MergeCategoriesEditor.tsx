@@ -111,7 +111,6 @@ export function MergeCategoriesEditor({ slug, groups }: { slug: string; groups: 
         <button className="mini-btn" onClick={() => setOpen(true)}>
           Merge categories{existing.length ? ` (${existing.length})` : ""}
         </button>
-        <span className="muted">Group categories into a custom “merged” category (e.g. Fine Arts – Other = Opera + Jazz).</span>
       </div>
     );
   }
@@ -124,11 +123,6 @@ export function MergeCategoriesEditor({ slug, groups }: { slug: string; groups: 
           Close
         </button>
       </div>
-      <p className="muted merge-help">
-        A merged category groups existing categories under a new name. A category may belong to several merged
-        categories. Members and totals are aggregated across the chosen categories.
-      </p>
-
       {cats.length === 0 && <p className="muted">No merged categories yet.</p>}
 
       {cats.map((c, i) => (
@@ -183,7 +177,7 @@ export function MergeCategoriesEditor({ slug, groups }: { slug: string; groups: 
           {saving ? "Saving…" : "Save & rebuild"}
         </button>
         {dirty && <button className="btn-link" onClick={() => { setCats(existing); setEditingIdx(null); }}>Discard changes</button>}
-        {!valid && <span className="error-inline">Each merged category needs a unique name and at least one member.</span>}
+        {!valid && <span className="error-inline">Each needs a unique name and a member.</span>}
         {error && <span className="error-inline">{error}</span>}
       </div>
     </div>

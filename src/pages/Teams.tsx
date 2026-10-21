@@ -45,7 +45,7 @@ export function Teams() {
   const columns: Column<TeamRow>[] = [
     { key: "name", label: "Team", sortVal: (t) => t.name.toLowerCase(), render: (t) => <Link className="link" to={`/set/${slug}/team/${t.id}`}>{t.name}</Link> },
     ...(showEditions
-      ? [{ key: "edition", label: "Edition", sortVal: (t: TeamRow) => (t.editionIds || []).map(edLabel).join(", ").toLowerCase(), render: (t: TeamRow) => <EditionBadges ids={t.editionIds} editions={editions} />, title: "Edition(s) this team played" }]
+      ? [{ key: "edition", label: "Edition", sortVal: (t: TeamRow) => (t.editionIds || []).map(edLabel).join(", ").toLowerCase(), render: (t: TeamRow) => <EditionBadges ids={t.editionIds} editions={editions} /> }]
       : []),
     { key: "games", label: "GP", align: "right", sortVal: (t) => t.games, render: (t) => t.games },
     {
@@ -63,7 +63,7 @@ export function Teams() {
     { key: "inc", label: meta.hasNeg ? "Neg" : "Inc", align: "right", sortVal: (t) => t.incorrect, render: (t) => t.incorrect, title: "Incorrect buzzes" },
     { key: "pp20", label: "PP20TUH", align: "right", sortVal: (t) => t.pp20tuh, render: (t) => num(t.pp20tuh) },
     { key: "bpa", label: "BPA", align: "right", sortVal: (t) => t.bpa ?? -1, render: (t) => num(t.bpa),
-      title: "Buzz point area-under-the-curve: how much of each question went unread thanks to early correct buzzes, per tossup heard. Higher is faster." },
+      title: "Buzz point area under the curve" },
     ...(meta.hasBonuses && meta.hasTeamBonuses !== false
       ? [{ key: "ppb", label: "PPB", align: "right" as const, sortVal: (t: TeamRow) => t.ppb, render: (t: TeamRow) => num(t.ppb, 2) }]
       : []),
@@ -71,7 +71,7 @@ export function Teams() {
       ? [
           { key: "subjHeard", label: "Heard", align: "right" as const, title: `Bonuses heard in ${subject}`,
             sortVal: (t: TeamRow) => t.bonusCats?.[subject]?.[0] ?? 0, render: (t: TeamRow) => t.bonusCats?.[subject]?.[0] ?? 0 },
-          { key: "subjPpb", label: `${subjectLabel} PPB`, align: "right" as const, title: `Points per bonus in ${subject}`,
+          { key: "subjPpb", label: `${subjectLabel} PPB`, align: "right" as const,
             // A team that heard none sorts below every team that did, either way.
             sortVal: (t: TeamRow) => (t.bonusCats?.[subject]?.[0] ? t.bonusCats[subject][1] : -1),
             render: (t: TeamRow) => (t.bonusCats?.[subject]?.[0] ? num(t.bonusCats[subject][1], 2) : "—") },

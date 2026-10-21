@@ -139,7 +139,7 @@ export function SettingsSearch({ slug, ctx }: { slug: string; ctx: SearchCtx }) 
         ref={input}
         type="search"
         className="set-search-input"
-        placeholder="Search settings: co-owner, date, rename, export…"
+        placeholder="Search settings"
         aria-label="Search settings"
         role="combobox"
         aria-expanded={open && results.length > 0}
@@ -157,7 +157,7 @@ export function SettingsSearch({ slug, ctx }: { slug: string; ctx: SearchCtx }) 
       {open && q.trim() && (
         <ul className="set-search-results" id="set-search-results" role="listbox">
           {results.length === 0 ? (
-            <li className="set-search-none muted">No setting matches “{q.trim()}”.</li>
+            <li className="set-search-none muted">No matches.</li>
           ) : results.map((e, i) => (
             <li key={e.id} role="option" aria-selected={i === sel}>
               <button type="button" className={"set-search-hit" + (i === sel ? " sel" : "")}

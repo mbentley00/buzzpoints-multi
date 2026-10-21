@@ -31,7 +31,7 @@ export function CombineSets() {
   // Defaults to practice when everything picked is practice.
   const effLevel = level || (chosen.length && chosen.every((s) => s.level === "practice") ? "practice" : chosen[0]?.level || "");
   const mismatch =
-    chosen.find((s) => s.scoring !== chosen[0].scoring) ? "These tournaments use different scoring, so they can't be combined."
+    chosen.find((s) => s.scoring !== chosen[0].scoring) ? "Can't combine tournaments with different scoring."
     : chosen.find((s) => !!s.individual !== !!chosen[0].individual) ? "Individual and team tournaments can't be combined."
     : null;
 
@@ -75,10 +75,7 @@ export function CombineSets() {
         <div className="breadcrumb"><Link to="/" className="link">← All tournaments</Link></div>
         <h1>Combine tournaments</h1>
         <p className="muted" style={{ maxWidth: 720 }}>
-          Build one stats page out of several tournaments you own — two practice sets as a single “Level 7” page, say.
-          The originals aren't changed. Each set's questions stay separate (its packets are numbered after the previous
-          set's), while players and teams with the same name are pooled, and each set becomes a phase you can filter by.
-          The combination is a copy: later edits to the originals don't carry over.
+          Makes a copy. Later edits to the originals don't carry over.
         </p>
 
         {!authLoading && !user && (
@@ -87,7 +84,7 @@ export function CombineSets() {
           </p>
         )}
         {user && !loading && mine.length < 2 && (
-          <p className="caveat">You need to own at least two tournaments with buzz data to combine them.</p>
+          <p className="caveat">You need at least two tournaments with buzz data.</p>
         )}
 
         {user && mine.length >= 2 && (
@@ -118,7 +115,6 @@ export function CombineSets() {
                     </li>
                   ))}
                 </ol>
-                <small className="muted">Packet counts are approximate until it's built.</small>
               </div>
             )}
 
@@ -150,7 +146,6 @@ export function CombineSets() {
                 <option value="private">Private (invite only)</option>
                 <option value="listed">Listed (login + invite)</option>
               </select>
-              <small className="muted">You can change this, or ask to make it public, in Settings afterwards.</small>
             </label>
 
             {mismatch && <div className="error-box">{mismatch}</div>}

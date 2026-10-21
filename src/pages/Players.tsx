@@ -31,7 +31,7 @@ export function Players() {
     // In a shootout the "team" is the player again — nothing to show.
     ...(meta.individual ? [] : [{ key: "team", label: "Team", sortVal: (p: PlayerRow) => p.team.toLowerCase(), render: (p: PlayerRow) => (p.teamId ? <Link className="link" to={`/set/${slug}/team/${p.teamId}`}>{p.team}</Link> : p.team) }]),
     ...(showEditions
-      ? [{ key: "edition", label: "Edition", sortVal: (p: PlayerRow) => (p.editionIds || []).map(edLabel).join(", ").toLowerCase(), render: (p: PlayerRow) => <EditionBadges ids={p.editionIds} editions={editions} />, title: "Edition(s) this player played" }]
+      ? [{ key: "edition", label: "Edition", sortVal: (p: PlayerRow) => (p.editionIds || []).map(edLabel).join(", ").toLowerCase(), render: (p: PlayerRow) => <EditionBadges ids={p.editionIds} editions={editions} /> }]
       : []),
     { key: "games", label: "GP", align: "right", sortVal: (p) => p.games, render: (p) => p.games },
     { key: "tuh", label: "TUH", align: "right", sortVal: (p) => p.tuh, render: (p) => p.tuh },
@@ -44,10 +44,10 @@ export function Players() {
     { key: "ppg", label: "PPG", align: "right", emphasis: true, sortVal: (p) => p.ppg, render: (p) => num(p.ppg) },
     { key: "ptuh", label: "Pts/TUH", align: "right", sortVal: (p) => p.pPerTuh, render: (p) => num(p.pPerTuh, 2) },
     { key: "bpa", label: "BPA", align: "right", sortVal: (p) => p.bpa ?? -1, render: (p) => num(p.bpa),
-      title: "Buzz point area-under-the-curve: how much of each question went unread thanks to early correct buzzes, per tossup heard. Higher is faster." },
-    { key: "first", label: "1st", align: "right", sortVal: (p) => p.firstBuzzes, render: (p) => p.firstBuzzes, title: "Times the fastest correct buzz on a tossup" },
+      title: "Buzz point area under the curve" },
+    { key: "first", label: "1st", align: "right", sortVal: (p) => p.firstBuzzes, render: (p) => p.firstBuzzes, title: "Fastest correct buzz on a tossup" },
     { key: "top3", label: "Top3", align: "right", sortVal: (p) => p.top3Buzzes, render: (p) => p.top3Buzzes },
-    { key: "reb", label: "Reb", align: "right", sortVal: (p) => p.rebounds, render: (p) => p.rebounds, title: `Rebounds: tossups converted after another ${meta.individual ? "player" : "team"} buzzed wrong` },
+    { key: "reb", label: "Reb", align: "right", sortVal: (p) => p.rebounds, render: (p) => p.rebounds, title: `Converted after another ${meta.individual ? "player" : "team"} buzzed wrong` },
   ];
 
   return (

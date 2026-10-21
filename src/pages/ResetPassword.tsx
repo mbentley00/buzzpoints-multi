@@ -43,10 +43,10 @@ export function ResetPassword() {
         {!token ? (
           <>
             <div className="error-box">This link is missing its token.</div>
-            <p className="muted"><Link to="/login" className="link">Back to log in</Link> — you can request a new link there.</p>
+            <p className="muted"><Link to="/login" className="link">Back to log in</Link> to request a new link.</p>
           </>
         ) : done ? (
-          <p className="caveat"><span className="ok-msg">Password changed — you're signed in.</span> Redirecting…</p>
+          <p className="caveat"><span className="ok-msg">Password changed. You're signed in.</span> Redirecting…</p>
         ) : (
           <form className="create-form" onSubmit={submit} style={{ maxWidth: 380 }}>
             <label className="field">

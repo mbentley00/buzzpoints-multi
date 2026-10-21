@@ -22,9 +22,9 @@ import { SettingsSearch, SETTINGS_INDEX } from "../components/SettingsSearch";
 import { buildSetExport, saveBlob } from "../setExport";
 
 const VIS_OPTIONS: { id: Visibility; label: string; desc: string }[] = [
-  { id: "listed", label: "Listed (login + invite)", desc: "Shown in the list; only invited, logged-in people can view." },
-  { id: "private", label: "Private (invite only)", desc: "Hidden from the list; only you and invitees can view." },
-  { id: "public", label: "Public (open to all)", desc: "Shown in the list and viewable by anyone." },
+  { id: "listed", label: "Listed (login + invite)", desc: "Shown in the list." },
+  { id: "private", label: "Private (invite only)", desc: "Hidden from the list." },
+  { id: "public", label: "Public (open to all)", desc: "" },
 ];
 
 async function postJson(url: string, body: unknown) {
@@ -231,7 +231,7 @@ export function Settings() {
       // changes whether going public needs a moderator.
       if (d.visibility && d.visibility !== visibility) {
         setVisibility(d.visibility);
-        if (d.level === "practice") notes.push("Practice tournaments can't be public, so it's listed now.");
+        if (d.level === "practice") notes.push("Now listed. Practice sets can't be public.");
       }
       if (d.level === "practice") setAutoPublish(false);
       setPublicPending(!!d.publicPending);
@@ -256,7 +256,7 @@ export function Settings() {
         setPendingVis(s.pendingVisibility || "public");
         setVisibility(s.visibility);
         setAutoPublish(!!s.autoPublicAt);
-        notes.push(`Making it ${s.pendingVisibility === "listed" ? "listed" : "public"} needs a moderator; you'll get an email when it's decided.`);
+        notes.push(`Making it ${s.pendingVisibility === "listed" ? "listed" : "public"} needs a moderator. You'll get an email.`);
       } else setPublicPending(false);
       refreshIndex();
       setMsg(["Saved.", ...notes].join(" "));
@@ -319,8 +319,8 @@ export function Settings() {
       setInvites(d.invites || []);
       if (op === "coowner") {
         if (d.invited === undefined) setMsg(`${email} is now a co-owner.`);
-        else if (d.invited) setMsg(`${email} has no account yet, so we emailed them an invitation. They become a co-owner when they sign up.`);
-        else setMsg(`${email} is on the list, but the invitation email failed. Ask them to sign up with that address.`);
+        else if (d.invited) setMsg(`Invitation emailed to ${email}. They become a co-owner on signing up.`);
+        else setMsg(`Invitation email to ${email} failed. Ask them to sign up with that address.`);
       }
       refreshIndex();
     } catch (e) {
@@ -501,7 +501,7 @@ export function Settings() {
       {/* Every tab stays mounted and is only hidden, so an upload or repair in one
           keeps going while you look at another. */}
       <section hidden={tab !== "general"}>
-        <Sec id="details" title="Tournament" line="Renaming keeps the web address, so shared links still work." help="details">
+        <Sec id="details" title="Tournament" help="details">
           <div className="create-form" style={{ maxWidth: 560 }}>
             <label className="field" id="rename">
               <span>Name</span>
@@ -509,7 +509,7 @@ export function Settings() {
             </label>
             {!!nameDraft.trim() && !hasYearFirst(nameDraft) && (
               <p className="caveat name-hint">
-                Names here go year first.{" "}
+                Names go year first.{" "}
                 {yearFirstSuggestion(nameDraft) && <>Use <button type="button" className="btn-link" onClick={() => setNameDraft(yearFirstSuggestion(nameDraft)!)}>{yearFirstSuggestion(nameDraft)}</button>?</>}
               </p>
             )}
@@ -561,23 +561,23 @@ export function Settings() {
       </section>
 
       <section hidden={tab !== "maintenance"}>
-        <Sec id="maintenance" title="Rebuild stats" line="Recompute every stat from the uploaded files." help="delete">
+        <Sec id="maintenance" title="Rebuild stats" help="delete">
           <div><button className="btn-secondary" disabled={busy} onClick={rebuild}>Rebuild stats</button></div>
         </Sec>
 
         {hasYf && (
-          <Sec id="yf" title="YellowFruit export" line="Your .yft with buzz corrections applied.">
+          <Sec id="yf" title="YellowFruit export" line="With buzz corrections applied.">
             <div><a className="btn-secondary" href={`/api/yf-export?slug=${encodeURIComponent(slug)}`}>Download .yft</a></div>
           </Sec>
         )}
 
         <Sec id="exportall" title="Export all data"
-          line={`One zip of everything stored: packet JSONs, game QBJs, rosters, Klaxon presses${hasYf ? ", the YellowFruit file" : ""} and your edits.`}>
+          line={`Packets, games, rosters, Klaxon presses${hasYf ? ", the .yft" : ""} and edits.`}>
           <div><button className="btn-secondary" disabled={exporting} onClick={exportAll}>{exporting ? "Preparing…" : "Download .zip"}</button></div>
         </Sec>
 
         {isPrimary && (
-          <Sec id="delete" title="Delete this tournament" line="Removes every stat, correction and uploaded file for good." help="delete">
+          <Sec id="delete" title="Delete this tournament" line="No undo." help="delete">
             <div className="danger-zone">
               <label className="field-inline" style={{ flexWrap: "wrap" }}>
                 <span>Type <strong>{meta.setName}</strong> to confirm</span>
@@ -605,9 +605,9 @@ export function Settings() {
               </select>
               <small className="muted">
                 {visDesc}
-                {level === "practice" ? " Practice tournaments can't be public."
-                  : publicPending ? ` Waiting for a moderator to approve making it ${pendingVis === "listed" ? "listed" : "public"}.`
-                  : publicNeedsApproval && visibility !== "public" ? " Going public needs a moderator's approval." : ""}
+                {level === "practice" ? " Practice sets can't be public."
+                  : publicPending ? ` Awaiting moderator approval to go ${pendingVis === "listed" ? "listed" : "public"}.`
+                  : publicNeedsApproval && visibility !== "public" ? " Going public needs moderator approval." : ""}
               </small>
             </label>
             {visibility !== "public" && level !== "practice" && (
@@ -626,7 +626,7 @@ export function Settings() {
         </Sec>
 
 
-        <Sec id="people" title={`People (${people.length})`} line={canAddViewer ? "Viewers can open it and suggest fixes. Co-owners can manage everything but this list and deleting." : "Co-owners can manage everything but this list and deleting."} help="people">
+        <Sec id="people" title={`People (${people.length})`} line="Co-owners can't delete the set or change co-owners." help="people">
           {roleChoices.length > 0 && (
             <div className="buzz-edit" style={{ marginBottom: 10 }}>
               <input type="email" placeholder="person@example.com" value={newPerson} onChange={(e) => setNewPerson(e.target.value)} className="set-input" />
@@ -666,7 +666,7 @@ export function Settings() {
         </Sec>
 
         {visibility !== "public" && (
-          <Sec id="links" title="Invite links" line="Anyone with an account who opens a link gets in, or asks you first." help="links">
+          <Sec id="links" title="Invite links" help="links">
             <div className="buzz-edit">
               <label className="field-inline">
                 <input type="checkbox" checked={linkApproval} onChange={(e) => setLinkApproval(e.target.checked)} /> Ask me first
@@ -691,7 +691,7 @@ export function Settings() {
           </Sec>
         )}
 
-        <Sec id="discussion" title="Discussion" line="Signed-in viewers can read; people you approve can post." help="discussion">
+        <Sec id="discussion" title="Discussion" line="Viewers read. Approved people post." help="discussion">
           <label className="field-inline">
             <input type="checkbox" checked={forum} onChange={async (e) => {
               const on = e.target.checked; setForum(on); setErr(null);
@@ -703,7 +703,7 @@ export function Settings() {
           {forum && <ForumMembers slug={slug} enabled={forum} />}
         </Sec>
 
-        <Sec id="revoke" title="Revoke all access" line="Remove everyone but the owners, stop every invite link and decline pending requests." help="revoke" fold>
+        <Sec id="revoke" title="Revoke all access" line="Removes viewers, links and pending requests." help="revoke" fold>
           <div className="danger-zone">
             {visibility === "public" && (
               <label className="field" style={{ marginBottom: 10, maxWidth: 420 }}>
@@ -731,26 +731,26 @@ export function Settings() {
 
       <section hidden={tab !== "questions"}>
         {!isResults && (meta?.rounds?.length ?? 0) > 0 && (
-          <Sec id="phases" title="Round phases" line="Tag rounds as Prelims, Playoffs and so on so viewers can filter by phase." help="phases">
+          <Sec id="phases" title="Round phases" line="Viewers can filter by phase." help="phases">
             <RoundTagsEditor slug={slug} rounds={meta!.rounds} />
           </Sec>
         )}
         {!isResults && (
           <>
-            <Sec id="categories" title="Category fields" line="Say what each metadata field means. Tag fields become filters." help="categories"
+            <Sec id="categories" title="Category fields" line="What each metadata field means." help="categories"
               fold open={needsMap} flag={needsMap ? "needs confirming" : undefined}>
               <MetaMapEditor slug={slug} />
             </Sec>
-            <Sec id="questionedits" title="Edit questions" line="File selected questions under one category or tag. Edits survive re-uploads." help="questionedits" fold>
+            <Sec id="questionedits" title="Edit questions" line="Bulk category and tag changes." help="questionedits" fold>
               <QuestionEditor slug={slug} hasBonuses={!!meta?.hasBonuses} />
             </Sec>
             {meta?.hasBonuses && (
               <>
-                <Sec id="bonusdiff" title="Bonus difficulty marks" line="Fix bonuses whose parts aren't marked easy, medium and hard once each." help="bonusdiff"
+                <Sec id="bonusdiff" title="Bonus difficulty marks" line="Each bonus needs one easy, one medium and one hard part." help="bonusdiff"
                   fold open={bonusDiff > 0} flag={bonusDiff ? plural(bonusDiff, "bonus", "bonuses") : undefined}>
                   <BonusDifficultyEditor slug={slug} warnings={meta?.bonusDiffWarnings ?? []} />
                 </Sec>
-                <Sec id="bonustext" title="Fill bonus text" line="Add missing bonus lead-ins and parts from a fill file." help="bonustext" fold>
+                <Sec id="bonustext" title="Fill bonus text" line="For blank lead-ins and parts." help="bonustext" fold>
                   <PacketTextFill slug={slug} name={meta?.setName ?? slug} />
                 </Sec>
               </>
@@ -762,13 +762,13 @@ export function Settings() {
       <section hidden={tab !== "files"}>
         {!isResults && (
           <>
-            <Sec id="addrounds" title="Add rounds or games" line="Upload more rounds, or tick Replace to redo one." help="addrounds">
+            <Sec id="addrounds" title="Add rounds or games" line="Tick Replace to redo a round." help="addrounds">
               {/* A set uploaded before editions existed has no summary row; it still has
                   the one edition every set has. */}
               <AddFilesForm slug={slug} editions={editions.length ? editions : [{ id: "e0", label: "Original" }]} />
             </Sec>
 
-            <Sec id="roundsgames" title="Rounds & games" line="Fix a wrong round number, or remove duplicate or misfiled uploads." help="rounds">
+            <Sec id="roundsgames" title="Rounds & games" line="Wrong round numbers, duplicates, misfiled uploads." help="rounds">
               <details id="rounds" className="set-sub" open={roundWarn > 0 || undefined}>
                 <summary>Round numbers{roundWarn > 0 && <span className="warn-text"> · {plural(roundWarn, "problem")}</span>}</summary>
                 <RoundAlignEditor slug={slug} />
@@ -783,17 +783,17 @@ export function Settings() {
               </details>
             </Sec>
 
-            <Sec id="klaxon" title="Klaxon buzz logs" line="Add every press behind each buzz from Klaxon rooms. Shown on its own page." help="klaxon"
+            <Sec id="klaxon" title="Klaxon buzz logs" line="Every press behind each buzz." help="klaxon"
               fold open={!!meta?.hasKlaxon} flag={meta?.hasKlaxon ? "attached" : undefined}>
               <KlaxonUpload slug={slug} hasKlaxon={!!meta?.hasKlaxon} multiEdition={editions.length > 1} />
             </Sec>
 
-            <Sec id="replacements" title="Tiebreakers & replacements" line="Point tiebreakers and replacement questions at the question the room actually read." help="replacements"
+            <Sec id="replacements" title="Tiebreakers & replacements" line="Map each to the question the room read." help="replacements"
               fold open={missingQs > 0} flag={missingQs ? plural(missingQs, "question") : undefined}>
               <ReplacementEditor slug={slug} />
             </Sec>
 
-            <Sec id="replace" title="Replace all data" line="Swap in a new .db or data folder. Settings and corrections are kept." help="replace" fold>
+            <Sec id="replace" title="Replace all data" line="Swap in a new .db or data folder." help="replace" fold>
               <ReplaceData
                 slug={slug} setName={meta?.setName ?? ""} scoring={meta?.scoring ?? ""}
                 editions={editions.length ? editions : [{ id: "e0", label: "Original" }]}
@@ -807,14 +807,14 @@ export function Settings() {
       <section hidden={tab !== "renames"}>
         {!isResults && (
           <>
-            <Sec id="renames" title="Rename players and teams" line="Merge two spellings of a player or team. Viewers can suggest renames too." help="renames">
+            <Sec id="renames" title="Rename players and teams" line="Merge two spellings." help="renames">
               <RenamePicker slug={slug} individual={!!meta.individual} returnTo={`${loc.pathname}#renames`} />
               <details className="set-sub" id="f-appliedrenames">
                 <summary>Applied renames</summary>
                 <RenamesEditor slug={slug} />
               </details>
             </Sec>
-            <Sec id="dupes" title="Possible duplicates" line="These look like the same team or player. Tick and merge." help="dupes" fold>
+            <Sec id="dupes" title="Possible duplicates" help="dupes" fold>
               <DupeFinder slug={slug} individual={!!meta.individual} />
             </Sec>
           </>

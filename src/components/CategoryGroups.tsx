@@ -125,19 +125,14 @@ export function CategoryGroups<G extends GroupBase<S>, S extends SubBase>({
 
   return (
     <div>
-      <div className="cat-toolbar">
-        {/* Nothing anywhere to expand — don't offer a button that does nothing. */}
-        {!groups.every(flat) && (
+      {/* Nothing anywhere to expand — don't offer a button that does nothing. */}
+      {!groups.every(flat) && (
+        <div className="cat-toolbar">
           <button className="mini-btn" onClick={() => setAll(!allOpen)}>
             {allOpen ? "Collapse all" : "Expand all"}
           </button>
-        )}
-        <span className="muted">
-          {groups.every(flat)
-            ? "Click any category to see its questions."
-            : "Click any category, subcategory, or sub-subcategory to see its questions."}
-        </span>
-      </div>
+        </div>
+      )}
       <div className="table-wrap">
         <table className="data-table cat-table">
           <thead>
@@ -186,7 +181,7 @@ export function CategoryGroups<G extends GroupBase<S>, S extends SubBase>({
                     >
                       <CategoryTag cat={g.category} />
                     </Link>
-                    {g.virtual && <span className="cat-virtual-badge" title="Owner-defined merged category">merged</span>}
+                    {g.virtual && <span className="cat-virtual-badge">merged</span>}
                   </td>
                   {columns.map((c) => (
                     <td key={c.label} className={alignClass(c.align) + " strong"}>

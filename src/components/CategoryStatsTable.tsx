@@ -23,7 +23,7 @@ export function CategoryStatsTable({
     ...(hasPower
       ? [{ key: "powers", label: "Pwr", align: "right" as const, sortVal: (c: CategoryStat) => c.powers, render: (c: CategoryStat) => c.powers, title: "Powers" }]
       : []),
-    { key: "gets", label: "Get", align: "right", sortVal: (c) => c.gets, render: (c) => c.gets, title: "Correct (non-power)" },
+    { key: "gets", label: "Get", align: "right", sortVal: (c) => c.gets, render: (c) => c.gets },
     { key: "inc", label: incLabel, align: "right", sortVal: (c) => c.incorrect, render: (c) => c.incorrect, title: "Incorrect buzzes" },
     { key: "pts", label: "Points", align: "right", sortVal: (c) => c.points, render: (c) => c.points },
     {
@@ -32,7 +32,7 @@ export function CategoryStatsTable({
       align: "right",
       sortVal: (c) => c.earliest ?? 1e9,
       render: (c) => (c.earliest === null ? "—" : c.earliest),
-      title: "Earliest word position of a correct buzz in this category",
+      title: "Word #",
     },
     {
       key: "avg",
@@ -40,7 +40,7 @@ export function CategoryStatsTable({
       align: "right",
       sortVal: (c) => c.avgBuzz ?? 1e9,
       render: (c) => (c.avgBuzz === null ? "—" : num(c.avgBuzz)),
-      title: "Average word position of correct buzzes",
+      title: "Word #",
     },
     {
       key: "bpa",
@@ -48,7 +48,7 @@ export function CategoryStatsTable({
       align: "right",
       sortVal: (c) => c.bpa ?? -1,
       render: (c) => num(c.bpa),
-      title: "Buzz point area-under-the-curve, over the tossups heard in this category — so it compares with the overall figure rather than being diluted by everything else read",
+      title: "Buzz point area under the curve",
     },
     {
       key: "pct",
@@ -56,7 +56,6 @@ export function CategoryStatsTable({
       align: "right",
       sortVal: (c) => c.pctPoints,
       render: (c) => num(c.pctPoints, 1),
-      title: "Share of this player's tossup points from this category",
     },
   ];
 

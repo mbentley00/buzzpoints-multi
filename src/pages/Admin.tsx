@@ -29,11 +29,6 @@ async function postJson(url: string, body: unknown) {
 }
 
 const VIS: Visibility[] = ["listed", "private", "public"];
-const VIS_DESC: Record<Visibility, string> = {
-  public: "Shown in the list and viewable by anyone, no login required.",
-  listed: "Shown in the tournament list, but only invited, logged-in people can view it.",
-  private: "Hidden from the list; only the owner and people they invite can view it.",
-};
 const ROLES: Role[] = ["user", "moderator", "admin"];
 
 // The admin area is split into tabs, each its own URL (/admin/<tab>). Moderators
@@ -91,14 +86,14 @@ export function Admin() {
   }
 
   const del = (s: AdminSet) =>
-    window.confirm(`Delete "${s.name}" (${s.slug})? This permanently removes all its data.`) &&
+    window.confirm(`Delete "${s.name}" (${s.slug})? This can't be undone.`) &&
     run(s.slug, async () => { await postJson("/api/manage", { slug: s.slug, op: "delete" }); refreshIndex(); await load(); });
   const rebuild = (s: AdminSet) => run(s.slug, () => postJson("/api/manage", { slug: s.slug, op: "reaggregate" }));
   // Re-aggregate every tournament, one request each (each set stays within the
   // function time limit), continuing past individual failures.
   async function rebuildAll() {
     if (!sets?.length) return;
-    if (!window.confirm(`Rebuild stats for all ${sets.length} tournaments? Each is re-aggregated in turn; this can take a while.`)) return;
+    if (!window.confirm(`Rebuild stats for all ${sets.length} tournaments?`)) return;
     setBusy("rebuild-all"); setErr(null);
     let ok = 0; const fails: string[] = [];
     for (let i = 0; i < sets.length; i++) {
@@ -117,7 +112,7 @@ export function Admin() {
   const approve = (p: PendingSub) =>
     run(`p:${p.id}`, async () => { await postJson("/api/moderate", { op: "approve-submission", id: p.id }); refreshIndex(); await load(); });
   const reject = (p: PendingSub) => {
-    const reason = window.prompt(`Reject "${p.name}" by ${p.by}? Optional reason (emailed to them):`, "");
+    const reason = window.prompt(`Reject "${p.name}" by ${p.by}? Reason (optional, emailed):`, "");
     if (reason === null) return; // cancelled
     run(`p:${p.id}`, async () => { await postJson("/api/moderate", { op: "reject-submission", id: p.id, reason }); await load(); });
   };
@@ -132,7 +127,7 @@ export function Admin() {
       const b = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error((b as any).error || `Failed (${r.status})`);
       const source = (b as any).files?.["_source.json"] as SetSourceLike | undefined;
-      if (!source) throw new Error("This set has no stored source (it predates source storage).");
+      if (!source) throw new Error("This set has no stored source.");
       const zip = await buildModaqExport(source, s.slug);
       const href = URL.createObjectURL(zip);
       const a = document.createElement("a");
@@ -144,7 +139,7 @@ export function Admin() {
   const approvePublish = (q: PublishReq) =>
     run(`q:${q.slug}`, async () => { await postJson("/api/moderate", { op: "approve-publish", slug: q.slug }); refreshIndex(); await load(); });
   const rejectPublish = (q: PublishReq) => {
-    const reason = window.prompt(`Decline making "${q.name}" public? Optional reason (emailed to ${q.by}):`, "");
+    const reason = window.prompt(`Decline making "${q.name}" public? Reason (optional, emailed to ${q.by}):`, "");
     if (reason === null) return; // cancelled
     run(`q:${q.slug}`, async () => { await postJson("/api/moderate", { op: "reject-publish", slug: q.slug, reason }); await load(); });
   };
@@ -152,7 +147,7 @@ export function Admin() {
   const changeRole = (u: UserRow, role: Role) =>
     run(`u:${u.email}`, async () => { await postJson("/api/moderate", { op: "set-role", email: u.email, role }); await load(); });
   const deleteAccount = (u: UserRow) =>
-    window.confirm(`Delete account ${u.email}? Their tournaments are kept but become unowned.`) &&
+    window.confirm(`Delete account ${u.email}? Their tournaments become unowned.`) &&
     run(`u:${u.email}`, async () => { await postJson("/api/moderate", { op: "delete-account", email: u.email }); await load(); });
 
   const saveBlocklist = () =>
@@ -201,9 +196,8 @@ export function Admin() {
 
             {/* ---- pending first-post submissions ---- */}
             <h2>Pending submissions {pending.length > 0 && <span className="edition-count">{pending.length}</span>}</h2>
-            <p className="muted">First tournaments from new accounts. Approving publishes them under the submitter's account.</p>
             {pending.length === 0 ? (
-              <p className="muted">Nothing awaiting review.</p>
+              <p className="muted">None.</p>
             ) : (
               <div className="table-wrap">
                 <table className="data-table">
@@ -214,7 +208,7 @@ export function Admin() {
                         <td>{p.name}</td>
                         <td className="muted">{p.byName}<div className="mono" style={{ fontSize: 12 }}>{p.by}</div></td>
                         <td>{p.scoring}</td>
-                        <td title={VIS_DESC[p.visibility]}>{p.visibility}</td>
+                        <td>{p.visibility}</td>
                         <td className="muted">{formatDate(p.at)}</td>
                         <td className="admin-actions">
                           <button className="btn-link" disabled={busy === `p:${p.id}`} onClick={() => approve(p)}>Approve</button>
@@ -229,9 +223,8 @@ export function Admin() {
 
             {/* ---- pending public-viewing requests ---- */}
             <h2 className="admin-h2-gap">Public requests {publishReqs.length > 0 && <span className="edition-count">{publishReqs.length}</span>}</h2>
-            <p className="muted">Owners of tournaments uploaded less than three months ago asking to make them public. Approving opens the set to everyone; declining leaves it as it is.</p>
             {publishReqs.length === 0 ? (
-              <p className="muted">Nothing awaiting review.</p>
+              <p className="muted">None.</p>
             ) : (
               <div className="table-wrap">
                 <table className="data-table">
@@ -241,7 +234,7 @@ export function Admin() {
                       <tr key={q.slug}>
                         <td><Link to={`/set/${q.slug}`}>{q.name}</Link></td>
                         <td className="mono" style={{ fontSize: 12 }}>{q.by}</td>
-                        <td title={VIS_DESC[q.visibility]}>{q.visibility}</td>
+                        <td>{q.visibility}</td>
                         <td className="muted">{formatDate(q.createdAt)}</td>
                         <td className="muted">{formatDate(q.at)}</td>
                         <td className="admin-actions">
@@ -259,7 +252,6 @@ export function Admin() {
 
             <section hidden={tab !== "tournaments"}>
             <h2>Tournaments {sets && <span className="edition-count">{sets.length}</span>}</h2>
-            <p className="muted">Question content stays hidden when you open a non-public set{isAdmin ? " until you reveal it" : ""}.</p>
             {sets && sets.length > 0 && (
               <div className="cat-toolbar">
                 <input className="admin-filter" value={setQuery} onChange={(e) => setSetQuery(e.target.value)}
@@ -299,7 +291,7 @@ export function Admin() {
                         <td className="right mono">{s.numPlayers}</td>
                         <td className="admin-actions">
                           <Link className="link" to={`/set/${s.slug}`}>View</Link>
-                          {isAdmin && <button className="btn-link" disabled={busy === s.slug} title="Download the packet JSONs, game QBJs, and a MODAQ-loadable roster QBJ, rebuilt from the stored upload" onClick={() => exportModaq(s)}>Export</button>}
+                          {isAdmin && <button className="btn-link" disabled={busy === s.slug} title="Packets, game QBJs and MODAQ roster as a zip"onClick={() => exportModaq(s)}>Export</button>}
                           <button className="btn-link" disabled={busy === s.slug} onClick={() => rebuild(s)}>Rebuild</button>
                           <button className="btn-link danger" disabled={busy === s.slug} onClick={() => del(s)}>Delete</button>
                         </td>
@@ -316,10 +308,6 @@ export function Admin() {
             {isAdmin && (
               <>
                 <section hidden={tab !== "import"}>
-                  <p className="muted">
-                    Bring tournaments in from elsewhere, or refresh ones already here. Prefer local files when you have
-                    the export: they carry everything. Scraping reads another Buzzpoints site page by page.
-                  </p>
                   <h2>Import from local files (recommended)</h2>
                   <LocalImport />
 
@@ -338,7 +326,6 @@ export function Admin() {
 
                 <section hidden={tab !== "users"}>
                 <h2>Users {users && <span className="edition-count">{users.length}</span>}</h2>
-                <p className="muted">Grant moderator/admin roles or delete accounts. Built-in admins (set via ADMIN_EMAILS) can't be changed here.</p>
                 {users === null ? <Loading /> : (
                   <div className="table-wrap">
                     <table className="data-table">
@@ -369,7 +356,6 @@ export function Admin() {
                 )}
 
                 <h2 className="admin-h2-gap">Name blocklist</h2>
-                <p className="muted">One word per line. Tournament names or edition labels containing any of these (whole-word, case-insensitive) are rejected at submission.</p>
                 <textarea
                   className="blocklist-input"
                   rows={6}

@@ -69,29 +69,26 @@ export function Feedback() {
             {state === "sent" ? (
               <>
                 <h2>Thanks!</h2>
-                <p className="muted">Your request is on its way.</p>
+                <p className="muted">Request sent.</p>
                 <div className="modal-actions"><button className="btn-primary btn-sm" onClick={close}>Close</button></div>
               </>
             ) : (
               <>
                 <h2>Feature Requests</h2>
-                <p className="muted">Use this form to report requests for new features or bugs with the entire set.</p>
                 <div className="caveat feedback-scope">
-                  Do not provide set feedback or stat corrections via this dialog, they will not be addressed. Go to the
-                  “Edit” function on{" "}
+                  For stat corrections, use “Edit” on{" "}
                   {setSlug ? (
                     <Link className="link" to={`/set/${setSlug}/tossup`} onClick={() => setOpen(false)}>a tossup page</Link>
                   ) : (
                     "a tossup page"
-                  )}{" "}
-                  to submit a correction to the set owner.
+                  )}.
                 </div>
                 <textarea
                   ref={box}
                   rows={6}
                   className="feedback-input"
                   value={message}
-                  placeholder="What feature would you like to see, or what's broken?"
+                  placeholder="Feature idea or bug"
                   maxLength={4000}
                   onChange={(e) => setMessage(e.target.value)}
                 />

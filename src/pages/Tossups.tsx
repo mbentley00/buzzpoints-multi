@@ -62,7 +62,7 @@ export function Tossups() {
           { key: "pwrpct", label: "Pwr%", align: "right" as const, sortVal: (t: TossupRow) => t.powerPct, render: (t: TossupRow) => pct(t.powerPct) },
         ]
       : []),
-    { key: "incpct", label: "Inc%", align: "right", sortVal: (t) => t.incorrectPct, render: (t) => pct(t.incorrectPct), title: "Rate of interrupting incorrect buzzes per play" },
+    { key: "incpct", label: "Inc%", align: "right", sortVal: (t) => t.incorrectPct, render: (t) => pct(t.incorrectPct), title: "Neg rate" },
     {
       key: "buzz",
       label: "Avg Buzz",
@@ -74,7 +74,7 @@ export function Tossups() {
       key: "livebuzz",
       label: "Avg Live Buzz",
       align: "right",
-      title: "Average position of conversions that came while the question was still live — the first buzz of a reading, before anyone had negged",
+      title: "Avg correct buzz before any neg",
       sortVal: (t) => t.avgLiveBuzzPct ?? 999,
       render: (t) => (t.avgLiveBuzzPct == null ? "—" : `${num(t.avgLiveBuzzPct)}%`),
     },

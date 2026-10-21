@@ -88,21 +88,17 @@ function TiebreakerUpload({ slug, editions, defaultEd }: { slug: string; edition
   return (
     <details className="srcfiles-fold" open={!editions.some((e) => e.packets.some((p) => !p.played))}>
       <summary>Upload a tiebreaker packet</summary>
-      <p className="muted srcfiles-note">
-        Drop the tiebreaker or replacement packet here. It's filed on a round of its own, whatever it's named.
-      </p>
       {editions.length > 1 && (
         <label className="field">
           <span>Edition</span>
           <select value={edId} disabled={busy} onChange={(e) => setEdId(e.target.value)}>
             {sorted.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
           </select>
-          <span className="muted">Any edition's tiebreakers can be mapped from any other, so one upload covers every mirror.</span>
         </label>
       )}
-      <FileDrop accept=".json" value={files} onChange={setFiles} hint="Packet JSON (one file per tiebreaker packet)" />
+      <FileDrop accept=".json" value={files} onChange={setFiles} hint="One JSON per packet" />
       {files.length > 0 && planned.length === files.length && (
-        <p className="muted">Will be filed as round {planned.map(roundLabel).join(", ")}.</p>
+        <p className="muted">Filed as round {planned.map(roundLabel).join(", ")}.</p>
       )}
       {err && <div className="error-box">{err}</div>}
       {status && <div className="caveat">{status}</div>}
@@ -131,7 +127,7 @@ export function ReplacementEditor({ slug }: { slug: string }) {
   }, [slug]);
 
   if (err && !data) return <div className="error-box">{err}</div>;
-  if (!data) return <p className="muted">Checking the games against the packets…</p>;
+  if (!data) return <p className="muted">Checking…</p>;
 
   const edLabel = (id: string) => data.editions.find((e) => e.id === id)?.label || id;
   const multi = data.editions.length > 1;
@@ -193,7 +189,7 @@ export function ReplacementEditor({ slug }: { slug: string }) {
           {eds.flatMap((e) =>
             [...e.packets].sort((a, b) => Number(a.played) - Number(b.played) || a.round - b.round).map((p) => (
               <optgroup key={`${e.id}|${p.round}`}
-                label={`${multi ? `${e.label} · ` : ""}Round ${roundLabel(p.round)}${p.played ? "" : " — no games (tiebreakers?)"}`}>
+                label={`${multi ? `${e.label} · ` : ""}Round ${roundLabel(p.round)}${p.played ? "" : " (no games)"}`}>
                 {p[m.kind].map((c) => {
                   const mf = misfit(c);
                   return (
@@ -210,8 +206,8 @@ export function ReplacementEditor({ slug }: { slug: string }) {
         {bad && (
           <span className="danger">
             {m.kind === "tossups"
-              ? ` — a buzz came at word ${words}, past the end of this question`
-              : ` — the games recorded ${parts} parts, but this bonus has ${bad.replace(/^only /, "")}`}
+              ? ` Buzz at word ${words} is past the end.`
+              : ` Games have ${parts} parts; this bonus has ${bad.replace(/^only /, "")}.`}
           </span>
         )}
       </span>
@@ -235,7 +231,7 @@ export function ReplacementEditor({ slug }: { slug: string }) {
     <div className="srcfiles">
       {err && <div className="error-box">{err}</div>}
       {!missing.length && (
-        <p className="muted">Every question the games read is in the packets — nothing to map.</p>
+        <p className="muted">Nothing to map.</p>
       )}
       {missing.length > 0 && (
         <>

@@ -38,11 +38,6 @@ export function BundledFills() {
   if (!slugs?.length) return null;
   return (
     <div>
-      <p className="muted">
-        This deployment carries bonus text for {slugs.length} tournaments that were imported without it, built from their
-        packets and matched to each bonus by its answer lines. Applying it fills lead-ins and parts only, then rebuilds
-        each tournament's stats.
-      </p>
       <button className="btn-primary btn-sm" disabled={busy} onClick={run}>
         {busy ? "Applying…" : `Apply bundled bonus text to ${slugs.length} tournaments`}
       </button>

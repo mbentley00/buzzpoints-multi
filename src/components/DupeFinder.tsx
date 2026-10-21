@@ -80,7 +80,7 @@ export function DupeFinder({ slug, individual }: { slug: string; individual: boo
     clearSetCache(slug);
     setPicks({});
     setBust((b) => b + 1);
-    setStatus(`Merged ${todo.length - fails.length} of ${todo.length}. Suggestions below are refreshed — merging teams can reveal more player pairs.`);
+    setStatus(`Merged ${todo.length - fails.length} of ${todo.length}.`);
     if (fails.length) setErr(fails.join("; "));
     setBusy(false);
   }
@@ -101,15 +101,15 @@ export function DupeFinder({ slug, individual }: { slug: string; individual: boo
         </td>
         <td className="admin-actions">
           <button className="btn-link" disabled={busy} onClick={() => setPick(k, { swap: !pk.swap })} title="Keep the other spelling">Swap</button>
-          <button className="btn-link" disabled={busy} onClick={() => dismiss(k)} title="Not the same — stop suggesting this">Dismiss</button>
+          <button className="btn-link" disabled={busy} onClick={() => dismiss(k)} title="Not the same">Dismiss</button>
         </td>
       </tr>
     );
   };
 
   if (err && !data) return <div className="error-box">{err}</div>;
-  if (!data) return <p className="muted">Looking for likely duplicates…</p>;
-  if (!teams.length && !players.length) return <p className="muted">No likely duplicates found.</p>;
+  if (!data) return <p className="muted">Looking for duplicates…</p>;
+  if (!teams.length && !players.length) return <p className="muted">No duplicates found.</p>;
 
   return (
     <div className="dupe-finder">

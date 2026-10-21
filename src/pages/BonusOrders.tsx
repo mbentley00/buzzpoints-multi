@@ -50,7 +50,7 @@ function DiffPcts({ s }: { s: BonusOrderStats }) {
   return (
     <span className="ord-parts">
       {DIFF_SLOTS.filter((d) => slotPct(s, d.key) !== null).map((d) => (
-        <span className="ord-part" key={d.key} title={`${d.label} part${d.key === "u" ? "s with no mark" : "s"} of this order`}>
+        <span className="ord-part" key={d.key} title={d.label}>
           <span className={`ord-mark ord-mark-${d.key}`}>{d.mark}</span>
           <span className="ord-part-pct">{cell(slotPct(s, d.key))}</span>
         </span>
@@ -91,12 +91,12 @@ function OrderTable({ row }: { row: BonusOrderRow }) {
             <th className="right">Bonuses</th>
             <th className="right">Heard</th>
             <th className="right">PPB</th>
-            <th className="right" title="Conversion of this order's easy part(s)">Easy%</th>
-            <th className="right" title="Conversion of this order's medium part(s)">Med%</th>
-            <th className="right" title="Conversion of this order's hard part(s)">Hard%</th>
-            {unmarked && <th className="right" title="Conversion of the part(s) this order leaves unmarked">?%</th>}
+            <th className="right">Easy%</th>
+            <th className="right">Med%</th>
+            <th className="right">Hard%</th>
+            {unmarked && <th className="right" title="Unmarked">?%</th>}
             {row.parts.map((p) => (
-              <th key={p.idx} className="right" title={`Part ${p.idx + 1} of the bonus — ${p.difficultyName} in this order`}>
+              <th key={p.idx} className="right" title={`Part ${p.idx + 1}, ${p.difficultyName}`}>
                 {p.idx + 1}. {p.difficultyName.charAt(0) || "?"}
               </th>
             ))}
@@ -139,7 +139,7 @@ function OrderTable({ row }: { row: BonusOrderRow }) {
 }
 
 export function BonusOrders() {
-  const { meta, isOwner } = useSetCtx();
+  const { isOwner } = useSetCtx();
   const { slug = "" } = useParams();
   const { data, error, loading } = useScopedJson<BonusOrderRow[]>("bonus_orders.json");
   const [open, setOpen] = useState<string | null>(null);
@@ -151,12 +151,10 @@ export function BonusOrders() {
     return (
       <div className="detail">
         <div className="breadcrumb"><Link to={`/set/${slug}/bonus`} className="link">← Bonuses</Link></div>
-        <PageHeader title="Bonuses — Difficulty order" subtitle="How each bonus format converted" />
+        <PageHeader title="Bonuses — Difficulty order" />
         <p className="caveat">
-          This tournament hasn't been rebuilt since this view was added.{" "}
-          {isOwner
-            ? <>Run <Link to={`/set/${slug}/settings`} className="link">Rebuild stats</Link> in Settings and it will appear.</>
-            : "Its owner can rebuild its stats to add it."}
+          Not built yet.
+          {isOwner && <>{" "}Run <Link to={`/set/${slug}/settings`} className="link">Rebuild stats</Link> in Settings.</>}
         </p>
       </div>
     );
@@ -169,20 +167,14 @@ export function BonusOrders() {
     <div className="detail">
       <div className="breadcrumb"><Link to={`/set/${slug}/bonus`} className="link">← Bonuses</Link></div>
       <PageHeader title="Bonuses — Difficulty order" />
-      {meta.hasTeamBonuses === false && (
-        <p className="explainer">Conversion here comes from the imported per-part totals.</p>
-      )}
       {rows.length === 0 && (
         <p className="muted">
-          No bonus difficulty marks in this tournament, so there are no orders to compare.{" "}
+          No bonus difficulty marks.{" "}
           <Link to={`/set/${slug}/bonus`} className="link">Bonuses →</Link>
         </p>
       )}
       {single && (
-        <p className="caveat">
-          Every bonus here uses the same order, so there's nothing to compare it against — the breakdown by category is
-          still below.
-        </p>
+        <p className="caveat">Every bonus uses the same order.</p>
       )}
       {rows.map((row) => {
         const isOpen = open === row.order || rows.length === 1;

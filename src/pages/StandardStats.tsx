@@ -144,7 +144,7 @@ export function StandardStats() {
 
   return (
     <div>
-      <PageHeader title="YF stats" subtitle={individual ? "Room-by-room results for every player" : "The same reports a YellowFruit export publishes"} />
+      <PageHeader title="YF stats" />
       <nav className="std-nav">
         {views.map((v) => (
           <NavLink key={v.id} end to={v.path ? `${base}/${v.path}` : base} className={({ isActive }) => (isActive ? "std-nav-link active" : "std-nav-link")}>
@@ -160,7 +160,6 @@ export function StandardStats() {
               {sortedEds.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
             </select>
           </label>
-          <span className="muted">Each mirror is reported on its own, as YellowFruit would.</span>
         </div>
       )}
 
@@ -171,10 +170,10 @@ export function StandardStats() {
       {error && !stale && <ErrorBox error={error} />}
       {!loading && (stale || (!error && !(games ?? []).length)) && (
         <p className="empty">
-          No game-by-game data for this tournament yet — it was last built before these reports existed.{" "}
+          No game-by-game data yet.{" "}
           {isOwner
-            ? <>Rebuilding its stats from <Link className="link" to={`/set/${slug}/settings`}>Settings</Link> will produce them.</>
-            : <>Its owner can produce them by rebuilding the tournament's stats.</>}
+            ? <>Rebuild stats in <Link className="link" to={`/set/${slug}/settings`}>Settings</Link>.</>
+            : <>The owner needs to rebuild stats.</>}
         </p>
       )}
       {!!(games ?? []).length && (
@@ -222,7 +221,7 @@ function Standings({ teams, meta, slug, teamIdOf }: Common & { teams: TeamAgg[] 
           <tr>
             <th className="right">Rank</th>
             <th>{meta.individual ? "Player" : "Team"}</th>
-            <th className="right" title={meta.individual ? "Rooms won outright" : undefined}>W</th>
+            <th className="right" title={meta.individual ? "Rooms won" : undefined}>W</th>
             <th className="right">L</th>
             {rows.some((t) => t.ties) && <th className="right">T</th>}
             <th className="right">Pct</th>
@@ -673,7 +672,7 @@ function RoundReport({ games, meta }: { games: GameRow[]; meta: Meta }) {
             {meta.hasPower && <th className="right">{powerHead(meta)}</th>}
             <th className="right">10</th>
             <th className="right">{negHead(meta)}</th>
-            <th className="right" title="Share of tossups read that were answered correctly">Conv%</th>
+            <th className="right" title="Tossup conversion">Conv%</th>
             {bonuses && <th className="right">BHrd</th>}
             {bonuses && <th className="right">PPB</th>}
           </tr>

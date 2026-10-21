@@ -79,7 +79,7 @@ export function QuestionEditor({ slug, hasBonuses }: { slug: string; hasBonuses:
       clearSetCache(slug);
       setBust((b) => b + 1);
       setPicked(new Set());
-      setMsg(`${what} on ${ids.length} ${kind === "tossups" ? "tossup" : "bonus"}${ids.length === 1 ? "" : kind === "tossups" ? "s" : "es"}; stats rebuilt.`);
+      setMsg(`${what} on ${ids.length} ${kind === "tossups" ? "tossup" : "bonus"}${ids.length === 1 ? "" : kind === "tossups" ? "s" : "es"}.`);
     } catch (e) { setErr(String((e as Error).message || e)); } finally { setBusy(false); }
   }
 
@@ -116,7 +116,7 @@ export function QuestionEditor({ slug, hasBonuses }: { slug: string; hasBonuses:
         <button className="btn-link" disabled={busy || !nPicked || !tag.includes(": ")} onClick={() => apply({ addTags: [tag.trim()] }, `Tag “${tag.trim()}” added`)}>Add tag</button>
         <button className="btn-link danger" disabled={busy || !nPicked || !tag.includes(": ")} onClick={() => apply({ removeTags: [tag.trim()] }, `Tag “${tag.trim()}” removed`)}>Remove tag</button>
       </div>
-      {busy && <p className="muted">Saving and rebuilding stats…</p>}
+      {busy && <p className="muted">Saving…</p>}
       {msg && <p className="muted">{msg}</p>}
       {err && <div className="error-box">{err}</div>}
 
@@ -138,7 +138,7 @@ export function QuestionEditor({ slug, hasBonuses }: { slug: string; hasBonuses:
                     <td>{roundLabel(r.round)}</td>
                     <td className="right mono">{r.num}</td>
                     <td>{r.answer}</td>
-                    <td>{r.category}{e?.category && <span className="muted" title="Set by hand; the packet said otherwise"> · edited</span>}</td>
+                    <td>{r.category}{e?.category && <span className="muted" title="Set by hand"> · edited</span>}</td>
                     <td className="muted">{r.tags.join(", ")}</td>
                   </tr>
                 );

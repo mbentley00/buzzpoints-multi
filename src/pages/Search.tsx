@@ -46,7 +46,7 @@ function SetCell({ s }: { s: SetFacts }) {
       <Link className="link search-set" to={`/set/${s.slug}`}>{s.setName}</Link>
       <div className="search-settags">
         {s.visibility !== "public" && (
-          <span className={`vis-badge vis-${s.visibility}`} title={s.visibility === "private" ? "Private — invite-only and unlisted" : "Listed — viewing needs an invite"}>
+          <span className={`vis-badge vis-${s.visibility}`} title={s.visibility === "private" ? "Invite-only and unlisted" : "Viewing needs an invite"}>
             {s.visibility === "private" ? "Private" : "Listed"}
           </span>
         )}
@@ -82,7 +82,7 @@ function BuzzChart({ q }: { q: QuestionHit }) {
   const correct = buzzes.filter(([, v]) => v > 0).map(([w]) => w);
   const avgX = q.avgBuzzPct != null ? (q.avgBuzzPct / 100) * W : null;
   return (
-    <span className="buzz-chart" title={`${q.heard} heard · ${buzzes.length} buzzes, ${correct.length} correct · ${q.convPct ?? 0}% converted${q.avgBuzzPct != null ? ` · average correct buzz ${q.avgBuzzPct}% of the way through` : ""}`}>
+    <span className="buzz-chart" title={`${q.heard} heard · ${buzzes.length} buzzes, ${correct.length} correct · ${q.convPct ?? 0}% converted${q.avgBuzzPct != null ? ` · avg buzz ${q.avgBuzzPct}%` : ""}`}>
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden="true">
         <line x1={0} y1={y(0)} x2={W} y2={y(0)} className="bc-axis" />
         <path d={`${steps(all)} V${y(0)} Z`} className="bc-total" />
@@ -200,7 +200,7 @@ export function Search() {
               <Link className="link" to={`/set/${r.slug}/bonus/${r.id}`}><Html html={primaryAnswer(pt.answer)} /></Link>
               <span className="search-part-stats">
                 {pt.difficulty && <span className="search-part-diff" title="Difficulty mark">{diffShort(pt.difficulty)}</span>}
-                {pt.convPct != null && <span className="search-part-conv" title="Conversion across the tournament (rooms that got it / rooms that heard it)">{rate(pt.convPct, pt.convCount, r.heard)}</span>}
+                {pt.convPct != null && <span className="search-part-conv" title="Conversion">{rate(pt.convPct, pt.convCount, r.heard)}</span>}
               </span>
             </div>
           ))}
@@ -212,11 +212,11 @@ export function Search() {
     { key: "match", label: "Matched text", sortVal: (r) => (matchedText(r, bare) ? 1 : 0), render: (r) => { const t = matchedText(r, bare); return t ? <span className="search-snippet">{t}</span> : <span className="muted">—</span>; } },
     ...(kind !== "bonus" ? [
       { key: "buzz", label: "Buzzes", sortVal: (r: QuestionHit) => r.avgBuzzPct ?? 999, render: (r: QuestionHit) => (r.kind === "tossup" ? <BuzzChart q={r} /> : <span className="muted">—</span>),
-        title: "Cumulative buzzes as the question is read: grey is every buzz, green the correct ones; the dashed line is the average correct buzz." },
+        title: "Grey: all buzzes. Green: correct. Dashed: average correct buzz." },
       { key: "avg", label: "Avg buzz", align: "right" as const, sortVal: (r: QuestionHit) => r.avgBuzzPct ?? 999, render: (r: QuestionHit) => (r.kind === "tossup" && r.avgBuzzPct != null ? `${num(r.avgBuzzPct, 0)}%` : <span className="muted">—</span>),
-        title: "Average correct buzz, as a share of the way through the question. Lower is more buzzable." },
+        title: "Average correct buzz, % through the question" },
       { key: "conv", label: "Conv", align: "right" as const, sortVal: (r: QuestionHit) => r.convPct ?? -1, render: (r: QuestionHit) => (r.kind === "tossup" && r.convPct != null ? <span className="nowrap">{rate(r.convPct, r.correct, r.heard)}</span> : <span className="muted">—</span>),
-        title: "Rooms that answered it correctly, out of rooms that heard it" },
+        title: "Rooms correct / rooms heard" },
       { key: "heard", label: "Heard", align: "right" as const, sortVal: (r: QuestionHit) => r.heard ?? -1, render: (r: QuestionHit) => (r.kind === "tossup" ? r.heard ?? 0 : <span className="muted">—</span>) },
     ] : []),
     { key: "cat", label: "Category", sortVal: (r) => r.category.toLowerCase(), render: (r) => (r.category ? <CategoryTag cat={r.category} /> : <span className="muted">—</span>) },
@@ -240,7 +240,6 @@ export function Search() {
 
       <main className="content content-wide">
         <h1>Search</h1>
-        <p className="subtitle">Find players or questions across public tournaments{user ? " — or every tournament you can view" : ""}.</p>
 
         <form className="search-form" onSubmit={onSubmit}>
           <div className="search-toggle">
@@ -256,7 +255,7 @@ export function Search() {
             autoFocus
           />
           <button className="btn-primary" type="submit">Search</button>
-          <span className="muted search-hint">Quote a term for whole words only: <code>"art"</code></span>
+          <span className="muted search-hint">Quote for whole words: <code>"art"</code></span>
         </form>
         <div className="search-filters">
           {/* Anonymous viewers can only ever see public sets, so the choice is
@@ -287,7 +286,7 @@ export function Search() {
                   <option value="bonus">Bonuses only</option>
                 </select>
               </label>
-              <label className="filter" title="Subjects are matched across tournaments, whatever each one calls them">
+              <label className="filter" title="Matched across tournaments">
                 Category{" "}
                 <select value={cat} onChange={(e) => setFilter({ cat: e.target.value })}>
                   <option value="">All</option>
