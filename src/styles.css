@@ -790,6 +790,7 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
 .cat-table .cat-main-row td { background: var(--surface-2); }
 .cat-table .cat-main-row:hover td { background: var(--hover); }
 .cat-main-row .cat-tag { font-weight: 700; }
+.cat-table .cat-overall-row td { font-weight: 700; border-top: 2px solid var(--line-strong); background: var(--surface-2); }
 .caret {
   border: none;
   background: none;

@@ -892,6 +892,9 @@ const diffPct = (parts: Map<string, [number, number]>, d: string) => { const [g,
 const bnFin = (a: CatBnAcc) => ({ heard: a.heard, ppb: a.heard ? Math.round((100 * a.pts) / a.heard) / 100 : 0, easyPct: diffPct(a.parts, "e"), medPct: diffPct(a.parts, "m"), hardPct: diffPct(a.parts, "h") });
 const bnAdd = (a: CatBnAcc, s: CatBnAcc) => { a.main = a.main || s.main; a.heard += s.heard; a.pts += s.pts; for (const [d, gt] of s.parts) { const slot = a.parts.get(d) || [0, 0]; slot[0] += gt[0]; slot[1] += gt[1]; a.parts.set(d, slot); } };
 const bnNew = (): CatBnAcc => ({ main: "", heard: 0, pts: 0, parts: new Map() });
+// Every category summed. Built from the subcategory stats before merged
+// categories are carved out, so each question counts exactly once.
+const sumAll = <A>(subs: Map<string, A>, mk: () => A, add: (a: A, s: A) => void): A => { const a = mk(); for (const s of subs.values()) add(a, s); return a; };
 
 /* ----------------------------- accumulators ----------------------------- */
 interface TUStat { round: number; num: number; questionHtml: string; answer: string; category: string; subcategory: string; categoryMid: string; tags: string[]; words: string[]; wordCount: number; powerIndex: number | null; }
@@ -1662,6 +1665,7 @@ export function aggregate(
       if (node) bnTree.unshift(node);
     }
     files["categories_bonus.json"] = bnTree;
+    files["categories_bonus_overall.json"] = bnFin(sumAll(catBnSub, bnNew, bnAdd));
     files["bonus_orders.json"] = bonusOrderFile(orderRows);
     // Same grouping-by-dimension as the tossup tags, with bonus columns.
     const bnTagDims = new Map<string, { tag: string; value: string; stats: ReturnType<typeof bnFin> }[]>();
@@ -1956,6 +1960,7 @@ export function aggregate(
     ct.unshift(node);
   }
   files["categories_tossup.json"] = ct;
+  files["categories_tossup_overall.json"] = tuCatFin(sumAll(catTuSub, tuCatNew, tuCatAdd));
 
   // Tags, grouped by dimension ("Writer", "Difficulty", …) and ordered by how
   // much of the set each one covers.
@@ -2191,6 +2196,7 @@ export function bonusFilesFromImported(list: ImportedBonus[], virtualCats: Virtu
   }
   return {
     "bonuses.json": bnSumm, "bonuses_detail.json": bnDetail, "categories_bonus.json": bnTree,
+    "categories_bonus_overall.json": bnFin(sumAll(catBnSub, bnNew, bnAdd)),
     "bonus_orders.json": bonusOrderFile(orderRows),
   };
 }

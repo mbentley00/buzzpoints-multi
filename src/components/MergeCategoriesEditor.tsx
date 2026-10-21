@@ -1,5 +1,9 @@
 import { useMemo, useState } from "react";
-import { CatTossupRow, VirtualCategory } from "../types";
+import { VirtualCategory } from "../types";
+
+// The parts of a tossup or bonus category tree the editor reads.
+interface Sub { subcategory: string; subLabel: string; leaves?: Sub[] }
+interface Group { category: string; virtual?: boolean; subs: Sub[] }
 import { clearSetCache } from "../data";
 
 interface Option { value: string; label: string; depth: number }
@@ -7,10 +11,21 @@ interface Option { value: string; label: string; depth: number }
 // Owner-only panel for creating/editing merged ("virtual") categories. The whole
 // list is sent to /api/categories on save, which replaces the stored definitions
 // and re-aggregates the set.
-export function MergeCategoriesEditor({ slug, groups }: { slug: string; groups: CatTossupRow[] }) {
+export function MergeCategoriesEditor({ slug, groups }: { slug: string; groups: Group[] }) {
   // Existing merged categories, reconstructed from the synthetic nodes in the tree.
   const existing = useMemo<VirtualCategory[]>(
-    () => groups.filter((g) => g.virtual).map((g) => ({ name: g.category, members: g.subs.map((s) => s.subcategory) })),
+    // Both trees come in, and a merge can show up in either or both, so
+    // members are unioned by name.
+    () => {
+      const by = new Map<string, Set<string>>();
+      for (const g of groups) {
+        if (!g.virtual) continue;
+        const m = by.get(g.category) ?? new Set<string>();
+        for (const s of g.subs) m.add(s.subcategory);
+        by.set(g.category, m);
+      }
+      return [...by].map(([name, m]) => ({ name, members: [...m] }));
+    },
     [groups]
   );
   // Every category/subcategory/leaf, flattened for the picker — including the

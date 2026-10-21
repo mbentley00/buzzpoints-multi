@@ -1,15 +1,30 @@
+import { useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { useScopedJson, useSetCtx } from "../components/Layout";
-import { CatBonusRow, CatBonusSub } from "../types";
+import { CatBonusRow, CatBonusSub, CatTossupRow } from "../types";
 import { pct, num } from "../util";
 import { CategoryGroups, CatColumn } from "../components/CategoryGroups";
 import { PageHeader, Loading, ErrorBox } from "../components/Common";
 import { CategoryMappingNotice } from "../components/CategoryMappingNotice";
+import { MergeCategoriesEditor } from "../components/MergeCategoriesEditor";
 
 export function CategoriesBonus() {
   const { slug = "" } = useParams();
   const { meta, isOwner } = useSetCtx();
   const { data, error, loading } = useScopedJson<CatBonusRow[]>("categories_bonus.json");
+  const { data: tuCats } = useScopedJson<CatTossupRow[]>("categories_tossup.json");
+  const { data: totals, loading: totalsLoading } = useScopedJson<CatBonusRow>("categories_bonus_overall.json");
+  const overall = useMemo<CatBonusRow | null>(() => {
+    if (totalsLoading || !data?.length) return null;
+    if (totals) return { ...totals, category: "Overall", subs: [] };
+    // Built before the totals file existed: the rounded rates can't be summed
+    // back exactly, so only Heard. Merged categories could share members.
+    if (data.some((g) => g.virtual)) return null;
+    return {
+      category: "Overall", subs: [], heard: data.reduce((a, g) => a + g.heard, 0),
+      ppb: null, easyPct: null, medPct: null, hardPct: null,
+    } as unknown as CatBonusRow;
+  }, [data, totals, totalsLoading]);
 
   const columns: CatColumn<CatBonusRow, CatBonusSub>[] = [
     { label: "Heard", align: "right", main: (g) => g.heard, sub: (s) => s.heard },
@@ -25,7 +40,8 @@ export function CategoriesBonus() {
       <CategoryMappingNotice slug={slug} show={!!isOwner && !!meta.needsCategoryMapping} />
       {loading && <Loading />}
       {error && <ErrorBox error={error} />}
-      {data && <CategoryGroups groups={data} columns={columns} linkBase={`/set/${slug}/bonus`} mainParam="category" subParam="subcategory" />}
+      {data && tuCats && isOwner && <MergeCategoriesEditor slug={slug} groups={[...tuCats, ...data]} />}
+      {data && <CategoryGroups groups={data} columns={columns} linkBase={`/set/${slug}/bonus`} mainParam="category" subParam="subcategory" overall={overall} />}
     </div>
   );
 }

@@ -25,6 +25,8 @@ export interface CatColumn<G, S> {
   sortMain?: (g: G) => number | string | null;
   /** The same for subcategory and leaf rows. */
   sortSub?: (s: S) => number | string | null;
+  /** The cell on the Overall row; defaults to `main`. */
+  overall?: (g: G) => ReactNode;
 }
 
 interface Props<G extends GroupBase<S>, S extends SubBase> {
@@ -33,6 +35,8 @@ interface Props<G extends GroupBase<S>, S extends SubBase> {
   linkBase: string; // e.g. /set/pace-nsc-2026/tossup
   mainParam: string; // "category"
   subParam: string; // "subcategory"
+  /** Every category together, pinned below the table whatever the sort. */
+  overall?: G | null;
 }
 
 function alignClass(a?: "right" | "center") {
@@ -65,6 +69,7 @@ export function CategoryGroups<G extends GroupBase<S>, S extends SubBase>({
   linkBase,
   mainParam,
   subParam,
+  overall,
 }: Props<G, S>) {
   const [openMains, setOpenMains] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(groups.map((g) => [g.category, true]))
@@ -249,6 +254,18 @@ export function CategoryGroups<G extends GroupBase<S>, S extends SubBase>({
               </Fragment>
             ))}
           </tbody>
+          {overall && (
+            <tfoot>
+              <tr className="cat-overall-row">
+                <td><span className="caret-spacer" />Overall</td>
+                {columns.map((c) => (
+                  <td key={c.label} className={alignClass(c.align)}>
+                    {(c.overall ?? c.main)(overall)}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
     </div>
