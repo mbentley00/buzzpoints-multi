@@ -33,7 +33,7 @@ export interface GameFile {
   match_teams?: {
     bonus_points?: number;
     team?: { name?: string; players?: { name?: string }[] };
-    match_players?: { player?: { name?: string }; tossups_heard?: number }[];
+    match_players?: { player?: { name?: string }; tossups_heard?: number; answer_counts?: { number?: number }[] }[];
   }[];
   match_questions?: {
     // MODAQ's tossup number in the game (the reading order, replacements
@@ -1111,6 +1111,11 @@ export function aggregate(
     if (!v) { v = { name, team, games: new Set(), tuh: 0, powers: 0, gets: 0, incorrect: 0, pts: 0, unread: 0 }; pl.set(k, v); }
     return v;
   };
+  // Who a team listed in each game, with each player's recorded tossups heard.
+  // `complete` = the file lists a player who never buzzed, so it lists the whole
+  // lineup and anyone missing from it sat that game out.
+  type Lineup = { gameTuh: number; complete: boolean; listed: Map<string, number> };
+  const tmLineups = new Map<string, Lineup[]>();
   const tmOf = (k: string): TM => { let v = tm.get(k); if (!v) { v = { games: 0, wins: 0, losses: 0, ties: 0, tuPts: 0, bonusPts: 0, bonusesHeard: 0, powers: 0, gets: 0, incorrect: 0, tuh: 0, fullTuh: 0, unread: 0 }; tm.set(k, v); } return v; };
   const nestCat = <V>(m: Map<string, Map<string, V>>, k: string, sub: string, make: () => V): V => {
     let inner = m.get(k); if (!inner) { inner = new Map(); m.set(k, inner); }
@@ -1227,9 +1232,15 @@ export function aggregate(
       let rs = rosters.get(tname);
       if (!rs) { rs = new Set(); rosters.set(tname, rs); }
       for (const p of mt.team?.players || []) if (p?.name) rs.add(renamed(p.name, tname));
+      const lineup: Lineup = { gameTuh, complete: false, listed: new Map() };
+      if (!tmLineups.has(tname)) tmLineups.set(tname, []);
+      tmLineups.get(tname)!.push(lineup);
       for (const mp of mt.match_players || []) {
         const pname = mp.player?.name ? renamed(mp.player.name, tname) : undefined;
         if (!pname) continue;
+        const pk = plKey(pname, tname);
+        lineup.listed.set(pk, (lineup.listed.get(pk) || 0) + (mp.tossups_heard || 0));
+        if (Array.isArray(mp.answer_counts) && !mp.answer_counts.some((a) => (a?.number || 0) > 0)) lineup.complete = true;
         rs.add(pname);
         const pv = plOf(pname, tname);
         pv.games.add(gameId);
@@ -1715,6 +1726,12 @@ export function aggregate(
 
   const players: Record<string, unknown>[] = [];
   const plDetail: Record<string, unknown> = {};
+  // Share of the team's tossups each player was in for. Files don't say which
+  // tossups a sub heard, so a player's per-category denominators are the
+  // team's, scaled by this.
+  const plShare = new Map<string, number>();
+  const scaleHeard = (m: Map<string, number> | undefined, f: number) =>
+    m && f !== 1 ? new Map([...m].map(([c, n]) => [c, n * f] as [string, number])) : m;
   const teamRoster = new Map<string, Record<string, unknown>[]>();
   let pidx = 0;
   for (const [k, s] of pl) {
@@ -1723,9 +1740,20 @@ export function aggregate(
     // a player's own game/TUH tallies undercount games they played without buzzing.
     // Credit every player with all the games (and full tossups-heard) that their
     // team played, so games/TUH/PPG reflect the rounds their team was in.
+    // Where a game's file records a player's tossups heard, that number wins,
+    // so a sub isn't charged for tossups read while on the bench.
     const tmStats = tm.get(s.team);
-    const g = tmStats ? tmStats.games : s.games.size;
-    const tuh = tmStats ? tmStats.fullTuh : s.tuh;
+    const lineups = tmLineups.get(s.team);
+    let g = s.games.size, tuh = s.tuh;
+    if (tmStats && lineups) {
+      g = 0; tuh = 0;
+      for (const L of lineups) {
+        const rec = L.listed.get(k);
+        const h = rec ? Math.min(rec, L.gameTuh) : L.complete ? 0 : L.gameTuh;
+        if (h > 0) { g++; tuh += h; }
+      }
+    }
+    plShare.set(k, tmStats?.fullTuh ? tuh / tmStats.fullTuh : 1);
     // Rebounds: tossups this player converted after another team had buzzed wrong
     // (already flagged per-buzz in the buzz log).
     const rebounds = (plBuzzes.get(k) || []).filter((b) => b.rebound).length;
@@ -1741,7 +1769,7 @@ export function aggregate(
     players.push(row);
     if (!teamRoster.has(s.team)) teamRoster.set(s.team, []);
     teamRoster.get(s.team)!.push(row);
-    plDetail[pid] = { ...row, categories: catStatRows(plCat.get(k), s.pts || 0, tmCatHeardMid.get(s.team)), buzzes: buzzRowsFor(s.name, s.team) };
+    plDetail[pid] = { ...row, categories: catStatRows(plCat.get(k), s.pts || 0, scaleHeard(tmCatHeardMid.get(s.team), plShare.get(k)!)), buzzes: buzzRowsFor(s.name, s.team) };
   }
   players.sort((a, b) => (b.ppg as number) - (a.ppg as number));
   files["players.json"] = players;
@@ -1916,7 +1944,7 @@ export function aggregate(
         // The BPA denominator for this slice: what the player's team heard in
         // each subcategory the filter matched. Summing is right because a tossup
         // belongs to exactly one subcategory, so nothing is counted twice.
-        agg.tuh += tmCatHeardSub.get(p.team)?.get(fs) || 0;
+        agg.tuh += (tmCatHeardSub.get(p.team)?.get(fs) || 0) * (plShare.get(k) ?? 1);
         if (c.earliest !== null) agg.earliest = agg.earliest === null ? c.earliest : Math.min(agg.earliest, c.earliest);
         agg.first += firstPlfc.get(`${k}${SEP}${fs}`) || 0;
         agg.top3 += top3Plfc.get(`${k}${SEP}${fs}`) || 0;
