@@ -168,19 +168,10 @@ export function BonusOrders() {
   return (
     <div className="detail">
       <div className="breadcrumb"><Link to={`/set/${slug}/bonus`} className="link">← Bonuses</Link></div>
-      <PageHeader
-        title="Bonuses — Difficulty order"
-        subtitle="How each bonus format converted, and whether a part played to its billing"
-      />
-      <p className="explainer">
-        Bonuses grouped by the order they present their difficulties in — <strong>HEM</strong> is hard, easy, medium.
-        Every percentage reads <strong>easy, then medium, then hard</strong>, whichever order the format itself uses, so
-        the same billing lines up down the page: whether the hard part of an <strong>HEM</strong> bonus really played
-        harder than the hard part of an <strong>MEH</strong> one. The marks beside each name are the order's own
-        sequence, and the numbered columns are the positions in the bonus, so you can still see where each difficulty
-        actually sat. Open an order to break it down by category, and a category to reach its subcategories.
-        {meta.hasTeamBonuses === false && " Conversion here comes from the imported per-part totals."}
-      </p>
+      <PageHeader title="Bonuses — Difficulty order" />
+      {meta.hasTeamBonuses === false && (
+        <p className="explainer">Conversion here comes from the imported per-part totals.</p>
+      )}
       {rows.length === 0 && (
         <p className="muted">
           No bonus difficulty marks in this tournament, so there are no orders to compare.{" "}

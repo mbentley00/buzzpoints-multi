@@ -74,11 +74,6 @@ export function BuzzerRaces() {
         </label>
         <SearchInput value={q} onChange={setQ} placeholder="Search clue / category" />
       </PageHeader>
-      <p className="explainer">
-        Each row is a tossup's <strong>hottest 5-word window</strong> — the stretch of text where the largest
-        number of buzzes cluster. A high count near the end is a giveaway scramble; a high count early is a clue
-        many teams recognized fast.
-      </p>
       {loading && <Loading />}
       {error && <ErrorBox error={error} />}
       {data && <DataTable rows={rows} columns={columns} initialSort="buzzes" initialDir="desc" rowKey={(r) => r.id} />}

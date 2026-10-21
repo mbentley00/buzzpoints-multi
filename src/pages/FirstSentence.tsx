@@ -91,8 +91,7 @@ export function FirstSentence() {
         <SearchInput value={q} onChange={setQ} placeholder="Search clue / player / team" />
       </PageHeader>
       <p className="explainer">
-        Every tossup where at least one team buzzed during the <strong>first sentence</strong> — the deepest,
-        fastest knowledge in the set. Sorted by how many teams got there.
+        Every tossup where at least one team buzzed during the <strong>first sentence</strong>.
       </p>
       {loading && <Loading />}
       {error && <ErrorBox error={error} />}
