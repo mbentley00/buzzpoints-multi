@@ -4,7 +4,7 @@ import { scanDataFolder, filesFromPicker, filesFromZip, mirrorPackets, mirrorCov
 import { stageEditions, ingestPostRetry, StageEdition } from "../ingestClient";
 
 // Settings → "Replace all data": swap every edition's packets and games for a
-// fresh buzzpoint-migrator export (.db, data folder or .zip) while the set keeps
+// fresh buzzpoint-migrator export (data folder or .zip) while the set keeps
 // its address, name, owner, visibility, invites and corrections.
 
 interface Ed { id: string; label: string; numGames?: number }
@@ -32,7 +32,6 @@ export function ReplaceData({ slug, setName, scoring, editions, onDone }: {
 }) {
   const dirInput = useRef<HTMLInputElement>(null);
   const zipInput = useRef<HTMLInputElement>(null);
-  const dbInput = useRef<HTMLInputElement>(null);
   const [scan, setScan] = useState<FolderScan | null>(null);
   const [setKey, setSetKey] = useState("");
   const [skip, setSkip] = useState<Set<string>>(new Set());
@@ -64,15 +63,11 @@ export function ReplaceData({ slug, setName, scoring, editions, onDone }: {
     setLabels(Object.fromEntries(g.mirrors.map((m) => [m.name, rep[m.name] ? oldById.get(rep[m.name])!.label : m.label])));
   }
 
-  async function onPick(list: FileList | null, zip?: File, db?: File) {
+  async function onPick(list: FileList | null, zip?: File) {
     setErr(null); setDone(null); setScan(null); setScanMsg("");
     try {
       let files;
-      if (db) {
-        setScanMsg("Reading the database…");
-        const { readMigratorDb } = await import("../migratorDbLoad");
-        files = (await readMigratorDb(db)).files;
-      } else if (zip) { setScanMsg("Unzipping…"); files = await filesFromZip(zip); }
+      if (zip) { setScanMsg("Unzipping…"); files = await filesFromZip(zip); }
       else files = list ? filesFromPicker(list) : [];
       if (!files.length) { setScanMsg(""); return; }
       const sc = await scanDataFolder(files, setScanMsg);
@@ -126,7 +121,6 @@ export function ReplaceData({ slug, setName, scoring, editions, onDone }: {
   return (
     <div className="create-form" style={{ maxWidth: 820 }}>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <button type="button" className="btn-secondary" disabled={busy || !!scanMsg} onClick={() => dbInput.current?.click()}>Choose a .db…</button>
         <button type="button" className="btn-secondary" disabled={busy || !!scanMsg} onClick={() => dirInput.current?.click()}>Choose folder…</button>
         <button type="button" className="btn-secondary" disabled={busy || !!scanMsg} onClick={() => zipInput.current?.click()}>Choose a .zip…</button>
       </div>
@@ -137,7 +131,6 @@ export function ReplaceData({ slug, setName, scoring, editions, onDone }: {
         onChange={(e) => { onPick(e.target.files); e.target.value = ""; }}
       />
       <input ref={zipInput} type="file" hidden accept=".zip" onChange={(e) => { const f = e.target.files?.[0]; if (f) onPick(null, f); e.target.value = ""; }} />
-      <input ref={dbInput} type="file" hidden accept=".db,.sqlite,.sqlite3" onChange={(e) => { const f = e.target.files?.[0]; if (f) onPick(null, undefined, f); e.target.value = ""; }} />
       {scanMsg && <small className="muted">{scanMsg}</small>}
 
       {scan && group && (

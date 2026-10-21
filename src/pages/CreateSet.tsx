@@ -90,7 +90,6 @@ export function CreateSet() {
   const [folderSkip, setFolderSkip] = useState<Set<string>>(new Set());
   const dirInput = useRef<HTMLInputElement>(null);
   const zipInput = useRef<HTMLInputElement>(null);
-  const dbInput = useRef<HTMLInputElement>(null);
   const [yfFile, setYfFile] = useState<File[]>([]);
   const [visibility, setVisibility] = useState<Visibility>("listed");
   const [autoPublish, setAutoPublish] = useState(true);
@@ -152,17 +151,11 @@ export function CreateSet() {
     return [x.id, x.games.length && v.packets.length ? sitePacketPlan(x.roundPacket, v.packets) : null] as const;
   })), [sites, versions]);
 
-  async function onFolder(list: FileList | null, zip?: File, db?: File) {
+  async function onFolder(list: FileList | null, zip?: File) {
     setError(null); setScan(null); setScanMsg("");
     try {
       let files;
-      if (db) {
-        setScanMsg("Reading the database…");
-        // Loaded on demand: the SQLite reader is only needed for a .db.
-        const { readMigratorDb } = await import("../migratorDbLoad");
-        files = (await readMigratorDb(db)).files;
-      }
-      else if (zip) { setScanMsg("Unzipping…"); files = await filesFromZip(zip); }
+      if (zip) { setScanMsg("Unzipping…"); files = await filesFromZip(zip); }
       else files = list ? filesFromPicker(list) : [];
       if (!files.length) return;
       const sc = await scanDataFolder(files, setScanMsg);
@@ -512,7 +505,7 @@ export function CreateSet() {
             <span>How do you want to add this tournament?</span>
             <select value={mode} onChange={(e) => setMode(e.target.value as "upload" | "folder" | "import")}>
               <option value="upload">Upload packets &amp; game files (.qbj / .json)</option>
-              <option value="folder">Upload a buzzpoint-migrator database or data folder (every site at once)</option>
+              <option value="folder">Upload a data folder of QBJs (every site at once)</option>
               <option value="import">Import from an existing Buzzpoints site</option>
             </select>
           </label>
@@ -619,9 +612,8 @@ export function CreateSet() {
 
           {mode === "folder" && (
             <div className="field">
-              <span>Database or data folder</span>
+              <span>Data folder</span>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button type="button" className="btn-secondary" disabled={busy || !!scanMsg} onClick={() => dbInput.current?.click()}>Choose a .db…</button>
                 <button type="button" className="btn-secondary" disabled={busy || !!scanMsg} onClick={() => dirInput.current?.click()}>Choose folder…</button>
                 <button type="button" className="btn-secondary" disabled={busy || !!scanMsg} onClick={() => zipInput.current?.click()}>Choose a .zip…</button>
               </div>
@@ -632,9 +624,8 @@ export function CreateSet() {
                 onChange={(e) => { onFolder(e.target.files); e.target.value = ""; }}
               />
               <input ref={zipInput} type="file" hidden accept=".zip" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFolder(null, f); e.target.value = ""; }} />
-              <input ref={dbInput} type="file" hidden accept=".db,.sqlite,.sqlite3" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFolder(null, undefined, f); e.target.value = ""; }} />
               {scanMsg && <small className="muted">{scanMsg}</small>}
-              {!scan && !scanMsg && <small className="muted">The migrator's <code>.db</code>, or the folder (or .zip) holding <code>question_sets/</code> and <code>tournaments/</code>.</small>}
+              {!scan && !scanMsg && <small className="muted">The folder (or .zip) holding <code>question_sets/</code> and <code>tournaments/</code>.</small>}
             </div>
           )}
           {mode === "folder" && scan && scanGroup && (

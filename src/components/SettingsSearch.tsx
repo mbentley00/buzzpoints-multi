@@ -64,7 +64,7 @@ export const SETTINGS_INDEX: Entry[] = [
   { id: "uploads", tab: "files", title: "Remove rounds", section: "Rounds & games", words: "delete round clear edition remove by team wrong upload", when: src },
   { id: "klaxon", tab: "files", title: "Klaxon buzz logs", words: "buzzer presses races klaxon log", when: src },
   { id: "replacements", tab: "files", title: "Tiebreakers & replacements", words: "tiebreaker replacement question missing packet extra tossup", when: src },
-  { id: "replace", tab: "files", title: "Replace all data", words: "migrator db data folder zip swap reupload new export", when: src },
+  { id: "replace", tab: "files", title: "Replace all data", words: "migrator data folder zip qbj swap reupload new export", when: src },
   // Players & teams
   { id: "renames", tab: "renames", title: "Rename players and teams", words: "typo spelling merge player team name combine school", when: src },
   { id: "f-appliedrenames", tab: "renames", title: "Applied renames", section: "Rename players and teams", words: "undo rename list history", when: src },

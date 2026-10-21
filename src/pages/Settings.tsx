@@ -793,7 +793,7 @@ export function Settings() {
               <ReplacementEditor slug={slug} />
             </Sec>
 
-            <Sec id="replace" title="Replace all data" line="Swap in a new .db or data folder." help="replace" fold>
+            <Sec id="replace" title="Replace all data" line="Swap in a new data folder." help="replace" fold>
               <ReplaceData
                 slug={slug} setName={meta?.setName ?? ""} scoring={meta?.scoring ?? ""}
                 editions={editions.length ? editions : [{ id: "e0", label: "Original" }]}

@@ -84,7 +84,7 @@ const SECTIONS: { tab: string; items: { id: string; title: string; body: JSX.Ele
         <p>A race is an opponent press within one second. Slower ones count as late presses. QBJ stats don't change.</p>
       </> },
       { id: "replace", title: "Replace all data", body: <>
-        <p>Takes a buzzpoint-migrator <code>.db</code>, its data folder, or a .zip of it. A replaced edition keeps its name, phases and replacement mappings. Editions nothing replaces are removed. Corrections for buzzes or games missing from the new file stop showing. No undo.</p>
+        <p>Takes a data folder (<code>question_sets/</code> and <code>tournaments/</code> with the QBJs), or a .zip of it. A replaced edition keeps its name, phases and replacement mappings. Editions nothing replaces are removed. Corrections for buzzes or games missing from the new file stop showing. No undo.</p>
       </> },
     ],
   },
