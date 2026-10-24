@@ -5,6 +5,7 @@ import { useSetJson } from "../data";
 import { GameRow, GameTeamLine, Meta, TeamRow } from "../types";
 import { num, roundLabel, byLabel } from "../util";
 import { PageHeader, Loading, ErrorBox } from "../components/Common";
+import { useNameOrder, compareNames } from "../nameOrder";
 
 // The standard stats report — the same six views, columns and column order a
 // YellowFruit export puts on the Quizbowl Resource Center, so a tournament here
@@ -517,7 +518,8 @@ function TeamDetail({ teams, meta, slug, teamIdOf }: Common & { teams: TeamAgg[]
 /* ----------------------------- 5. Individual Detail ----------------------------- */
 
 function IndividualDetail({ players, meta, slug, teamIdOf }: Common & { players: PlayerAgg[] }) {
-  const rows = [...players].sort((a, b) => a.team.localeCompare(b.team) || a.name.localeCompare(b.name));
+  const order = useNameOrder();
+  const rows = [...players].sort((a, b) => a.team.localeCompare(b.team) || compareNames(a.name, b.name, order));
   return (
     <div className="std-detail">
       {rows.map((p) => (

@@ -1466,3 +1466,7 @@ a.auth-user:hover { color: #fff; text-decoration: underline; }
 .settings-page [id] { scroll-margin-top: 16px; }
 @keyframes set-flash { from { background: var(--accent-soft); } to { background: transparent; } }
 .settings-page .set-flash { animation: set-flash 2.2s ease-out; border-radius: 4px; }
+.name-order { margin-left: 8px; font-weight: 400; font-size: 11px; color: var(--muted); }
+.name-order button { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.name-order button:hover { color: var(--link); }
+.name-order button.on { font-weight: 700; color: var(--ink); }

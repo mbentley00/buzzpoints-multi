@@ -12,7 +12,7 @@ export function CategoryPlayersPage() {
   const data = all?.[cid];
 
   const columns: Column<CategoryPlayerRow>[] = [
-    { key: "name", label: "Player", sortVal: (p) => p.name.toLowerCase(), render: (p) => (p.playerId ? <Link className="link" to={`/set/${slug}/player/${p.playerId}`}>{p.name}</Link> : p.name) },
+    { key: "name", label: "Player", personName: (p) => p.name, render: (p) => (p.playerId ? <Link className="link" to={`/set/${slug}/player/${p.playerId}`}>{p.name}</Link> : p.name) },
     // In a shootout the "team" is the player again — nothing to show.
     ...(meta.individual ? [] : [{ key: "team", label: "Team", sortVal: (p: CategoryPlayerRow) => p.team.toLowerCase(), render: (p: CategoryPlayerRow) => (p.teamId ? <Link className="link" to={`/set/${slug}/team/${p.teamId}`}>{p.team}</Link> : p.team) }]),
     ...(meta.hasPower ? [{ key: "pwr", label: "Pwr", align: "right" as const, sortVal: (p: CategoryPlayerRow) => p.powers, render: (p: CategoryPlayerRow) => p.powers, title: "Powers" }] : []),

@@ -47,7 +47,7 @@ export function Klaxon() {
 
   const raceMs = data.raceMs;
   const pcols: Column<KlaxonPlayer>[] = [
-    { key: "name", label: "Player", sortVal: (p) => p.name.toLowerCase(), render: (p) => (p.id ? <Link className="link" to={`/set/${slug}/player/${p.id}`}>{p.name}</Link> : p.name) },
+    { key: "name", label: "Player", personName: (p) => p.name, render: (p) => (p.id ? <Link className="link" to={`/set/${slug}/player/${p.id}`}>{p.name}</Link> : p.name) },
     ...(meta.individual ? [] : [{ key: "team", label: "Team", sortVal: (p: KlaxonPlayer) => p.team.toLowerCase(), render: (p: KlaxonPlayer) => (p.teamId ? <Link className="link" to={`/set/${slug}/team/${p.teamId}`}>{p.team}</Link> : p.team) }]),
     { key: "races", label: "Races", align: "right", sortVal: (p) => p.races, render: (p) => p.races, title: `Decided by under ${fmtMs(raceMs)}` },
     { key: "won", label: "Won", align: "right", sortVal: (p) => p.won, render: (p) => p.won },

@@ -27,7 +27,7 @@ export function Players() {
   const showEditions = scope === "all" && editions.length > 1 && (data ?? []).some((p) => p.editionIds?.length);
 
   const columns: Column<PlayerRow>[] = [
-    { key: "name", label: "Player", sortVal: (p) => p.name.toLowerCase(), render: (p) => <Link className="link" to={`/set/${slug}/player/${p.id}`}>{p.name}</Link> },
+    { key: "name", label: "Player", personName: (p) => p.name, render: (p) => <Link className="link" to={`/set/${slug}/player/${p.id}`}>{p.name}</Link> },
     // In a shootout the "team" is the player again — nothing to show.
     ...(meta.individual ? [] : [{ key: "team", label: "Team", sortVal: (p: PlayerRow) => p.team.toLowerCase(), render: (p: PlayerRow) => (p.teamId ? <Link className="link" to={`/set/${slug}/team/${p.teamId}`}>{p.team}</Link> : p.team) }]),
     ...(showEditions

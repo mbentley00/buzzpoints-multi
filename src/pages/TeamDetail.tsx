@@ -231,7 +231,7 @@ export function TeamDetailPage() {
   ];
 
   const rosterCols: Column<RosterPlayer>[] = [
-    { key: "name", label: "Player", sortVal: (p) => p.name.toLowerCase(), render: (p) => <Link className="link" to={`/set/${slug}/player/${p.id}`}>{p.name}</Link> },
+    { key: "name", label: "Player", personName: (p) => p.name, render: (p) => <Link className="link" to={`/set/${slug}/player/${p.id}`}>{p.name}</Link> },
     { key: "games", label: "GP", align: "right", sortVal: (p) => p.games, render: (p) => p.games },
     ...(meta.hasPower ? [{ key: "powers", label: "Pwr", align: "right" as const, sortVal: (p: RosterPlayer) => p.powers, render: (p: RosterPlayer) => p.powers }] : []),
     { key: "gets", label: "Get", align: "right", sortVal: (p) => p.gets, render: (p) => p.gets },

@@ -176,7 +176,7 @@ export function Search() {
   const setFilter = (more: Filters) => run(q, typeSel, more);
 
   const playerCols: Column<PlayerHit>[] = [
-    { key: "name", label: "Player", sortVal: (p) => p.name.toLowerCase(), render: (p) => <Link className="link" to={`/set/${p.slug}/player/${p.playerId}`}>{p.name}</Link> },
+    { key: "name", label: "Player", personName: (p) => p.name, render: (p) => <Link className="link" to={`/set/${p.slug}/player/${p.playerId}`}>{p.name}</Link> },
     { key: "team", label: "Team", sortVal: (p) => p.team.toLowerCase(), render: (p) => (p.team && p.team !== p.name ? p.team : <span className="muted">—</span>) },
     { key: "set", label: "Tournament", sortVal: (p) => p.setName.toLowerCase(), render: (p) => <SetCell s={p} /> },
     { key: "year", label: "Added", align: "right", sortVal: (p) => p.createdAt || "", render: (p) => yearOf(p.createdAt) },
