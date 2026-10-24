@@ -926,6 +926,12 @@ type BnCat = { heard: number; pts: number; main: string; parts: Map<string, [num
 // Tossups heard carry over from whatever the source recorded against the
 // player; bonus points are re-summed from the parts, since the source's
 // per-team bonus total belongs to a team that no longer exists.
+export const stripParens = (name: string) => {
+  let s = name, prev;
+  do { prev = s; s = s.replace(/\s*\([^()]*\)/g, ""); } while (s !== prev);
+  return s.replace(/\s+/g, " ").trim() || name;
+};
+
 export function individualize(g: GameFile): GameFile {
   const teams = new Map<string, { tuh: number | undefined; bonus: number }>();
   const of = (name: string) => {
@@ -934,9 +940,9 @@ export function individualize(g: GameFile): GameFile {
     return t;
   };
   for (const mt of g.match_teams || []) {
-    for (const p of mt.team?.players || []) if (p?.name) of(p.name);
+    for (const p of mt.team?.players || []) if (p?.name) of(stripParens(p.name));
     for (const mp of mt.match_players || []) {
-      const n = mp.player?.name;
+      const n = mp.player?.name && stripParens(mp.player.name);
       if (!n) continue;
       const t = of(n);
       if (mp.tossups_heard != null) t.tuh = (t.tuh ?? 0) + (mp.tossups_heard || 0);
@@ -945,7 +951,7 @@ export function individualize(g: GameFile): GameFile {
   const match_questions = (g.match_questions || []).map((mq) => {
     let controller: string | null = null;
     const buzzes = (mq.buzzes || []).map((bz) => {
-      const n = bz.player?.name;
+      const n = bz.player?.name && stripParens(bz.player.name);
       if (!n) return bz;
       of(n);
       if ((bz.result?.value ?? 0) > 0) controller = n;
@@ -1025,10 +1031,17 @@ export function aggregate(
     // renamed team of one.
     renameAt.set(`${cfg.individual ? "" : r.team ?? ""}${SEP}${r.from}`, r.to);
   }
-  const renamed = renameAt.size
-    ? (name: string, team: string | null) =>
-        renameAt.get(`${team ?? ""}${SEP}${name}`) ?? renameAt.get(`${SEP}${name}`) ?? name
-    : (name: string) => name;
+  // Parenthetical tags on a player's name — "(DII)", "(UG)", "(Fr.)" — are
+  // dropped, so a tagged and untagged spelling are one player. A rename may
+  // name either spelling.
+  const renamed = (name: string, team: string | null) => {
+    const bare = stripParens(name);
+    const hit = renameAt.size
+      ? renameAt.get(`${team ?? ""}${SEP}${name}`) ?? renameAt.get(`${team ?? ""}${SEP}${bare}`) ??
+        renameAt.get(`${SEP}${name}`) ?? renameAt.get(`${SEP}${bare}`)
+      : undefined;
+    return hit ?? bare;
+  };
 
   const tossups = new Map<string, TUStat>();
   const bonuses = new Map<string, BNStat>();
