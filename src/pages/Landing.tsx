@@ -53,6 +53,9 @@ const SCORING_LABELS: Record<string, string> = {
 };
 const scoringLabel = (id: string) => SCORING_LABELS[id] ?? id;
 
+// How many of your own tournaments show before "Show all".
+const MINE_CAP = 5;
+
 type Sort = "new" | "old" | "played-new" | "played-old" | "name" | "games";
 
 // A tournament date is a calendar day with no time zone; read it as local so
@@ -78,6 +81,7 @@ export function Landing() {
   const [vis, setVis] = useState<string>("all");
   const [lvl, setLvl] = useState<string>("all");
   const [sort, setSort] = useState<Sort>("new");
+  const [mineOpen, setMineOpen] = useState(false);
 
   // Scoring formats actually present, so the filter only offers real options.
   const scoringOpts = useMemo(
@@ -225,10 +229,10 @@ export function Landing() {
         {showControls && filtered.length === 0 && (
           <p className="muted">No matches.</p>
         )}
-        {/* Every match is rendered — no paging. The list is the main way people
-            find a tournament, and a browser's own Ctrl+F only searches what's in
-            the page, so anything behind a "show more" button is invisible to it.
-            One flat row per set keeps a few hundred of them scannable. */}
+        {/* Every public match is rendered — no paging. The list is the main way
+            people find a tournament, and a browser's own Ctrl+F only searches
+            what's in the page, so anything behind a "show more" button is
+            invisible to it. Only your own group folds to its MINE_CAP newest. */}
         {filtered.length > 0 && (() => {
           const renderRow = (s: SetEntry) => (
             <Link key={s.slug} to={s.kind === "results" ? `/set/${s.slug}` : `/set/${s.slug}/tossup`} className="set-row">
@@ -262,12 +266,30 @@ export function Landing() {
           const sections = ([0, 1, 2] as const)
             .map((g) => ({ g, items: filtered.filter((s) => groupOf(s, user) === g) }))
             .filter((sec) => sec.items.length);
+          // Your own group shows its MINE_CAP most recently added, in the list's
+          // order, until expanded. A search shows every match.
+          const folds = (g: number, n: number) => g === 0 && n > MINE_CAP && !mineOpen && !q.trim();
+          const shown = (g: number, items: SetEntry[]) => {
+            if (!folds(g, items.length)) return items;
+            const keep = new Set([...items].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || "")).slice(0, MINE_CAP));
+            return items.filter((s) => keep.has(s));
+          };
+          const list = (g: number, items: SetEntry[]) => (
+            <>
+              <div className="set-list">{shown(g, items).map(renderRow)}</div>
+              {g === 0 && items.length > MINE_CAP && !q.trim() && (
+                <button type="button" className="btn-link set-list-more" onClick={() => setMineOpen((o) => !o)}>
+                  {mineOpen ? "Show fewer" : `Show all ${items.length}`}
+                </button>
+              )}
+            </>
+          );
           // Only label sections once more than one access group is on screen.
-          if (sections.length <= 1) return <div className="set-list">{filtered.map(renderRow)}</div>;
+          if (sections.length <= 1) return list(sections[0].g, sections[0].items);
           return sections.map((sec) => (
             <section className="set-section" key={sec.g}>
               <h3 className="set-section-title">{GROUP_LABELS[sec.g]}</h3>
-              <div className="set-list">{sec.items.map(renderRow)}</div>
+              {list(sec.g, sec.items)}
             </section>
           ));
         })()}

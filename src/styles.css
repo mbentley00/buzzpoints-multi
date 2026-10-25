@@ -1470,3 +1470,4 @@ a.auth-user:hover { color: #fff; text-decoration: underline; }
 .name-order button { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
 .name-order button:hover { color: var(--link); }
 .name-order button.on { font-weight: 700; color: var(--ink); }
+.set-list-more { margin-top: 8px; font-size: 13px; }
