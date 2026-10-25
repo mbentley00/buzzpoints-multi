@@ -87,3 +87,11 @@ export function categoryBuckets(category: string, subcategory?: string): Categor
 }
 
 export const isCategoryBucket = (s: string): s is CategoryBucket => CATEGORY_BUCKETS.some((b) => b.id === s);
+
+// How much a metadata field looks like a category: 2 for a subject with a
+// subcategory ("Fine Arts - Other"), 1 for a bare subject ("Science"), 0 for
+// anything else (a writer, a team name).
+export function categoryLikeness(s: string): number {
+  if (!bucketsOfString(s).size) return 0;
+  return /\s-\s/.test(s) ? 2 : 1;
+}

@@ -6,6 +6,7 @@
 import { klaxonFile, normName, type GameKlaxon, type KlaxonRaceRec } from "./klaxon.js";
 import { Scoring, classify } from "./scoring.js";
 import { htmlToText } from "./html.js";
+import { categoryLikeness } from "./categories.js";
 
 /* ----------------------------- input shapes ----------------------------- */
 export interface PacketFile {
@@ -396,12 +397,50 @@ export interface MetaMap { fields: MetaField[] }
 // "<writer, category>" convention, and it's what puts "JL" in the category column
 // for sets written the other way round — deliberately left alone here so mapping
 // a set is the only thing that ever moves its categories.
-const legacyCategory = (fields: string[]) => (fields.length > 1 ? fields.slice(1).join(", ") : fields[0]) || "Other";
+// A writer or team name with a comma in it ("Close Thy Nietzsche, Open Thy Jett
+// Franzen") would otherwise land half the name in the category: when a later
+// field is the only one that reads as a category, the category starts there.
+const legacyCategory = (fields: string[]) => {
+  if (fields.length > 2 && !categoryLikeness(fields[1])) {
+    const at = fields.findIndex((f, i) => i > 1 && categoryLikeness(f));
+    if (at > 0) return fields.slice(at).join(", ");
+  }
+  return (fields.length > 1 ? fields.slice(1).join(", ") : fields[0]) || "Other";
+};
+
+// More fields than the map names means a comma inside one of them. Join the
+// surplus back into whichever field leaves the category field reading most like
+// a category, the earliest such field on a tie (writers and team names lead).
+function fitToMap(fields: string[], map: MetaMap): string[] {
+  const n = map.fields.length, extra = fields.length - n;
+  const ci = map.fields.findIndex((f) => f.role === "category");
+  if (extra <= 0 || ci < 0) return fields;
+  let best = fields, bestScore = -1;
+  for (let k = 0; k < n; k++) {
+    const merged = [...fields.slice(0, k), fields.slice(k, k + extra + 1).join(", "), ...fields.slice(k + extra + 1)];
+    const sc = categoryLikeness(merged[ci] || "");
+    if (sc > bestScore) { best = merged; bestScore = sc; }
+  }
+  return best;
+}
+
+// "Literature - British/Commonwealth Literature" says its subject twice. Only
+// for these subjects: "Science - Computer Science" is not "Computer".
+const TIDY_SUBJECTS = new Set(["literature", "history"]);
+function tidyCategory(cat: string): string {
+  const parts = cat.split(" - ");
+  if (parts.length >= 2 && TIDY_SUBJECTS.has(parts[0].trim().toLowerCase())) {
+    const tail = ` ${parts[0].trim()}`.toLowerCase();
+    if (parts[1].toLowerCase().endsWith(tail) && parts[1].length > tail.length) parts[1] = parts[1].slice(0, -tail.length);
+  }
+  return parts.join(" - ");
+}
 
 export interface ResolvedMeta { main: string; full: string; tags: string[] }
 export function resolveMeta(meta: string | undefined, map: MetaMap | null): ResolvedMeta {
-  const fields = metaFields(meta);
+  let fields = metaFields(meta);
   if (!fields.length) return { main: "Other", full: "Other", tags: [] };
+  if (map?.fields?.length) fields = fitToMap(fields, map);
   let cat = "";
   const tags: string[] = [];
   if (map?.fields?.length) {
@@ -414,7 +453,7 @@ export function resolveMeta(meta: string | undefined, map: MetaMap | null): Reso
   } else {
     cat = legacyCategory(fields);
   }
-  if (!cat) cat = "Other";
+  cat = cat ? tidyCategory(cat) : "Other";
   return { main: cat.split(" - ")[0].trim(), full: cat, tags };
 }
 
