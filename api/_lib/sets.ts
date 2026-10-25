@@ -595,10 +595,57 @@ const stripTxt = (s: string | undefined) => htmlToText(s).replace(/\s+/g, " ").t
 // (cut before the first bracketed alternate/prompt or parenthetical), lowercased
 // and reduced to its first few alphanumeric words. Robust to formatting/HTML
 // differences between mirrors of the same question.
+export function answerKeyOf(ans: string): string { return answerKey(ans); }
 function answerKey(ans: string): string {
   let s = stripTxt(ans).toLowerCase().split(/\[|\(/)[0];
   s = s.replace(/[^a-z0-9]+/g, " ").trim();
   return s.split(/\s+/).filter(Boolean).slice(0, 8).join(" ");
+}
+
+// Enough of a tossup to tell an edited copy of it from a different question.
+export type TuSig = { words: Set<string> | null; ans: Set<string> };
+const STOP = new Set(["the", "and", "for", "accept", "prompt", "reject", "or", "of", "a", "an", "on", "by", "in", "do", "not"]);
+const wordsOf = (s: string) =>
+  stripTxt(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim()
+    .split(/\s+/).filter((w) => w.length > 2 && !STOP.has(w)).map((w) => (w.length > 4 ? w.replace(/s$/, "") : w));
+export function tuSig(t: { question?: string; answer?: string }): TuSig {
+  const w = wordsOf(t.question || "");
+  // A primary answer of a word or two: "banana", "Kongo Kingdom".
+  const head = stripTxt(t.answer || "").split(/[[(;]/)[0];
+  return { words: w.length >= 12 ? new Set(w) : null, ans: new Set(wordsOf(head)) };
+}
+const jaccard = (a: Set<string>, b: Set<string>) => {
+  if (!a.size || !b.size) return 0;
+  let n = 0;
+  for (const x of a) if (b.has(x)) n++;
+  return n / (a.size + b.size - n);
+};
+// How strongly two tossups look like one question edited, 0 when they don't.
+// Mostly the same words in the text is enough; a looser text match needs the
+// answers to agree too. With no text to compare (an unscraped question), only
+// an agreeing answer at the very same slot counts.
+export function resemblance(a: TuSig, b: TuSig, sameSlot: boolean): number {
+  const ans = jaccard(a.ans, b.ans);
+  if (a.words && b.words) {
+    const txt = jaccard(a.words, b.words);
+    if (txt >= 0.5) return txt + ans;
+    if (txt >= 0.3 && ans >= 0.5) return txt + ans;
+    return 0;
+  }
+  return sameSlot && ans >= 0.5 ? ans : 0;
+}
+
+// The same test for a question found in a different packet. With no text to
+// compare, only an identical answer line found nowhere else in the set counts.
+export function crossResemblance(a: TuSig, aKey: string, b: TuSig, bKey: string, keyUnique: boolean): number {
+  const keyEq = !!aKey && aKey === bKey;
+  if (a.words && b.words) {
+    const txt = jaccard(a.words, b.words), ans = jaccard(a.ans, b.ans);
+    if (txt >= 0.5) return txt + ans;
+    if (txt >= 0.3 && (ans >= 0.5 || keyEq)) return txt + ans;
+    return 0;
+  }
+  return keyEq && keyUnique ? 1 : 0;
 }
 
 // Align editions' round numbering to a common packet identity. Different mirrors
@@ -693,20 +740,45 @@ function canonicalizeRounds(editions: Edition[]): Edition[] {
 // reference match is a genuine replacement and is appended to its OWN new slot
 // (shared across editions that played the same replacement) so its buzzes are
 // never mixed into an unrelated question. Same primary answer, different wording
-// stays merged (the `versions` list surfaces the wording diff); only genuinely
-// different questions are split apart. A no-op for a single edition, and for
-// mirrors that already agree on order.
+// stays merged (the `versions` list surfaces the wording diff), and so does the
+// same question with its answer line edited; only genuinely different questions
+// are split apart. A question a mirror read in a different packet joins its slot
+// there (the game's tossup then carries that packet's `round`). A no-op for a
+// single edition, and for mirrors that already agree on order.
 export function canonicalizeTossups(editions: Edition[]): Edition[] {
   if (editions.length <= 1) return editions;
   const rounds = new Set<number>();
   for (const e of editions) for (const p of e.packets || []) rounds.add(p.round);
   const pktAt = editions.map((e) => { const m = new Map<number, PacketFile>(); for (const p of e.packets || []) m.set(p.round, p); return m; });
 
-  const remap = editions.map(() => new Map<string, number>()); // `${round}-${oldNum}` -> newNum
+  // `${round}-${oldNum}` -> where that tossup goes (usually the same round).
+  const remap = editions.map(() => new Map<string, { round: number; num: number }>());
   let changed = false;
+  // Every slot's question and who sits there, for the cross-round pass below.
+  const slots = new Map<string, { round: number; num: number; sig: TuSig; key: string; eds: Set<number> }>();
+  const sit = (round: number, num: number, e: number, t: { question?: string; answer?: string }) => {
+    const id = `${round}-${num}`;
+    let s = slots.get(id);
+    if (!s) { s = { round, num, sig: tuSig(t), key: answerKey(t.answer || ""), eds: new Set() }; slots.set(id, s); }
+    s.eds.add(e);
+  };
+  // Tossups no edition matched in their own round: a replacement, or a question
+  // a mirror moved to another packet.
+  const loose: { e: number; round: number; old: number; num: number; sig: TuSig; key: string }[] = [];
   for (const round of rounds) {
     const present = editions.map((_, e) => ({ e, p: pktAt[e].get(round) })).filter((x): x is { e: number; p: PacketFile } => !!x.p);
-    if (present.length < 2) continue;
+    if (present.length < 2) {
+      // Only one edition has this packet: nothing to line up within it, but a
+      // question here may still be one another edition read in a different packet.
+      for (const { e, p } of present)
+        (p.tossups || []).forEach((t, i) => {
+          if (!t) return;
+          sit(round, i + 1, e, t);
+          const key = answerKey(t.answer);
+          if (key) loose.push({ e, round, old: i + 1, num: i + 1, sig: tuSig(t), key });
+        });
+      continue;
+    }
     // Reference = the edition with the most tossups this round (stable seed order).
     let ref = present[0];
     for (const x of present) if ((x.p.tossups || []).length > (ref.p.tossups || []).length) ref = x;
@@ -719,6 +791,10 @@ export function canonicalizeTossups(editions: Edition[]): Edition[] {
     // largest packet; identical replacements across editions share a slot.
     let nextAppend = Math.max(0, ...present.map((x) => (x.p.tossups || []).length));
     const appendPos = new Map<string, number>();
+    // What each slot holds, for recognizing an edited copy of it: the reference's
+    // questions, then any replacements appended along the way.
+    const slotSig = new Map<number, TuSig>();
+    (ref.p.tossups || []).forEach((t, i) => { if (t) slotSig.set(i + 1, tuSig(t)); });
 
     for (const { e, p } of present) {
       const ts = p.tossups || [];
@@ -727,45 +803,109 @@ export function canonicalizeTossups(editions: Edition[]): Edition[] {
       ts.forEach((t, i) => { const k = answerKey(t.answer); if (k && refKeys[i] === k) target[i] = i + 1; });
       // 2) else a question matching a unique reference position -> move there (reorder).
       ts.forEach((t, i) => { if (target[i]) return; const k = answerKey(t.answer); if (k && refPos.has(k)) target[i] = refPos.get(k)!; });
+      // 2b) else the same question EDITED between mirrors (answer line reworded,
+      //     "vapor" → "vapour", a plural, a moved bracket): match it to a slot this
+      //     edition hasn't filled yet, best resemblance first, its own slot on a tie.
+      {
+        const taken = new Set(target.filter(Boolean));
+        const pairs: { i: number; slot: number; s: number }[] = [];
+        ts.forEach((t, i) => {
+          if (target[i] || !answerKey(t.answer)) return;
+          const mine = tuSig(t);
+          for (const [slot, sig] of slotSig) {
+            if (taken.has(slot)) continue;
+            const s = resemblance(mine, sig, slot === i + 1);
+            if (s > 0) pairs.push({ i, slot, s: s + (slot === i + 1 ? 0.001 : 0) });
+          }
+        });
+        pairs.sort((a, b) => b.s - a.s);
+        for (const { i, slot } of pairs) {
+          if (target[i] || taken.has(slot)) continue;
+          target[i] = slot; taken.add(slot);
+        }
+      }
       // 3) else a replacement (no reference match) -> append; a blank answer (e.g. a
       //    tossup that failed to scrape) can't be identified, so it stays in place.
+      const appended = new Set<number>();
       ts.forEach((t, i) => {
         if (target[i]) return;
         const k = answerKey(t.answer);
         if (!k) { target[i] = i + 1; return; }
-        let slot = appendPos.get(k); if (slot === undefined) { slot = ++nextAppend; appendPos.set(k, slot); }
+        appended.add(i);
+        let slot = appendPos.get(k);
+        if (slot === undefined) { slot = ++nextAppend; appendPos.set(k, slot); slotSig.set(slot, tuSig(t)); }
         target[i] = slot;
       });
       // 4) enforce injectivity: on any collision, push the later one to a fresh slot.
       const used = new Set<number>();
       ts.forEach((_, i) => { if (used.has(target[i])) target[i] = ++nextAppend; used.add(target[i]); });
-      ts.forEach((_, i) => { if (target[i] !== i + 1) { remap[e].set(`${round}-${i + 1}`, target[i]); changed = true; } });
+      ts.forEach((t, i) => {
+        if (!t) return;
+        sit(round, target[i], e, t);
+        if (appended.has(i)) loose.push({ e, round, old: i + 1, num: target[i], sig: tuSig(t), key: answerKey(t.answer) });
+        if (target[i] !== i + 1) { remap[e].set(`${round}-${i + 1}`, { round, num: target[i] }); changed = true; }
+      });
+    }
+  }
+
+  // Cross-round: a mirror may read a question in a different packet altogether
+  // (packet 1's tossup moved to packet 8). Left alone it shows up twice, once
+  // in each packet. Each loose tossup that is plainly a question sitting in
+  // another round goes to that slot, unless its edition already has a tossup
+  // there. Best resemblance first; once a slot takes a question, whoever sits
+  // in it stays put, so two loose copies can't swap places.
+  {
+    const keyCount = new Map<string, number>();
+    for (const s of slots.values()) if (s.key) keyCount.set(s.key, (keyCount.get(s.key) || 0) + 1);
+    const pairs: { li: number; id: string; s: number }[] = [];
+    loose.forEach((l, li) => {
+      for (const [id, s] of slots) {
+        if (s.round === l.round || s.eds.has(l.e)) continue;
+        const sc = crossResemblance(l.sig, l.key, s.sig, s.key, keyCount.get(l.key) === 2);
+        // On a tie, the slot more mirrors share.
+        if (sc > 0) pairs.push({ li, id, s: sc + s.eds.size * 1e-4 });
+      }
+    });
+    pairs.sort((a, b) => b.s - a.s);
+    const moved = new Set<number>(), fixed = new Set<string>(); // fixed: `${e}|${slotId}`
+    const takenBy = editions.map(() => new Set<string>());
+    for (const { li, id } of pairs) {
+      const l = loose[li];
+      const from = `${l.round}-${l.num}`;
+      if (moved.has(li) || fixed.has(`${l.e}|${from}`) || takenBy[l.e].has(id)) continue;
+      const s = slots.get(id)!;
+      // The slot must still hold someone who hasn't moved out of it.
+      if (![...s.eds].some((e) => !loose.some((x, xi) => moved.has(xi) && x.e === e && `${x.round}-${x.num}` === id))) continue;
+      moved.add(li); takenBy[l.e].add(id);
+      for (const e of s.eds) fixed.add(`${e}|${id}`);
+      remap[l.e].set(`${l.round}-${l.old}`, { round: s.round, num: s.num });
+      changed = true;
     }
   }
   if (!changed) return editions;
 
-  const touched = (m: Map<string, number>, round: number) => { for (const k of m.keys()) if (k.startsWith(`${round}-`)) return true; return false; };
   return editions.map((e, ei) => {
     const m = remap[ei];
     if (m.size === 0) return e;
-    const rm = (round: number, oldN: number) => m.get(`${round}-${oldN}`) ?? oldN;
-    const packets = (e.packets || []).map((p) => {
-      if (!touched(m, p.round)) return p;
-      // Sparse: holes at canonical slots this edition never played (no buzzes
-      // reference them; combined merge and versions both skip holes).
-      const tossups: PacketFile["tossups"] = [];
-      (p.tossups || []).forEach((t, i) => { tossups[rm(p.round, i + 1) - 1] = t; });
-      return { ...p, tossups };
-    });
-    const games = (e.games || []).map((g) => {
-      if (!touched(m, g.round)) return g;
-      return { ...g, match_questions: (g.match_questions || []).map((mq) => {
-        const tn = mq.tossup_question?.question_number;
-        if (tn == null) return mq;
-        const nn = rm(g.round, tn);
-        return nn === tn ? mq : { ...mq, tossup_question: { ...mq.tossup_question, question_number: nn } };
-      }) };
-    });
+    const rm = (round: number, oldN: number) => m.get(`${round}-${oldN}`) ?? { round, num: oldN };
+    // Sparse: holes at canonical slots this edition never played (no buzzes
+    // reference them; combined merge and versions both skip holes).
+    const lists = new Map<number, PacketFile["tossups"]>();
+    const listFor = (r: number) => { let l = lists.get(r); if (!l) { l = []; lists.set(r, l); } return l; };
+    for (const p of e.packets || []) listFor(p.round);
+    for (const p of e.packets || [])
+      (p.tossups || []).forEach((t, i) => { if (!t) return; const d = rm(p.round, i + 1); listFor(d.round)[d.num - 1] = t; });
+    const own = new Set((e.packets || []).map((p) => p.round));
+    const packets: PacketFile[] = (e.packets || []).map((p) => ({ ...p, tossups: lists.get(p.round)! }));
+    for (const [round, tossups] of lists)
+      if (!own.has(round)) packets.push({ round, tossups, bonuses: [], borrowed: true });
+    const games = (e.games || []).map((g) => ({ ...g, match_questions: (g.match_questions || []).map((mq) => {
+      const tn = mq.tossup_question?.question_number;
+      if (tn == null) return mq;
+      const d = rm(g.round, tn);
+      if (d.round === g.round && d.num === tn) return mq;
+      return { ...mq, tossup_question: { ...mq.tossup_question, question_number: d.num, ...(d.round !== g.round ? { round: d.round } : {}) } };
+    }) }));
     return { ...e, packets, games };
   });
 }

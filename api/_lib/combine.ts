@@ -42,7 +42,7 @@ function flatten(eds: Edition[]): { packets: PacketFile[]; games: GameFile[] } {
     return Array.from({ length: n }, (_, i) => lists.map((l) => l?.[i]).find((x) => x != null) ?? blank);
   };
   const packets = [...byRound.entries()].map(([round, ps]) => ({
-    ...ps[0], round,
+    ...ps[0], round, borrowed: ps.every((p) => p.borrowed) || undefined,
     tossups: slots(ps.map((p) => p.tossups), { question: "", answer: "" }),
     bonuses: slots(ps.map((p) => p.bonuses), {}),
   }));
@@ -128,7 +128,12 @@ export async function combineSets(body: CombineBody, user: string): Promise<{ sl
     const map = new Map(rounds.map((r) => [r, next++] as const));
     const to = (r: number) => map.get(r)!;
     packets.push(...flat.packets.map((p) => ({ ...p, round: to(p.round) })));
-    games.push(...flat.games.map((g) => ({ ...g, round: to(g.round) })));
+    games.push(...flat.games.map((g) => ({
+      ...g, round: to(g.round),
+      // A tossup a mirror read from another packet points at that packet's round.
+      match_questions: (g.match_questions || []).map((mq) => mq.tossup_question?.round != null && map.has(mq.tossup_question.round)
+        ? { ...mq, tossup_question: { ...mq.tossup_question, round: to(mq.tossup_question.round) } } : mq),
+    })));
     combinedFrom.push({ slug: e.slug, name: e.name, from: to(rounds[0]), to: to(rounds[rounds.length - 1]) });
 
     // Edits keyed by (round, question): moved onto the new numbering. A key the

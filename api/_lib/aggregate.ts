@@ -11,6 +11,9 @@ import { htmlToText } from "./html.js";
 export interface PacketFile {
   round: number;
   tossups: { question: string; answer: string; metadata?: string }[];
+  // Holds only a tossup another round's game read (see canonicalizeTossups):
+  // not a packet this edition played from.
+  borrowed?: boolean;
   bonuses: {
     leadin?: string;
     parts?: string[];
@@ -39,7 +42,9 @@ export interface GameFile {
     // MODAQ's tossup number in the game (the reading order, replacements
     // included) — what a Klaxon buzz log calls `question`.
     question_number?: number;
-    tossup_question?: { question_number?: number };
+    // `round` is set when the tossup sits in a different packet from the
+    // game's round: a mirror moved it there (see canonicalizeTossups).
+    tossup_question?: { question_number?: number; round?: number };
     buzzes?: {
       buzz_position?: { word_index?: number };
       player?: { name?: string };
@@ -527,7 +532,7 @@ export function scanRoundAlignment(packets: RoundScanPacket[], games: { round: n
   const pkt = new Map<number, { questions: number; files: number }>();
   for (const p of packets) {
     const n = (p.tossups || []).filter(Boolean).length + (p.bonuses || []).filter(Boolean).length;
-    if (!n) continue;
+    if (!n || (p as { borrowed?: boolean }).borrowed) continue;
     const e = pkt.get(p.round) || { questions: 0, files: 0 };
     e.questions += n; e.files += 1;
     pkt.set(p.round, e);
@@ -1267,7 +1272,9 @@ export function aggregate(
       mqIndex++;
       const kq = kx?.questions?.[String(mq.question_number ?? mqIndex)];
       const tnum = mq.tossup_question?.question_number;
-      const key = tnum != null ? `${r}-${tnum}` : null;
+      // The packet this tossup sits in: the game's round, unless it was moved.
+      const tr = mq.tossup_question?.round ?? r;
+      const key = tnum != null ? `${tr}-${tnum}` : null;
       const tq = key ? tossups.get(key) : undefined;
       if (tq) {
         tuHeard.set(key!, (tuHeard.get(key!) || 0) + 1);
@@ -1298,7 +1305,7 @@ export function aggregate(
           // later team rename never orphans one (and the YellowFruit export,
           // which matches corrections back against the uploaded file, still
           // finds its team).
-          const c = corrMap.get(corrKeyOf(r, tnum, origTeam, origPlayer, origWordIndex));
+          const c = corrMap.get(corrKeyOf(tr, tnum, origTeam, origPlayer, origWordIndex));
           if (c) { if (c.toPlayer !== undefined) pname = c.toPlayer; if (c.toWordIndex !== undefined) widx = c.toWordIndex; }
         }
         // After the per-buzz correction, so a reassignment lands on the renamed
@@ -1322,7 +1329,7 @@ export function aggregate(
         const kc = kq && tq ? kq[ordered.length - 1] : undefined;
         if (kc && normName(kc.winner) === normName(origPlayer)) {
           klaxonRaces.push({
-            key: key!, round: r, num: tnum!, ...(edId ? { editionId: edId } : {}),
+            key: key!, round: tr, num: tnum!, ...(edId ? { editionId: edId } : {}),
             word: widx, value, rebound: ordered.length > 1, winner: pname, team: bteam,
             others: kc.others.map((o) => {
               // In a shootout each player is their own team.
@@ -1388,7 +1395,7 @@ export function aggregate(
           if (o.pname) {
             const kk = plKey(o.pname, o.bteam || "");
             let arr = plBuzzes.get(kk); if (!arr) { arr = []; plBuzzes.set(kk, arr); }
-            arr.push({ round: r, num: tnum!, value: o.value, widx: o.widx, rebound: isCorrect(o.value) && [...negged].some((tt) => tt !== o.bteam) });
+            arr.push({ round: tr, num: tnum!, value: o.value, widx: o.widx, rebound: isCorrect(o.value) && [...negged].some((tt) => tt !== o.bteam) });
           }
           if (!isCorrect(o.value) && o.bteam) negged.add(o.bteam);
         }
