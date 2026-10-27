@@ -23,7 +23,8 @@ export interface QToken {
 // `tokenize` in api/_lib/aggregate.ts), so these carry no buzz index. Guides also
 // go grey; the mark stays in the question's own formatting.
 const PG_ANY = /\([“"][^)]*\)/g;
-const UNSPOKEN = [PG_ANY, /\(\*\)/g];
+const DIRECTION = /[(\[](?:emphasi[sz]e|pause|read slowly)[)\]]/gi;
+const UNSPOKEN = [PG_ANY, DIRECTION, /\(\*\)/g];
 
 interface Fmt { b: boolean; i: boolean; u: boolean }
 interface Span extends Fmt { start: number; end: number }
@@ -96,13 +97,14 @@ export function tokenizeQuestion(html: string, words: string[]): QToken[] | null
   const { text, spans } = flatten(html);
   const unspoken = UNSPOKEN.flatMap((re) => matchRanges(text, re));
   const grey = new Uint8Array(text.length);
-  for (const r of matchRanges(text, PG_ANY)) for (let i = r.start; i < r.end; i++) grey[i] = 1;
+  for (const re of [PG_ANY, DIRECTION]) for (const r of matchRanges(text, re)) for (let i = r.start; i < r.end; i++) grey[i] = 1;
 
   const toks: QToken[] = [];
   let n = 0;
   for (const m of text.matchAll(/\S+/g)) {
     const start = m.index!, end = start + m[0].length;
-    const word = spokenText(text, start, end, unspoken);
+    // Like MODAQ: a token that starts inside a guide or direction is never a word.
+    const word = unspoken.some((r) => r.start <= start && start < r.end) ? "" : spokenText(text, start, end, unspoken);
     let index: number | null = null;
     if (word) {
       if (words[n] !== word) return null;

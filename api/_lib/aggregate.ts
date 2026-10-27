@@ -234,7 +234,12 @@ function stripHtml(s: string): string {
 // be buzzed on it. This matches how the scorekeeper numbers words: a buzz on the
 // first word of a tossup is written as 0, and one index past the last word is the
 // ■END■ slot, meaning the question was read out before anyone buzzed.
+// MODAQ's rule: a whitespace-separated token is skipped when it STARTS inside a
+// guide or reader direction (so `("…"),` is not a word) or starts with the power
+// mark; otherwise it counts, minus any guide text glued onto it.
 const PRON_GUIDE = /\([“"][^)]*\)/g;
+// MODAQ's default reader directions, matched case-insensitively.
+const READER_DIRECTION = /[(\[](?:emphasi[sz]e|pause|read slowly)[)\]]/gi;
 const POWER_MARK = /\(\*\)/;
 
 interface Tokens {
@@ -245,7 +250,7 @@ export function tokenize(html: string): Tokens {
   const text = stripHtml(html);
   // By span, not by token: a guide can run across several — ("ballet ROOSE").
   const marks: [number, number][] = [];
-  for (const re of [PRON_GUIDE, /\(\*\)/g])
+  for (const re of [PRON_GUIDE, READER_DIRECTION, /\(\*\)/g])
     for (const m of text.matchAll(re)) marks.push([m.index!, m.index! + m[0].length]);
   const marked = (i: number) => marks.some(([a, b]) => a <= i && i < b);
 
@@ -254,6 +259,7 @@ export function tokenize(html: string): Tokens {
   for (const m of text.matchAll(/\S+/g)) {
     const start = m.index!, end = start + m[0].length;
     if (powerIndex === null && POWER_MARK.test(m[0])) powerIndex = words.length - 1;
+    if (marked(start)) continue;
     let spoken = "";
     for (let i = start; i < end; i++) if (!marked(i)) spoken += text[i];
     if (spoken.trim()) words.push(spoken.trim());
