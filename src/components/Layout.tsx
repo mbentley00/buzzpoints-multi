@@ -90,7 +90,7 @@ export function SetLayout() {
   // which means it was never closed.
   const allowRequests = entry?.allowRequests !== false;
   const pendingAccess = isOwner ? entry?.pendingAccess ?? 0 : 0;
-  const ctx: SetCtx = { meta: meta as Meta, slug, scope, editions, owner, isOwner, user, allowRequests, level: entry?.level, tdLink: entry?.tdLink, difficulty: entry?.difficulty, combinedFrom: entry?.combinedFrom, forum: !!entry?.forum, forumUnread: entry?.forumUnread ?? 0, pendingAccess };
+  const ctx: SetCtx = { meta: meta as Meta, slug, scope, editions, owner, isOwner, user, allowRequests, level: entry?.level, tdLink: entry?.tdLink, difficulty: entry?.difficulty, combinedFrom: entry?.combinedFrom, tags, tournamentDate: entry?.tournamentDate, forum: !!entry?.forum, forumUnread: entry?.forumUnread ?? 0, pendingAccess };
   // A player's or a team's id is assigned per aggregation scope: ids are handed
   // out in name order over whoever appears in THAT scope, so p25 in the combined
   // file and p25 in one edition's file are simply different people (checked on a

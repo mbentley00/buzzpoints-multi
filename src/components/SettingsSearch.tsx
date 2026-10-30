@@ -71,7 +71,7 @@ export const SETTINGS_INDEX: Entry[] = [
   { id: "dupes", tab: "renames", title: "Possible duplicates", words: "duplicate same player team merge spelling", when: src },
   // Maintenance
   { id: "maintenance", tab: "maintenance", title: "Rebuild stats", words: "recompute reaggregate refresh recalculate" },
-  { id: "yf", tab: "maintenance", title: "YellowFruit export", words: "yft download yellowfruit stats file", when: (c) => c.hasYf },
+  { id: "yf", tab: "maintenance", title: "YellowFruit export", words: "yft download yellowfruit stats file" },
   { id: "exportall", tab: "maintenance", title: "Export all data", words: "download backup zip qbj json packets roster klaxon yellowfruit everything archive" },
   { id: "delete", tab: "maintenance", title: "Delete this tournament", words: "remove erase destroy delete set", when: (c) => c.isPrimary },
 ];

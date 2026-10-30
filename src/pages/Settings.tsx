@@ -20,6 +20,7 @@ import { ReplaceData } from "../components/ReplaceData";
 import { KlaxonUpload } from "../components/KlaxonUpload";
 import { SettingsSearch, SETTINGS_INDEX } from "../components/SettingsSearch";
 import { buildSetExport, saveBlob } from "../setExport";
+import { buildYft } from "../yftBuild";
 
 const VIS_OPTIONS: { id: Visibility; label: string; desc: string }[] = [
   { id: "listed", label: "Listed (login + invite)", desc: "Shown in the list." },
@@ -57,7 +58,7 @@ const TAB_OF_SECTION: Record<string, SettingsTab> = {
 
 export function Settings() {
   const { slug = "", tab: tabParam } = useParams();
-  const { isOwner, meta, user, editions } = useSetCtx();
+  const { isOwner, meta, user, editions, tags } = useSetCtx();
   const loc = useLocation();
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -106,6 +107,7 @@ export function Settings() {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [yfEd, setYfEd] = useState("");
   // Deleting is irreversible and takes the uploaded files with it, so the name
   // has to be typed out — a stray click can't do it.
   const [confirmDelete, setConfirmDelete] = useState("");
@@ -279,6 +281,22 @@ export function Settings() {
     setErr(null); setMsg(null); setExporting(true);
     try {
       saveBlob(await buildSetExport(slug), `${slug}-all-data.zip`);
+    } catch (e) {
+      setErr(String((e as Error).message || e));
+    } finally { setExporting(false); }
+  }
+
+  async function exportYft() {
+    setErr(null); setMsg(null); setExporting(true);
+    try {
+      const eds = byLabel(editions);
+      const ed = eds.length > 1 ? (eds.find((e) => e.id === yfEd) ?? eds[0]) : null;
+      const text = await buildYft({
+        slug, scope: ed ? ed.id : "all", editionId: ed?.id,
+        name: ed ? `${meta.setName} (${ed.label})` : meta.setName,
+        scoring: meta.scoring, hasBonuses: !!meta.hasBonuses, tags, date: tournamentDate || undefined,
+      });
+      saveBlob(new Blob([text], { type: "application/json" }), `${slug}${ed ? "-" + ed.label.replace(/[^a-z0-9]+/gi, "_") : ""}.yft`);
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally { setExporting(false); }
@@ -565,11 +583,17 @@ export function Settings() {
           <div><button className="btn-secondary" disabled={busy} onClick={rebuild}>Rebuild stats</button></div>
         </Sec>
 
-        {hasYf && (
-          <Sec id="yf" title="YellowFruit export" line="With buzz corrections applied.">
-            <div><a className="btn-secondary" href={`/api/yf-export?slug=${encodeURIComponent(slug)}`}>Download .yft</a></div>
-          </Sec>
-        )}
+        <Sec id="yf" title="YellowFruit export">
+          <div>
+            {editions.length > 1 && (
+              <select value={yfEd} onChange={(e) => setYfEd(e.target.value)}>
+                {byLabel(editions).map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
+              </select>
+            )}{" "}
+            <button className="btn-secondary" disabled={exporting} onClick={exportYft}>Download .yft</button>
+            {hasYf && <>{" "}<a href={`/api/yf-export?slug=${encodeURIComponent(slug)}`}>Uploaded .yft, corrected</a></>}
+          </div>
+        </Sec>
 
         <Sec id="exportall" title="Export all data"
           line={`Packets, games, rosters, Klaxon presses${hasYf ? ", the .yft" : ""} and edits.`}>

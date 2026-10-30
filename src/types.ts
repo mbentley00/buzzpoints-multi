@@ -140,6 +140,8 @@ export interface SetCtx {
   tdLink?: string;
   difficulty?: string;
   combinedFrom?: CombinedFrom[];
+  tags?: TagSummary[];
+  tournamentDate?: string;
   // Whether the set's discussion is open, and how many of its posts this
   // viewer hasn't seen.
   forum: boolean;
