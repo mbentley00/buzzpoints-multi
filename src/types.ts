@@ -183,10 +183,23 @@ export const renameKind = (r: { kind?: string }): "player" | "team" => (r.kind =
 
 // Exactly one of `correction` (one buzz) or `rename` (a player or team across the
 // whole tournament) is present.
+// One player's tossups heard in one game (0 = they didn't play it).
+export interface TuhCorrection {
+  round: number;
+  team: string;
+  player: string;
+  editionId?: string;
+  tuh: number;
+  fromTuh?: number | null;
+  by?: string;
+  at?: string;
+}
+
 export interface CorrectionRequest {
   id: string;
   correction?: Correction & { by?: string; at?: string };
   bonus?: BonusCorrection;
+  tuh?: TuhCorrection;
   rename?: Rename;
   by: string;
   at: string;
@@ -234,7 +247,22 @@ export interface GameTeamLine {
   place?: number;
   players: GamePlayerLine[];
 }
+// One tossup as read in one game (replays.json, keyed by GameRow.id). Buzzes
+// are [team index into GameRow.teams, player, value, word index], in the order
+// they happened; `bn` is the bonus that followed: controlling team index,
+// points per part, bounceback points, and the parts' difficulty letters.
+// `r` is set only when the tossup came from another packet.
+export interface ReplayTossup {
+  n: number;
+  r?: number;
+  w: number | null;
+  b: [number, string | null, number, number | null][];
+  bn?: { n: number; t: number; p: number[]; bb?: number[]; d?: string };
+}
+
 export interface GameRow {
+  // Stable across scopes; absent on sets last rebuilt before replays existed.
+  id?: string;
   round: number;
   editionId?: string;
   // Tossups read in the room, which every team in it heard.

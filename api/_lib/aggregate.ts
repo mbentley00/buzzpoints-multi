@@ -79,7 +79,45 @@ export interface AggregateConfig {
   // An individual shootout (IPNCT-style): several players in a room, each
   // answering for themselves. See individualize().
   individual?: boolean;
+  // Corrected tossups heard for one player in one game (0 = didn't play it).
+  tuhFixes?: TuhCorrection[];
 }
+
+// What one player heard in one game, as corrected by hand. Addressed by round,
+// team and player (display names, after renames), plus the mirror on a set with
+// several. Overrides whatever the game file listed — including listing them at
+// all: 0 takes a player out of that game, and a player the file left off is put in.
+export interface TuhCorrection {
+  round: number;
+  team: string;
+  player: string;
+  editionId?: string;
+  tuh: number;
+  fromTuh?: number | null;
+  by?: string;
+  at?: string;
+}
+// One tossup as read in one game, for the scoreboard's replay. Buzzes are
+// [team index into the game's teams, player, value, word index]; the bonus that
+// followed carries the controlling team, points per part and the parts'
+// difficulty marks. Round is set only when the tossup came from another packet.
+export interface ReplayTossup {
+  n: number;
+  r?: number;
+  w: number | null;
+  b: [number, string | null, number, number | null][];
+  bn?: { n: number; t: number; p: number[]; bb?: number[]; d?: string };
+}
+// The game's id: stable across scopes (combined, edition, phase) so a link to
+// one game's replay means the same game wherever it's opened.
+export const gameIdOf = (round: number, editionId: string | undefined, teams: string[]) => {
+  let h = 5381;
+  for (const ch of `${editionId || ""}|${[...teams].sort().join("|")}`) h = ((h * 33) ^ ch.charCodeAt(0)) >>> 0;
+  return `${round}-${h.toString(36)}`;
+};
+
+export const tuhCorrKey = (c: { round: number; team: string; player: string; editionId?: string }) =>
+  `${c.editionId || ""}|${c.round}|${c.team}|${c.player}`;
 
 // Hand edits layered over what the metadata says about one question: tags added
 // or dropped, and optionally the category itself ("Main" or "Main - Sub - Leaf"),
@@ -1137,6 +1175,15 @@ export function aggregate(
 
   type PL = { name: string; team: string; games: Set<string>; tuh: number; powers: number; gets: number; incorrect: number; pts: number; unread: number };
   const pl = new Map<string, PL>();
+  // Hand-corrected tossups heard, per game: player -> tuh for one team's lineup.
+  const fixesFor = (g: GameFile, round: number, team: string): Map<string, number> => {
+    const m = new Map<string, number>();
+    for (const f of cfg.tuhFixes || [])
+      if (f.round === round && f.team === team && (!f.editionId || !g.editionId || f.editionId === g.editionId)) m.set(f.player, f.tuh);
+    return m;
+  };
+  // Players a correction took out of at least one game.
+  const zeroed = new Set<string>();
   type TM = { games: number; wins: number; losses: number; ties: number; tuPts: number; bonusPts: number; bonusesHeard: number; powers: number; gets: number; incorrect: number; tuh: number; fullTuh: number; unread: number };
   const tm = new Map<string, TM>();
   const rosters = new Map<string, Set<string>>();
@@ -1168,16 +1215,20 @@ export function aggregate(
   };
 
   const plKey = (n: string, t: string | null) => `${n}${SEP}${t}`;
-  const plOf = (name: string, team: string): PL => {
+  // Players known only from tossups-heard corrections: credited with exactly the
+  // games those name, never with the rest of the team's games.
+  const fixOnly = new Set<string>();
+  const plOf = (name: string, team: string, fromFix = false): PL => {
     const k = plKey(name, team);
     let v = pl.get(k);
-    if (!v) { v = { name, team, games: new Set(), tuh: 0, powers: 0, gets: 0, incorrect: 0, pts: 0, unread: 0 }; pl.set(k, v); }
+    if (!v) { v = { name, team, games: new Set(), tuh: 0, powers: 0, gets: 0, incorrect: 0, pts: 0, unread: 0 }; pl.set(k, v); if (fromFix) fixOnly.add(k); }
+    if (!fromFix) fixOnly.delete(k);
     return v;
   };
   // Who a team listed in each game, with each player's recorded tossups heard.
   // `complete` = the file lists a player who never buzzed, so it lists the whole
   // lineup and anyone missing from it sat that game out.
-  type Lineup = { gameTuh: number; complete: boolean; listed: Map<string, number> };
+  type Lineup = { gameTuh: number; complete: boolean; listed: Map<string, number>; fixed: Map<string, number> };
   const tmLineups = new Map<string, Lineup[]>();
   const tmOf = (k: string): TM => { let v = tm.get(k); if (!v) { v = { games: 0, wins: 0, losses: 0, ties: 0, tuPts: 0, bonusPts: 0, bonusesHeard: 0, powers: 0, gets: 0, incorrect: 0, tuh: 0, fullTuh: 0, unread: 0 }; tm.set(k, v); } return v; };
   const nestCat = <V>(m: Map<string, Map<string, V>>, k: string, sub: string, make: () => V): V => {
@@ -1237,7 +1288,7 @@ export function aggregate(
   type GTeam = { name: string; tuPts: number; bonusPts: number; bonusesHeard: number; powers: number; gets: number; incorrect: number; place?: number; result?: "W" | "L" | "T" };
   type GPlayer = { name: string; team: string; tuh: number; powers: number; gets: number; incorrect: number; pts: number };
   type GTeamRow = GTeam & { score: number };
-  const gameRecs: { round: number; editionId?: string; tuh: number; teams: GTeam[]; players: GPlayer[] }[] = [];
+  const gameRecs: { round: number; editionId?: string; tuh: number; teams: GTeam[]; players: GPlayer[]; lineups: Map<string, Lineup>; replay: ReplayTossup[]; teamOrder: string[] }[] = [];
 
   // Klaxon: each QBJ buzz paired with the Klaxon cycle that produced it.
   const klaxonRaces: KlaxonRaceRec[] = [];
@@ -1270,6 +1321,9 @@ export function aggregate(
     const addGamePts = (t: string, v: number) => gamePts.set(t, (gamePts.get(t) || 0) + v);
     const gTeams = new Map<string, GTeam>();
     const gPlayers = new Map<string, GPlayer>();
+    const zeroedInGame = new Set<string>();
+    const gLineups = new Map<string, Lineup>();
+    const gReplay: ReplayTossup[] = [];
     const gtOf = (t: string): GTeam => {
       let v = gTeams.get(t);
       if (!v) { v = { name: t, tuPts: 0, bonusPts: 0, bonusesHeard: 0, powers: 0, gets: 0, incorrect: 0 }; gTeams.set(t, v); }
@@ -1295,21 +1349,37 @@ export function aggregate(
       let rs = rosters.get(tname);
       if (!rs) { rs = new Set(); rosters.set(tname, rs); }
       for (const p of mt.team?.players || []) if (p?.name) rs.add(renamed(p.name, tname));
-      const lineup: Lineup = { gameTuh, complete: false, listed: new Map() };
+      const lineup: Lineup = { gameTuh, complete: false, listed: new Map(), fixed: new Map() };
+      const fixes = fixesFor(g, r, tname);
       if (!tmLineups.has(tname)) tmLineups.set(tname, []);
       tmLineups.get(tname)!.push(lineup);
+      gLineups.set(tname, lineup);
       for (const mp of mt.match_players || []) {
         const pname = mp.player?.name ? renamed(mp.player.name, tname) : undefined;
         if (!pname) continue;
         const pk = plKey(pname, tname);
-        lineup.listed.set(pk, (lineup.listed.get(pk) || 0) + (mp.tossups_heard || 0));
+        const heard = fixes.has(pname) ? fixes.get(pname)! : mp.tossups_heard || 0;
+        lineup.listed.set(pk, (lineup.listed.get(pk) || 0) + heard);
         if (Array.isArray(mp.answer_counts) && !mp.answer_counts.some((a) => (a?.number || 0) > 0)) lineup.complete = true;
         rs.add(pname);
         const pv = plOf(pname, tname);
+        if (!(fixes.get(pname) === 0)) pv.games.add(gameId);
+        pv.tuh += heard;
+        t.tuh += heard;
+        if (fixes.get(pname) !== 0) gpOf(pname, tname).tuh += heard;
+      }
+      // Corrections name players the file may have left off entirely.
+      for (const [pname, heard] of fixes) {
+        const pk = plKey(pname, tname);
+        lineup.fixed.set(pk, Math.min(heard, gameTuh));
+        if (heard === 0) { zeroed.add(pk); zeroedInGame.add(pk); continue; }
+        if (lineup.listed.has(pk)) continue;
+        rs.add(pname);
+        const pv = plOf(pname, tname, true);
         pv.games.add(gameId);
-        pv.tuh += mp.tossups_heard || 0;
-        t.tuh += mp.tossups_heard || 0;
-        gpOf(pname, tname).tuh += mp.tossups_heard || 0;
+        pv.tuh += heard;
+        t.tuh += heard;
+        gpOf(pname, tname).tuh += heard;
       }
     }
 
@@ -1446,6 +1516,7 @@ export function aggregate(
         }
       }
 
+      let rpBonus: { n: number; team: string | null; p: number[]; bb: number[]; d: string } | null = null;
       if (cfg.hasBonuses && mq.bonus && converted) {
         const bnum = mq.bonus.question?.question_number;
         const bkey = bnum != null ? `${r}-${bnum}` : null;
@@ -1465,6 +1536,7 @@ export function aggregate(
           const partPts = bc?.toPartPts ?? origPartPts;
           const bbPts = bc?.toBbPts ?? origBbPts;
           const total = partPts.reduce((a, b) => a + b, 0) + bbPts.reduce((a, b) => a + b, 0);
+          rpBonus = { n: bnum!, team: controlling, p: partPts, bb: bbPts, d: (bdef.difficultyModifiers || []).map((x) => String(x || "").charAt(0)).join("") };
           // A team's bonus points come from the source's own per-game total, not
           // from these parts, so a correction that changes how MANY parts were
           // got would otherwise leave the headline PPB disagreeing with the
@@ -1506,6 +1578,18 @@ export function aggregate(
           }
         }
       }
+
+      // This question as read in this room, for the game replay.
+      if (tnum != null) {
+        const ti = (t: string | null) => (t === null ? -1 : teamNames.indexOf(t));
+        gReplay.push({
+          n: tnum,
+          ...(tr !== r ? { r: tr } : {}),
+          w: tq ? geomOf(g, key!, tq).wordCount : null,
+          b: ordered.map((o) => [ti(o.bteam), o.pname, o.value, o.widx] as [number, string | null, number, number | null]),
+          ...(rpBonus ? { bn: { n: rpBonus.n, t: ti(rpBonus.team), p: rpBonus.p, ...(rpBonus.bb.some((v) => v) ? { bb: rpBonus.bb } : {}), ...(rpBonus.d ? { d: rpBonus.d } : {}) } } : {}),
+        });
+      }
     }
 
     if (teamNames.length === 2) {
@@ -1539,8 +1623,18 @@ export function aggregate(
 
     gameRecs.push({
       round: r, ...(g.editionId ? { editionId: g.editionId } : {}), tuh: gameTuh,
-      teams: [...gTeams.values()], players: [...gPlayers.values()],
+      teams: [...gTeams.values()],
+      players: [...gPlayers.entries()].filter(([k, p]) => !(zeroedInGame.has(k) && !p.powers && !p.gets && !p.incorrect)).map(([, p]) => p),
+      lineups: gLineups,
+      replay: gReplay,
+      teamOrder: teamNames,
     });
+  }
+
+  // A player whose only appearances were all corrected away never played.
+  for (const k of zeroed) {
+    const v = pl.get(k);
+    if (v && !v.games.size && !v.powers && !v.gets && !v.incorrect) pl.delete(k);
   }
 
   /* ----------------------------- ids ----------------------------- */
@@ -1814,8 +1908,8 @@ export function aggregate(
     if (tmStats && lineups) {
       g = 0; tuh = 0; gp = 0;
       for (const L of lineups) {
-        const rec = L.listed.get(k);
-        const h = rec ? Math.min(rec, L.gameTuh) : L.complete ? 0 : L.gameTuh;
+        const rec = L.listed.get(k), fx = L.fixed.get(k);
+        const h = fx !== undefined ? fx : rec ? Math.min(rec, L.gameTuh) : L.complete || fixOnly.has(k) ? 0 : L.gameTuh;
         if (h > 0) { g++; tuh += h; gp += L.gameTuh ? h / L.gameTuh : 1; }
       }
     }
@@ -2129,13 +2223,42 @@ export function aggregate(
   // The standard reports read this: a scoreboard, and the game-by-game line
   // behind every team's and player's season totals. Rows carry names as well as
   // ids so a reader doesn't have to join against two other files to render one.
+  // Teammates the file didn't name are credited with the whole game (see the
+  // players section), so the box score lists them too — otherwise a player
+  // charged with a round they sat out has no line anyone could correct.
+  const teamPlayers = new Map<string, [string, PL][]>();
+  for (const [k, s] of pl) teamPlayers.set(s.team, [...(teamPlayers.get(s.team) || []), [k, s]]);
+  const creditedOnly = (rec: (typeof gameRecs)[number], team: string): GPlayer[] => {
+    const L = rec.lineups.get(team);
+    if (!L || cfg.individual) return [];
+    const shown = new Set(rec.players.filter((p) => p.team === team).map((p) => plKey(p.name, team)));
+    const out: GPlayer[] = [];
+    for (const [k, s] of teamPlayers.get(team) || []) {
+      if (shown.has(k) || L.listed.has(k)) continue;
+      const fx = L.fixed.get(k);
+      const h = fx !== undefined ? fx : L.complete || fixOnly.has(k) ? 0 : L.gameTuh;
+      if (h > 0) out.push({ name: s.name, team, tuh: h, powers: 0, gets: 0, incorrect: 0, pts: 0 });
+    }
+    return out;
+  };
+  const replays: Record<string, ReplayTossup[]> = {};
   files["games.json"] = gameRecs
     .map((rec) => {
+      const id = gameIdOf(rec.round, rec.editionId, rec.teams.map((t) => t.name));
+      // Replay team indexes point into the order the file listed teams; the
+      // box score's order can differ, so re-point them.
+      const remap = (i: number) => (i < 0 ? -1 : rec.teams.findIndex((t) => t.name === rec.teamOrder[i]));
+      replays[id] = rec.replay.map((q) => ({
+        ...q,
+        b: q.b.map(([t, ...rest]) => [remap(t), ...rest] as [number, string | null, number, number | null]),
+        ...(q.bn ? { bn: { ...q.bn, t: remap(q.bn.t) } } : {}),
+      }));
       const scoreOf = (t: GTeamRow) => t.tuPts + t.bonusPts;
       const teams = rec.teams.map((t) => ({ ...t, score: t.tuPts + t.bonusPts }));
       const top = Math.max(...teams.map(scoreOf));
       const decided = teams.length === 2 || (cfg.individual && teams.length > 1);
       return {
+        id,
         round: rec.round,
         ...(rec.editionId ? { editionId: rec.editionId } : {}),
         // Tossups read in the room, which is what every team in it heard.
@@ -2154,7 +2277,7 @@ export function aggregate(
           // at — except a shootout room, whose result is a place in the room.
           result: !decided ? null : t.result ?? (t.score === top && teams.every((o) => o.score === top) ? "T" : t.score === top ? "W" : "L"),
           ...(t.place !== undefined ? { place: t.place } : {}),
-          players: rec.players
+          players: [...rec.players, ...creditedOnly(rec, t.name)]
             .filter((p) => p.team === t.name)
             .sort((a, b) => b.pts - a.pts || a.name.localeCompare(b.name))
             .map((p) => ({
@@ -2169,6 +2292,7 @@ export function aggregate(
       };
     })
     .sort((a, b) => a.round - b.round || (a.teams[0]?.name || "").localeCompare(b.teams[0]?.name || ""));
+  files["replays.json"] = replays;
   files["meta.json"] = {
     setName: cfg.name, setSlug: cfg.slug, scoring: scoring.id, scoringLabel: scoring.label,
     hasPower: scoring.hasPower, hasNeg: scoring.hasNeg, hasBonuses: cfg.hasBonuses,

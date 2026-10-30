@@ -10,6 +10,7 @@ import {
   aggregateAndWrite, mergeCorrection, validCorrection, canView, effectiveVisibility, CorrectionRequest,
   readRenames, writeRenames, mergeRename, validRename, teamMergeConflict, isSetOwner, ownerEmails, requestsAllowed,
   readBonusCorrections, writeBonusCorrections, mergeBonusCorrection, validBonusCorrection,
+  readTuhCorrections, writeTuhCorrections, mergeTuhCorrection, validTuhCorrection,
 } from "./_lib/sets.js";
 import { renameKind } from "./_lib/aggregate.js";
 import { sendEmail, appUrl, correctionRequestBody, forumJoinRequestBody, forumApprovedBody, forumReplyBody } from "./_lib/email.js";
@@ -202,6 +203,11 @@ function requestSummary(r: CorrectionRequest): string {
     const scope = r.rename.team ? ` on ${r.rename.team}` : " (every team)";
     return `Rename player${scope}: ${r.rename.from} → ${r.rename.to}.`;
   }
+  if (r.tuh) {
+    const t = r.tuh;
+    const was = t.fromTuh == null ? "" : `${t.fromTuh} → `;
+    return `Round ${t.round} (${t.team}): ${t.player} heard ${was}${t.tuh} tossups${t.tuh === 0 ? " (didn't play)" : ""}.`;
+  }
   if (r.bonus) {
     const b = r.bonus;
     const got = (pts: number[]) => pts.map((v, i) => (v > 0 ? i + 1 : null)).filter(Boolean).join(", ") || "none";
@@ -244,14 +250,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // ---- submit a correction request (any logged-in viewer) ----
   if (body.action === "submit") {
-    const { slug, correction, bonus, rename, desc } = body;
+    const { slug, correction, bonus, tuh, rename, desc } = body;
     const isRename = rename !== undefined;
     const isBonus = bonus !== undefined;
-    const valid = isRename ? validRename(rename) : isBonus ? validBonusCorrection(bonus) : validCorrection(correction);
+    const isTuh = tuh !== undefined;
+    const valid = isRename ? validRename(rename) : isBonus ? validBonusCorrection(bonus) : isTuh ? validTuhCorrection(tuh) : validCorrection(correction);
     if (typeof slug !== "string" || !valid)
       return res.status(400).json({
         error: isRename ? "Enter a different, non-empty name."
           : isBonus ? "Pick a different set of parts than the ones already recorded."
+          : isTuh ? "Enter a whole number of tossups, different from what's recorded."
           : "Invalid request.",
       });
     try {
@@ -268,6 +276,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         id: crypto.randomUUID(),
         ...(isRename ? { rename: { ...rename, ...stamp } }
           : isBonus ? { bonus: { ...bonus, ...stamp } }
+          : isTuh ? { tuh: { ...tuh, ...stamp } }
           : { correction: { ...correction, ...stamp } }),
         by: user, at: stamp.at, status: "pending",
         desc: typeof desc === "string" ? desc.slice(0, 300) : undefined,
@@ -311,6 +320,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (conflict) return res.status(400).json({ error: conflict });
         }
         await writeRenames(slug, mergeRename(renames, r.rename));
+        await aggregateAndWrite(slug, source, await readCorrections(slug));
+      } else if (r.tuh) {
+        await writeTuhCorrections(slug, mergeTuhCorrection(await readTuhCorrections(slug), r.tuh));
         await aggregateAndWrite(slug, source, await readCorrections(slug));
       } else if (r.bonus) {
         await writeBonusCorrections(slug, mergeBonusCorrection(await readBonusCorrections(slug), r.bonus));

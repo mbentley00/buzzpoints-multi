@@ -2,7 +2,7 @@
 // re-aggregation helper used by ingest and the edit endpoints.
 import { put, del } from "@vercel/blob";
 import { readBlobJson } from "./blob.js";
-import { aggregate, bonusFilesFromImported, ImportedBonus, PacketFile, GameFile, Correction, BonusCorrection, bnCorrKeyOf, VirtualCategory, Rename, renameKind, MetaMap, TagEdits, BonusDiffs, AggregateConfig } from "./aggregate.js";
+import { aggregate, bonusFilesFromImported, ImportedBonus, PacketFile, GameFile, Correction, BonusCorrection, bnCorrKeyOf, VirtualCategory, Rename, renameKind, MetaMap, TagEdits, BonusDiffs, AggregateConfig, TuhCorrection, tuhCorrKey } from "./aggregate.js";
 import { getScoring } from "./scoring.js";
 import { isModaqGame, modaqToQbj } from "./modaqGame.js";
 import { buildSearchDoc, invalidateSearchDoc, SEARCH_FILE } from "./searchIndex.js";
@@ -272,6 +272,7 @@ export interface CorrectionRequest {
   id: string;
   correction?: Correction;
   bonus?: BonusCorrection;
+  tuh?: TuhCorrection;
   rename?: Rename;
   by: string;
   at: string;
@@ -333,6 +334,26 @@ export function validBonusCorrection(c: any): c is BonusCorrection {
 export function mergeBonusCorrection(list: BonusCorrection[], incoming: BonusCorrection): BonusCorrection[] {
   const k = bnCorrKey(incoming);
   return [...list.filter((c) => bnCorrKey(c) !== k), incoming];
+}
+
+// Corrected tossups heard for one player in one game. Same lifecycle as buzz
+// corrections: the owner writes them directly, viewers propose them.
+export const readTuhCorrections = (slug: string) =>
+  readBlobJson<TuhCorrection[]>(`sets/${slug}/_tuhcorrections.json`, false).then((c) => c || []);
+export const writeTuhCorrections = (slug: string, c: TuhCorrection[]) => writeJson(`sets/${slug}/_tuhcorrections.json`, c);
+
+export function validTuhCorrection(c: any): c is TuhCorrection {
+  if (!c || typeof c.team !== "string" || typeof c.player !== "string" || !c.team.trim() || !c.player.trim()) return false;
+  if (c.team.length > 200 || c.player.length > 200) return false;
+  if (!Number.isInteger(c.round) || !Number.isInteger(c.tuh) || c.tuh < 0 || c.tuh > 100) return false;
+  if (c.editionId !== undefined && (typeof c.editionId !== "string" || c.editionId.length > 40)) return false;
+  return c.fromTuh === undefined || c.fromTuh === null || c.tuh !== c.fromTuh;
+}
+
+// One correction per player per game; a later one replaces it.
+export function mergeTuhCorrection(list: TuhCorrection[], incoming: TuhCorrection): TuhCorrection[] {
+  const k = tuhCorrKey(incoming);
+  return [...list.filter((c) => tuhCorrKey(c) !== k), incoming];
 }
 
 // Set-wide player and team renames applied on (re-)aggregation. Same lifecycle
@@ -955,6 +976,7 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   cfg.metaMap = metaMap;
   cfg.tagEdits = tagEdits;
   cfg.bonusDiffs = bonusDiffs;
+  cfg.tuhFixes = await readTuhCorrections(slug);
 
   // Bonuses imported as aggregate-only stats: rebuild the bonus files from those
   // stats when there's no per-game bonus data. If per-team results WERE scraped
@@ -975,7 +997,9 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   const playerEds = new Map<string, string[]>();
   const playerKey = (r: any) => `${r.name}\u0000${r.team}`;
   for (const ed of editions) {
-    const out = aggregate(ed.packets, ed.games, cfg, corrections, virtualCats, renames, bonusCorrections);
+    // A mirror's own games carry no edition tag, so hand it only its own fixes.
+    const edCfg = { ...cfg, tuhFixes: (cfg.tuhFixes || []).filter((f) => !f.editionId || f.editionId === ed.id) };
+    const out = aggregate(ed.packets, ed.games, edCfg, corrections, virtualCats, renames, bonusCorrections);
     overrideBonuses(out, [ed]);
     const m = out["meta.json"] as any;
     editionSummaries.push({ id: ed.id, label: ed.label, numGames: m.numGames, numTeams: m.numTeams, numPlayers: m.numPlayers, numTossups: m.numTossups, rounds: m.rounds.length });

@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Link, NavLink, useParams } from "react-router-dom";
 import { useSetCtx, scopedPath } from "../components/Layout";
-import { useSetJson } from "../data";
-import { GameRow, GameTeamLine, Meta, TeamRow } from "../types";
+import { useSetJson, clearSetCache } from "../data";
+import { GameRow, GameTeamLine, Meta, Rosters, TeamRow } from "../types";
 import { num, roundLabel, byLabel } from "../util";
 import { PageHeader, Loading, ErrorBox } from "../components/Common";
 import { useNameOrder, compareNames } from "../nameOrder";
@@ -112,7 +112,7 @@ const per = (n: number, d: number, digits = 2) => (d ? num(n / d, digits) : "—
 
 export function StandardStats() {
   const { slug = "", view: viewParam } = useParams();
-  const { meta, isOwner, scope, editions } = useSetCtx();
+  const { meta, isOwner, scope, editions, user, allowRequests } = useSetCtx();
   // YellowFruit reports one tournament site at a time, so a set with mirrors
   // shows one edition here rather than pooling every mirror's teams into a
   // single standings table. A phase or edition picked in the header still wins.
@@ -123,6 +123,11 @@ export function StandardStats() {
   const effScope = perEdition ? edId : scope;
   const { data: games, error, loading } = useSetJson<GameRow[]>(slug, scopedPath(effScope, "games.json"));
   const { data: teamRows } = useSetJson<TeamRow[]>(slug, scopedPath(effScope, "teams.json"));
+  const { data: rosters } = useSetJson<Rosters>(slug, scopedPath(effScope, "rosters.json"));
+  // Box-score tossups heard can be corrected (owners) or suggested (anyone signed in).
+  const tuhEdit = user && (isOwner || allowRequests)
+    ? { isOwner, rosters: rosters ?? {}, editionId: effScope !== "all" && !effScope.startsWith("tag:") ? effScope : undefined }
+    : null;
 
   // A missing file, not a broken one.
   const stale = !!error && /\b404\b/.test(error);
@@ -181,7 +186,7 @@ export function StandardStats() {
         <>
           {view === "standings" && <Standings teams={teams} meta={meta} slug={slug} teamIdOf={teamIdOf} />}
           {view === "individuals" && !individual && <Individuals players={players} meta={meta} slug={slug} teamIdOf={teamIdOf} />}
-          {view === "scoreboard" && <Scoreboard games={games!} meta={meta} slug={slug} teamIdOf={teamIdOf} />}
+          {view === "scoreboard" && <Scoreboard games={games!} meta={meta} slug={slug} teamIdOf={teamIdOf} tuhEdit={tuhEdit} />}
           {view === "team-detail" && !individual && <TeamDetail teams={teams} meta={meta} slug={slug} teamIdOf={teamIdOf} />}
           {view === "individual-detail" && (individual
             ? <ShootoutDetail teams={teams} meta={meta} slug={slug} teamIdOf={teamIdOf} />
@@ -309,7 +314,95 @@ function Individuals({ players, meta, slug, teamIdOf }: Common & { players: Play
 
 /* ----------------------------- 3. Scoreboard ----------------------------- */
 
-function Scoreboard({ games, meta, slug, teamIdOf }: Common & { games: GameRow[] }) {
+type TuhEditCtx = { isOwner: boolean; rosters: Rosters; editionId?: string };
+
+async function postJson(url: string, body: unknown) {
+  const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((d as any).error || `Failed (${r.status})`);
+  return d;
+}
+
+// Correct one player's tossups heard in one game: 0 takes them out of it, and a
+// player the box score is missing can be added.
+function TuhEditor({ slug, g, team, player, current, ctx, cols, onClose }: {
+  slug: string; g: GameRow; team: string; player: string | null; current: number | null; ctx: TuhEditCtx; cols: number; onClose: () => void;
+}) {
+  const [name, setName] = useState(player ?? "");
+  const [tuh, setTuh] = useState(String(current ?? g.tuh));
+  const [desc, setDesc] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const n = Number(tuh);
+  const shown = new Set(g.teams.find((t) => t.name === team)?.players.map((p) => p.name));
+  const ok = !!name.trim() && tuh.trim() !== "" && Number.isInteger(n) && n >= 0 && n <= g.tuh && n !== current
+    && (player !== null || !shown.has(name.trim()));
+  const listId = `tuh-roster-${g.round}-${team}`;
+
+  async function submit() {
+    setErr(null); setBusy(true);
+    const editionId = g.editionId ?? ctx.editionId;
+    const fix = { round: g.round, team, player: name.trim(), tuh: n, fromTuh: current, ...(editionId ? { editionId } : {}) };
+    try {
+      if (ctx.isOwner) {
+        await postJson("/api/correct", { slug, tuhCorrection: fix });
+        clearSetCache(slug);
+        window.location.reload();
+      } else {
+        await postJson("/api/requests", { slug, action: "submit", tuh: fix, desc: desc.trim() || undefined });
+        setDone("Sent to the owner for review.");
+      }
+    } catch (e) { setErr(String((e as Error).message || e)); } finally { setBusy(false); }
+  }
+
+  return (
+    <tr>
+      <td colSpan={cols} className="buzz-edit-cell">
+        {done ? (
+          <div className="buzz-edit"><span className="ok-msg">{done}</span><button className="btn-link" onClick={onClose}>Close</button></div>
+        ) : (
+          <div className="buzz-edit">
+            {player === null ? (
+              <label className="field-inline">
+                <span>Player</span>
+                <input value={name} onChange={(e) => setName(e.target.value)} list={listId} autoFocus />
+                <datalist id={listId}>
+                  {(ctx.rosters[team] ?? []).filter((p) => !shown.has(p)).map((p) => <option key={p} value={p} />)}
+                </datalist>
+              </label>
+            ) : (
+              <strong>{player}</strong>
+            )}
+            <label className="field-inline">
+              <span>TUH</span>
+              <input type="number" min={0} max={g.tuh} value={tuh} onChange={(e) => setTuh(e.target.value)} style={{ width: "5em" }} autoFocus={player !== null} />
+              <span className="muted">of {g.tuh}</span>
+            </label>
+            {!ctx.isOwner && (
+              <label className="field-inline" style={{ flex: "1 1 200px" }}>
+                <span>Reason</span>
+                <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="optional note for the owner" style={{ flex: 1 }} />
+              </label>
+            )}
+            <div className="buzz-edit-actions">
+              <button className="btn-primary btn-sm" disabled={!ok || busy} onClick={submit}>
+                {busy ? "Working…" : ctx.isOwner ? "Save & rebuild" : "Suggest correction"}
+              </button>
+              <button className="btn-link" onClick={onClose}>Cancel</button>
+            </div>
+            {err && <span className="error-inline">{err}</span>}
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function Scoreboard({ games, meta, slug, teamIdOf, tuhEdit }: Common & { games: GameRow[]; tuhEdit: TuhEditCtx | null }) {
+  // The line open for a tossups-heard edit: "<game>|<team>|<player>", or "<game>|<team>|" to add one.
+  const [editing, setEditing] = useState<string | null>(null);
+  const cols = meta.hasPower ? 6 : 5;
   const byRound = useMemo(() => {
     const m = new Map<number, GameRow[]>();
     for (const g of games) m.set(g.round, [...(m.get(g.round) || []), g]);
@@ -322,7 +415,7 @@ function Scoreboard({ games, meta, slug, teamIdOf }: Common & { games: GameRow[]
       {byRound.map(([round, list]) => (
         <section key={round} className="std-round">
           <h2 className="std-round-head">Round {roundLabel(round)}</h2>
-          {list.map((g, gi) => (
+          {list.map((g, gi) => { const gk = `${round}-${gi}`; return (
             <div className="std-game" key={gi}>
               <h3 className="std-game-head">
                 {g.teams.map((t, i) => (
@@ -350,6 +443,9 @@ function Scoreboard({ games, meta, slug, teamIdOf }: Common & { games: GameRow[]
                       <tr className="std-box-team">
                         <td>
                           <TeamLink name={t.name} slug={slug} ids={teamIdOf} />
+                          {tuhEdit && (
+                            <button className="btn-link tuh-edit-btn" title="Add a player" onClick={() => setEditing(`${gk}|${t.name}|`)}>+</button>
+                          )}
                         </td>
                         {meta.hasPower && <td className="right mono">{t.powers}</td>}
                         <td className="right mono">{t.gets}</td>
@@ -357,17 +453,30 @@ function Scoreboard({ games, meta, slug, teamIdOf }: Common & { games: GameRow[]
                         <td className="right mono">{g.tuh}</td>
                         <td className="right mono">{t.tuPts}</td>
                       </tr>
+                      {editing === `${gk}|${t.name}|` && tuhEdit && (
+                        <TuhEditor slug={slug} g={g} team={t.name} player={null} current={null} ctx={tuhEdit} cols={cols} onClose={() => setEditing(null)} />
+                      )}
                       {t.players.map((p) => (
-                        <tr key={p.name}>
-                          <td className="std-box-player">
-                            {p.id ? <Link className="link" to={`/set/${slug}/player/${p.id}`}>{p.name}</Link> : p.name}
-                          </td>
-                          {meta.hasPower && <td className="right mono">{p.powers}</td>}
-                          <td className="right mono">{p.gets}</td>
-                          <td className="right mono">{p.incorrect}</td>
-                          <td className="right mono">{p.tuh || g.tuh}</td>
-                          <td className="right mono">{p.pts}</td>
-                        </tr>
+                        <Fragment key={p.name}>
+                          <tr>
+                            <td className="std-box-player">
+                              {p.id ? <Link className="link" to={`/set/${slug}/player/${p.id}`}>{p.name}</Link> : p.name}
+                            </td>
+                            {meta.hasPower && <td className="right mono">{p.powers}</td>}
+                            <td className="right mono">{p.gets}</td>
+                            <td className="right mono">{p.incorrect}</td>
+                            <td className="right mono">
+                              {tuhEdit && (
+                                <button className="btn-link tuh-edit-btn" title="Change tossups heard" onClick={() => setEditing(`${gk}|${t.name}|${p.name}`)}>{"\u270e"}</button>
+                              )}
+                              {p.tuh || g.tuh}
+                            </td>
+                            <td className="right mono">{p.pts}</td>
+                          </tr>
+                          {editing === `${gk}|${t.name}|${p.name}` && tuhEdit && (
+                            <TuhEditor slug={slug} g={g} team={t.name} player={p.name} current={p.tuh || g.tuh} ctx={tuhEdit} cols={cols} onClose={() => setEditing(null)} />
+                          )}
+                        </Fragment>
                       ))}
                       {bonuses && (
                         <tr className="std-box-bonus">
@@ -383,7 +492,7 @@ function Scoreboard({ games, meta, slug, teamIdOf }: Common & { games: GameRow[]
                 </table>
               </div>
             </div>
-          ))}
+          ); })}
         </section>
       ))}
     </div>

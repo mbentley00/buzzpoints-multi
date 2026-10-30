@@ -68,9 +68,9 @@ export function BuzzerRaces() {
         </label>
         <label className="filter">
           % through:{" "}
-          <input className="num-input narrow" type="number" min={0} max={100} value={minPct} placeholder="min" onChange={(e) => setMinPct(e.target.value === "" ? "" : Number(e.target.value))} />
+          <input className="num-input narrow" type="number" min={0} max={100} value={minPct} placeholder="0" aria-label="Minimum % through" onChange={(e) => setMinPct(e.target.value === "" ? "" : Number(e.target.value))} />
           {" – "}
-          <input className="num-input narrow" type="number" min={0} max={100} value={maxPct} placeholder="max" onChange={(e) => setMaxPct(e.target.value === "" ? "" : Number(e.target.value))} />
+          <input className="num-input narrow" type="number" min={0} max={100} value={maxPct} placeholder="100" aria-label="Maximum % through" onChange={(e) => setMaxPct(e.target.value === "" ? "" : Number(e.target.value))} />
         </label>
         <SearchInput value={q} onChange={setQ} placeholder="Search clue / category" />
       </PageHeader>

@@ -1,6 +1,7 @@
 // Owner applies an edit directly (re-aggregates the set).
 // POST /api/correct { slug, correction }  -> reassign / move one buzz
 // POST /api/correct { slug, bonusCorrection } -> fix which bonus parts a team got
+// POST /api/correct { slug, tuhCorrection } -> fix one player's tossups heard in one game
 // POST /api/correct { slug, rename }      -> rename a player or team across the set
 // POST /api/correct { slug, undoRename }  -> drop a stored rename
 import type { VercelRequest, VercelResponse } from "@vercel/node";
@@ -9,6 +10,7 @@ import {
   getSetEntry, readSource, readCorrections, writeCorrections, aggregateAndWrite, mergeCorrection, validCorrection,
   readRenames, writeRenames, mergeRename, dropRename, validRename, teamMergeConflict, isSetOwner,
   readBonusCorrections, writeBonusCorrections, mergeBonusCorrection, validBonusCorrection,
+  readTuhCorrections, writeTuhCorrections, mergeTuhCorrection, validTuhCorrection,
 } from "./_lib/sets.js";
 import { renameKind } from "./_lib/aggregate.js";
 
@@ -17,15 +19,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const user = currentUser(req);
   if (!user) return res.status(401).json({ error: "Log in to edit." });
 
-  const { slug, correction, bonusCorrection, rename, undoRename } = (req.body || {}) as any;
+  const { slug, correction, bonusCorrection, tuhCorrection, rename, undoRename } = (req.body || {}) as any;
   if (typeof slug !== "string") return res.status(400).json({ error: "Invalid request." });
 
   const isRename = rename !== undefined;
   const isUndo = undoRename !== undefined;
   const isBonus = bonusCorrection !== undefined;
+  const isTuh = tuhCorrection !== undefined;
+  if (isTuh && !validTuhCorrection(tuhCorrection))
+    return res.status(400).json({ error: "Enter a whole number of tossups, different from what's recorded." });
   if (isBonus && !validBonusCorrection(bonusCorrection))
     return res.status(400).json({ error: "Pick a different set of parts than the ones already recorded." });
-  if (!isRename && !isUndo && !isBonus && !validCorrection(correction))
+  if (!isRename && !isUndo && !isBonus && !isTuh && !validCorrection(correction))
     return res.status(400).json({ error: "Invalid correction." });
   if (isRename && !validRename(rename))
     return res.status(400).json({ error: "Enter a different, non-empty name (120 characters max)." });
@@ -51,6 +56,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await writeRenames(slug, next);
       await aggregateAndWrite(slug, source, await readCorrections(slug));
       return res.status(200).json({ ok: true, renames: next });
+    }
+
+    if (isTuh) {
+      const stamped = { ...tuhCorrection, by: user, at: new Date().toISOString() };
+      await writeTuhCorrections(slug, mergeTuhCorrection(await readTuhCorrections(slug), stamped));
+      await aggregateAndWrite(slug, source, await readCorrections(slug));
+      return res.status(200).json({ ok: true });
     }
 
     if (isBonus) {

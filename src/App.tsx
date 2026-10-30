@@ -19,6 +19,7 @@ import { Players } from "./pages/Players";
 import { PlayerDetailPage } from "./pages/PlayerDetail";
 import { Teams } from "./pages/Teams";
 import { StandardStats } from "./pages/StandardStats";
+import { Scoreboard, GameReplay } from "./pages/Scoreboard";
 import { TeamDetailPage } from "./pages/TeamDetail";
 import { CategoriesTossup } from "./pages/CategoriesTossup";
 import { CategoryPlayersPage } from "./pages/CategoryPlayers";
@@ -67,6 +68,8 @@ export default function App() {
         <Route path="player/:id" element={<PlayerDetailPage />} />
         <Route path="team" element={<Teams />} />
         <Route path="team/:id" element={<TeamDetailPage />} />
+        <Route path="scoreboard" element={<Scoreboard />} />
+        <Route path="scoreboard/:gameId" element={<GameReplay />} />
         <Route path="standard" element={<StandardStats />} />
         <Route path="standard/:view" element={<StandardStats />} />
         <Route path="category/tossup" element={<CategoriesTossup />} />

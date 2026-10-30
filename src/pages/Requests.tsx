@@ -18,6 +18,10 @@ function describe(r: CorrectionRequest) {
     return renameKind(r.rename) === "team"
       ? `rename ${r.rename.from} to ${r.rename.to}`
       : `rename ${r.rename.from} to ${r.rename.to}${r.rename.team ? ` on ${r.rename.team}` : " on every team"}`;
+  if (r.tuh) {
+    const t = r.tuh;
+    return `${t.player}: ${t.fromTuh == null ? "" : `${t.fromTuh} → `}${t.tuh} tossups heard${t.tuh === 0 ? " (didn't play)" : ""}`;
+  }
   if (r.bonus) {
     const got = (pts: number[]) => (pts || []).map((v, i) => (v > 0 ? i + 1 : null)).filter(Boolean).join(", ") || "none";
     return `parts converted: ${got(r.bonus.fromPartPts)} → ${got(r.bonus.toPartPts)}`;
@@ -42,6 +46,13 @@ function Title({ slug, r }: { slug: string; r: CorrectionRequest }) {
       <>
         <span className="pill">Player rename</span>{" "}
         <span className="muted">{r.rename.team ?? "all teams"}</span>
+      </>
+    );
+  if (r.tuh)
+    return (
+      <>
+        <Link to={`/set/${slug}/standard/scoreboard`} className="link">Round {roundLabel(r.tuh.round)}</Link>{" "}
+        · <span className="muted">{r.tuh.team}</span>
       </>
     );
   if (r.bonus)

@@ -48,6 +48,7 @@ export function setTabs(meta: Meta, base: string, o: { hasEditions: boolean; isO
     { to: `${base}/packet`, label: "Packets", desc: "Questions by round" },
     // Only worth a tab once the owner has marked a metadata field as a tag.
     ...(meta.hasTags ? [{ to: `${base}/tags`, label: "Tags", desc: "By tag" }] : []),
+    { to: `${base}/scoreboard`, label: "Scoreboard", desc: "Games and replays" },
     // The YellowFruit-style report — standings, individuals, scoreboard.
     { to: `${base}/standard`, label: "YF Stats", desc: "Standings, individuals, scoreboard" },
     // Only once the owner has opened it (signed-in viewers see the tab; the

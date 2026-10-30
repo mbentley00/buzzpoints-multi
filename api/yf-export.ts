@@ -19,7 +19,7 @@ import { applyBuzzCorrectionsToYf } from "./_lib/yfExport.js";
 // pending requests are left out: they're about people, not the tournament.
 const EDIT_FILES = [
   "_corrections.json", "_bonuscorrections.json", "_bonusdiffs.json", "_renames.json", "_metamap.json",
-  "_tagedits.json", "_replacements.json", "_virtualcats.json", "_roundtags.json",
+  "_tagedits.json", "_replacements.json", "_virtualcats.json", "_roundtags.json", "_tuhcorrections.json",
 ] as const;
 
 export const config = { maxDuration: 60 };
