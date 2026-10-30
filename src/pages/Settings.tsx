@@ -21,6 +21,7 @@ import { KlaxonUpload } from "../components/KlaxonUpload";
 import { SettingsSearch, SETTINGS_INDEX } from "../components/SettingsSearch";
 import { buildSetExport, saveBlob } from "../setExport";
 import { buildYft } from "../yftBuild";
+import { buildStatReport } from "../statReport";
 
 const VIS_OPTIONS: { id: Visibility; label: string; desc: string }[] = [
   { id: "listed", label: "Listed (login + invite)", desc: "Shown in the list." },
@@ -286,17 +287,20 @@ export function Settings() {
     } finally { setExporting(false); }
   }
 
-  async function exportYft() {
+  // The .yft and the HTML stat report cover one mirror at a time.
+  async function exportStats(kind: "yft" | "html") {
     setErr(null); setMsg(null); setExporting(true);
     try {
       const eds = byLabel(editions);
       const ed = eds.length > 1 ? (eds.find((e) => e.id === yfEd) ?? eds[0]) : null;
-      const text = await buildYft({
+      const opts = {
         slug, scope: ed ? ed.id : "all", editionId: ed?.id,
         name: ed ? `${meta.setName} (${ed.label})` : meta.setName,
         scoring: meta.scoring, hasBonuses: !!meta.hasBonuses, tags, date: tournamentDate || undefined,
-      });
-      saveBlob(new Blob([text], { type: "application/json" }), `${slug}${ed ? "-" + ed.label.replace(/[^a-z0-9]+/gi, "_") : ""}.yft`);
+      };
+      const base = `${slug}${ed ? "-" + ed.label.replace(/[^a-z0-9]+/gi, "_") : ""}`;
+      if (kind === "yft") saveBlob(new Blob([await buildYft(opts)], { type: "application/json" }), `${base}.yft`);
+      else saveBlob(await buildStatReport(opts), `${base}-stats.zip`);
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally { setExporting(false); }
@@ -590,7 +594,8 @@ export function Settings() {
                 {byLabel(editions).map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
               </select>
             )}{" "}
-            <button className="btn-secondary" disabled={exporting} onClick={exportYft}>Download .yft</button>
+            <button className="btn-secondary" disabled={exporting} onClick={() => exportStats("yft")}>Download .yft</button>{" "}
+            <button className="btn-secondary" disabled={exporting} onClick={() => exportStats("html")}>Download HTML stats</button>
             {hasYf && <>{" "}<a href={`/api/yf-export?slug=${encodeURIComponent(slug)}`}>Uploaded .yft, corrected</a></>}
           </div>
         </Sec>

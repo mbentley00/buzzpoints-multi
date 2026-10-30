@@ -7,7 +7,7 @@ import { scopedPath } from "./components/Layout";
 import type { GameRow, GameTeamLine, TagSummary } from "./types";
 
 // Answer values per scoring format, highest first (as YellowFruit lists them).
-const ANSWER_VALUES: Record<string, number[]> = {
+export const ANSWER_VALUES: Record<string, number[]> = {
   ACF: [10, -5],
   mACF: [15, 10, -5],
   PACE: [20, 10],
@@ -27,7 +27,7 @@ export interface YftOptions {
 
 // Split a player's game line into per-value counts. Super-power lumps 20s and
 // 15s together as powers, so the split is solved back out of the points.
-function counts(values: number[], line: { powers: number; gets: number; incorrect: number; pts: number }): Map<number, number> {
+export function counts(values: number[], line: { powers: number; gets: number; incorrect: number; pts: number }): Map<number, number> {
   const m = new Map<number, number>(values.map((v) => [v, 0]));
   const neg = values.find((v) => v < 0);
   const posPowers = values.filter((v) => v > 10);
@@ -44,11 +44,28 @@ function counts(values: number[], line: { powers: number; gets: number; incorrec
   return m;
 }
 
-const mode = (xs: number[]) => {
+export const mode = (xs: number[]) => {
   const c = new Map<number, number>();
   for (const x of xs) c.set(x, (c.get(x) || 0) + 1);
   return [...c.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0] ?? 20;
 };
+
+// Phases: the owner's round tags (for this mirror), in the order their first
+// round was played; untagged rounds go to a leading "Prelims".
+export function phasesOf(games: GameRow[], tagList?: TagSummary[], editionId?: string) {
+  const roundsOf = (t: TagSummary) => (editionId && t.editionRounds ? t.editionRounds[editionId] ?? [] : t.rounds);
+  const tags = (tagList ?? []).filter((t) => roundsOf(t).length).sort((a, b) => Math.min(...roundsOf(a)) - Math.min(...roundsOf(b)));
+  const phaseOfRound = new Map<number, string>();
+  for (const t of tags) for (const r of roundsOf(t)) if (!phaseOfRound.has(r)) phaseOfRound.set(r, t.name);
+  const phaseNames: string[] = [];
+  const byPhase = new Map<string, GameRow[]>();
+  for (const g of [...games].sort((a, b) => a.round - b.round)) {
+    const ph = phaseOfRound.get(g.round) ?? "Prelims";
+    if (!byPhase.has(ph)) { byPhase.set(ph, []); phaseNames.push(ph); }
+    byPhase.get(ph)!.push(g);
+  }
+  return { phaseNames, byPhase };
+}
 
 export async function buildYft(o: YftOptions): Promise<string> {
   const games = await loadSetJson<GameRow[]>(o.slug, scopedPath(o.scope, "games.json"));
@@ -87,21 +104,11 @@ export async function buildYft(o: YftOptions): Promise<string> {
     }],
   }));
 
-  // Phases: the owner's round tags (for this mirror), in the order their first
-  // round was played; untagged rounds go to a leading "Prelims".
-  const roundsOf = (t: TagSummary) => (o.editionId && t.editionRounds ? t.editionRounds[o.editionId] ?? [] : t.rounds);
-  const tags = (o.tags ?? []).filter((t) => roundsOf(t).length).sort((a, b) => Math.min(...roundsOf(a)) - Math.min(...roundsOf(b)));
-  const phaseOfRound = new Map<number, string>();
-  for (const t of tags) for (const r of roundsOf(t)) if (!phaseOfRound.has(r)) phaseOfRound.set(r, t.name);
-  const phaseNames: string[] = [];
-  const byPhase = new Map<string, GameRow[]>();
-  for (const g of [...games].sort((a, b) => a.round - b.round)) {
-    const ph = phaseOfRound.get(g.round) ?? "Prelims";
-    if (!byPhase.has(ph)) { byPhase.set(ph, []); phaseNames.push(ph); }
-    byPhase.get(ph)!.push(g);
-  }
+  const { phaseNames, byPhase } = phasesOf(games, o.tags, o.editionId);
 
   const regTuh = mode(games.map((g) => g.tuh).filter((n) => n > 0));
+  const maxTuh = Math.max(regTuh, ...games.map((g) => g.tuh));
+  const timed = maxTuh > regTuh;
   let mn = 1000;
   const matchTeam = (g: GameRow, t: GameTeamLine) => {
     const correct = t.powers + t.gets;
@@ -165,15 +172,16 @@ export async function buildYft(o: YftOptions): Promise<string> {
     type: "Tournament",
     tournament_site: { name: "" },
     scoring_rules: {
-      YfData: { timed: false },
+      YfData: { timed },
       name: "",
       maximum_players_per_team: maxPlayers,
-      maximum_regulation_tossup_count: regTuh,
+      maximum_regulation_tossup_count: maxTuh,
       minimum_overtime_question_count: 1,
       overtime_includes_bonuses: false,
       total_divisor: 5,
       lightning_count_per_team: 0,
-      ...(o.hasBonuses ? {} : { maximum_bonus_score: 0 }),
+      // YellowFruit reads "has bonuses" from whether this field is present at all.
+      ...(o.hasBonuses ? { maximum_bonus_score: 30, minimum_parts_per_bonus: 3, maximum_parts_per_bonus: 3, bonus_divisor: 10 } : {}),
       answer_types: answerTypes,
     },
     ...(o.date ? { start_date: `${o.date}T12:00:00.000Z` } : {}),
