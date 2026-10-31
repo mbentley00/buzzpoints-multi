@@ -6,6 +6,7 @@ import { BonusDetail, BonusRow, GameRow, GameTeamLine, Meta, ReplayTossup, Tossu
 import { Html, num, roundLabel } from "../util";
 import { PageHeader, Loading, ErrorBox } from "../components/Common";
 import { Segs, plainTokens, tokenizeQuestion } from "../questionText";
+import { TuhEditor, TuhEditCtx } from "./StandardStats";
 
 // Scoreboard: every game's box score, round by round, each one a door into its
 // replay — the game tossup by tossup, with where everyone buzzed and what the
@@ -40,8 +41,15 @@ const gameTitle = (g: GameRow) => {
 /* ----------------------------- round view ----------------------------- */
 
 export function Scoreboard() {
-  const { meta, slug, scope, editions, isOwner } = useSetCtx();
+  const { meta, slug, scope, editions, isOwner, user, allowRequests } = useSetCtx();
   const { data: games, error, loading } = useSetJson<GameRow[]>(slug, scopedPath(scope, "games.json"));
+  const { data: rosters } = useSetJson<Record<string, string[]>>(slug, user && (isOwner || allowRequests) ? scopedPath(scope, "rosters.json") : "");
+  // Box-score tossups heard can be corrected (owners) or suggested (anyone signed in).
+  const tuhEdit: TuhEditCtx | null = user && (isOwner || allowRequests)
+    ? { isOwner, rosters: rosters ?? {}, editionId: scope !== "all" && !scope.startsWith("tag:") ? scope : undefined }
+    : null;
+  // The line open for a tossups-heard edit: "<game>|<team>|<player>", or "<game>|<team>|" to add one.
+  const [editing, setEditing] = useState<string | null>(null);
   const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState("");
   const [compact, setCompact] = useState(false);
@@ -95,7 +103,7 @@ export function Scoreboard() {
                 </header>
                 {!compact && (
                   <div className="sb-boxes">
-                    {g.teams.map((t) => <BoxTable key={t.name} t={t} g={g} meta={meta} slug={slug} />)}
+                    {g.teams.map((t) => <BoxTable key={t.name} t={t} g={g} meta={meta} slug={slug} gk={g.id ?? `${g.round}-${i}`} tuhEdit={tuhEdit} editing={editing} setEditing={setEditing} />)}
                   </div>
                 )}
               </article>
@@ -107,13 +115,21 @@ export function Scoreboard() {
   );
 }
 
-function BoxTable({ t, g, meta, slug }: { t: GameTeamLine; g: GameRow; meta: Meta; slug: string }) {
+function BoxTable({ t, g, meta, slug, gk, tuhEdit, editing, setEditing }: {
+  t: GameTeamLine; g: GameRow; meta: Meta; slug: string; gk: string;
+  tuhEdit: TuhEditCtx | null; editing: string | null; setEditing: (k: string | null) => void;
+}) {
+  const cols = meta.hasPower ? 6 : 5;
+  const close = () => setEditing(null);
   return (
     <div className="sb-box">
       <table className="data-table sb-table">
         <thead>
           <tr>
-            <th>{t.name}</th>
+            <th>
+              {t.name}
+              {tuhEdit && <button type="button" className="btn-link tuh-edit-btn" title="Add a player" onClick={() => setEditing(`${gk}|${t.name}|`)}>+</button>}
+            </th>
             {meta.hasPower && <th className="right">{powerHead(meta)}</th>}
             <th className="right">10</th>
             <th className="right">{negHead(meta)}</th>
@@ -122,15 +138,26 @@ function BoxTable({ t, g, meta, slug }: { t: GameTeamLine; g: GameRow; meta: Met
           </tr>
         </thead>
         <tbody>
+          {editing === `${gk}|${t.name}|` && tuhEdit && (
+            <TuhEditor slug={slug} g={g} team={t.name} player={null} current={null} ctx={tuhEdit} cols={cols} onClose={close} />
+          )}
           {t.players.map((p) => (
-            <tr key={p.name}>
+            <Fragment key={p.name}>
+            <tr>
               <td>{p.id ? <Link className="link" to={`/set/${slug}/player/${p.id}`}>{p.name}</Link> : p.name}</td>
               {meta.hasPower && <td className="right mono">{p.powers}</td>}
               <td className="right mono">{p.gets}</td>
               <td className="right mono">{p.incorrect}</td>
-              <td className="right mono">{p.tuh || g.tuh}</td>
+              <td className="right mono">
+                {tuhEdit && <button type="button" className="btn-link tuh-edit-btn" title="Change tossups heard" onClick={() => setEditing(`${gk}|${t.name}|${p.name}`)}>{"\u270e"}</button>}
+                {p.tuh || g.tuh}
+              </td>
               <td className="right mono">{p.pts}</td>
             </tr>
+            {editing === `${gk}|${t.name}|${p.name}` && tuhEdit && (
+              <TuhEditor slug={slug} g={g} team={t.name} player={p.name} current={p.tuh || g.tuh} ctx={tuhEdit} cols={cols} onClose={close} />
+            )}
+            </Fragment>
           ))}
         </tbody>
       </table>

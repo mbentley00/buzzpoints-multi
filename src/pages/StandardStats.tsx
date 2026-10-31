@@ -314,7 +314,7 @@ function Individuals({ players, meta, slug, teamIdOf }: Common & { players: Play
 
 /* ----------------------------- 3. Scoreboard ----------------------------- */
 
-type TuhEditCtx = { isOwner: boolean; rosters: Rosters; editionId?: string };
+export type TuhEditCtx = { isOwner: boolean; rosters: Rosters; editionId?: string };
 
 async function postJson(url: string, body: unknown) {
   const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -325,7 +325,7 @@ async function postJson(url: string, body: unknown) {
 
 // Correct one player's tossups heard in one game: 0 takes them out of it, and a
 // player the box score is missing can be added.
-function TuhEditor({ slug, g, team, player, current, ctx, cols, onClose }: {
+export function TuhEditor({ slug, g, team, player, current, ctx, cols, onClose }: {
   slug: string; g: GameRow; team: string; player: string | null; current: number | null; ctx: TuhEditCtx; cols: number; onClose: () => void;
 }) {
   const [name, setName] = useState(player ?? "");

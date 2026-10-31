@@ -2341,6 +2341,7 @@ export interface ImportedBonus {
   round: number;
   num: number;
   category: string;            // e.g. "Science - Physics"
+  leadin?: string;
   parts: string[];             // part prompts (usually unknown for imports -> "")
   answers: string[];           // answer line per part (HTML), in packet order
   difficultyModifiers: string[]; // per part: "e" | "m" | "h"
@@ -2362,6 +2363,9 @@ export function bonusFilesFromImported(list: ImportedBonus[], virtualCats: Virtu
     const id = `${b.round}-${b.num}`;
     const m = merged.get(id);
     if (!m) { merged.set(id, { ...b, got: [...b.got] }); continue; }
+    // A mirror stored without question text borrows it from one that has it.
+    if (!m.leadin && b.leadin) m.leadin = b.leadin;
+    if (!m.parts.some(Boolean) && b.parts.some(Boolean)) m.parts = b.parts;
     m.heard += b.heard;
     m.points += b.points;
     for (let i = 0; i < b.got.length; i++) m.got[i] = (m.got[i] || 0) + (b.got[i] || 0);
@@ -2402,7 +2406,7 @@ export function bonusFilesFromImported(list: ImportedBonus[], virtualCats: Virtu
       easyAnswer: byDiff.e?.answer ?? null, medAnswer: byDiff.m?.answer ?? null, hardAnswer: byDiff.h?.answer ?? null,
     });
     bnDetail[id] = {
-      id, round: b.round, num: b.num, category: main, subcategory: sub, leadin: "",
+      id, round: b.round, num: b.num, category: main, subcategory: sub, leadin: b.leadin || "",
       parts: b.parts, answers: b.answers, difficultyModifiers: b.difficultyModifiers, heard, ppb, totalPts, partConv, results: [],
     };
   }

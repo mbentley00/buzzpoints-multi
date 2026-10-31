@@ -600,7 +600,7 @@ function collectImportedBonuses(editions: Edition[], bonusDiffs: BonusDiffs, rou
         out.push({
           round: p.round, num: i + 1, category: b.metadata || "",
           categoryOverride: tagEdits?.bonuses?.[`${p.round}-${i + 1}`]?.category,
-          parts: b.parts || [], answers, difficultyModifiers: fix && fix.length
+          leadin: b.leadin || "", parts: b.parts || [], answers, difficultyModifiers: fix && fix.length
             ? Array.from({ length: Math.max(mods.length, answers.length) || fix.length }, (_, k) => (k < fix.length ? fix[k] || "" : mods[k] || ""))
             : mods,
           heard: b.stats.heard || 0, got: b.stats.got || [], points: b.stats.points || 0,
