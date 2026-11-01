@@ -15,7 +15,7 @@ import { AddFilesForm } from "../components/AddFiles";
 import { PacketTextFill } from "../components/BonusTextRepair";
 import { QuestionEditor } from "../components/QuestionEditor";
 import { DupeFinder } from "../components/DupeFinder";
-import { ReplacementEditor } from "../components/Replacements";
+import { ReplacementEditor, ThrownOutList } from "../components/Replacements";
 import { ReplaceData } from "../components/ReplaceData";
 import { KlaxonUpload } from "../components/KlaxonUpload";
 import { SettingsSearch, SETTINGS_INDEX } from "../components/SettingsSearch";
@@ -820,6 +820,7 @@ export function Settings() {
             <Sec id="replacements" title="Tiebreakers & replacements" line="Map each to the question the room read." help="replacements"
               fold open={missingQs > 0} flag={missingQs ? plural(missingQs, "question") : undefined}>
               <ReplacementEditor slug={slug} />
+              {!!meta?.thrownOut?.length && <ThrownOutList slug={slug} games={meta.thrownOut} editions={editions} />}
             </Sec>
 
             <Sec id="replace" title="Replace all data" line="Swap in a new data folder." help="replace" fold>

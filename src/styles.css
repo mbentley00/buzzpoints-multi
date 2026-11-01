@@ -1540,6 +1540,8 @@ a.auth-user:hover { color: #fff; text-decoration: underline; }
 .rp-mark.neg { background: var(--bg); border: 2px solid var(--neg-bg); }
 .rp-mark.zero { background: var(--bg); border: 2px solid var(--zero-bg); }
 .rp-mark.faded { opacity: 0.3; }
+.thrown-list { margin-top: 18px; }
+.thrown-list h4 { margin: 0 0 6px; font-size: 14px; }
 .rp-d { font-size: 10px; font-weight: 600; color: var(--muted); margin-right: 3px; letter-spacing: 0.02em; }
 .rp-n { width: 52px; }
 .rp-num { background: none; border: 0; padding: 0; font: inherit; color: var(--link); cursor: pointer; font-variant-numeric: tabular-nums; white-space: nowrap; }

@@ -192,6 +192,7 @@ export function GameReplay() {
   const { hash } = useLocation();
 
   const g = games?.find((x) => x.id === gameId);
+  const thrownFor = (kind: "tossup" | "bonus", n: number) => (g?.thrown ?? []).filter((t) => t.kind === kind && t.read === n);
   const replay = g && replays ? replays[gameId] : undefined;
   const tuByKey = useMemo(() => new Map((tossups ?? []).map((t) => [t.id, t])), [tossups]);
   const bnByKey = useMemo(() => new Map((bonuses ?? []).map((b) => [b.id, b])), [bonuses]);
@@ -381,6 +382,12 @@ export function GameReplay() {
                     <td>
                       {tu ? <Link className="link" to={`/set/${slug}/tossup/${tu.id}`}><Html html={shortAnswer(tu.answer)} /></Link> : <span className="muted">Tossup {r.key}</span>}
                       {r.q.r ? <span className="muted rp-word"> · packet {roundLabel(r.q.r)}</span> : null}
+                      {isOwner && thrownFor("tossup", r.q.n).map((t, k) => (
+                        <span key={k} className="muted rp-word"> · replaced tossup {t.thrown ?? "?"}</span>
+                      ))}
+                      {isOwner && r.q.bn && thrownFor("bonus", r.q.bn.n).map((t, k) => (
+                        <span key={`b${k}`} className="muted rp-word"> · bonus replaced bonus {t.thrown ?? "?"}</span>
+                      ))}
                     </td>
                     <td>{tu?.category}</td>
                     <td className="rp-track-col"><Track q={r.q} follow={follow} /></td>

@@ -38,10 +38,34 @@ export function editionsOf(s: SetSource): Edition[] {
     for (let i = 0; i < games.length; i++) {
       const g = games[i];
       if (isModaqGame(g)) games[i] = { ...modaqToQbj(g), round: g.round, ...(g.editionId ? { editionId: g.editionId } : {}) } as GameFile;
+      games[i] = pointAtReplacements(games[i]);
     }
   }
   return eds;
 }
+// QBJ keeps a thrown-out question's replacement beside it, and the buzzes and
+// bonus parts belong to the replacement. Point the game at the question read,
+// keeping the thrown-out number. Safe to run twice.
+function pointAtReplacements(g: GameFile): GameFile {
+  const mqs = g.match_questions;
+  if (!mqs?.some((mq) => mq.replacement_tossup_question || mq.replacement_bonus)) return g;
+  return {
+    ...g,
+    match_questions: mqs.map((mq) => {
+      let out = mq;
+      const rt = mq.replacement_tossup_question?.question_number;
+      const tn = mq.tossup_question?.question_number;
+      if (rt != null && rt !== tn)
+        out = { ...out, tossup_question: { ...mq.tossup_question, question_number: rt }, ...(tn != null ? { thrown_tossup: tn } : {}) };
+      const rb = mq.replacement_bonus;
+      const bn = mq.bonus?.question?.question_number;
+      if (rb?.question?.question_number != null && rb.question.question_number !== bn)
+        out = { ...out, bonus: rb as any, ...(bn != null ? { thrown_bonus: bn } : {}) };
+      return out;
+    }),
+  };
+}
+
 // The first "e<n>" id not already used. Ids can have gaps (an edition removed,
 // or data replaced), so the count of editions isn't a safe next id.
 export function nextEditionId(eds: { id: string }[]): string {
@@ -1032,6 +1056,10 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
     // the owner to work out which room read it.
     matchups: m.games.slice(0, 4).map((g) => g.teams.join(" vs ")),
   }));
+  // Advisory: questions the game files say were thrown out, for the owner to check.
+  (out["meta.json"] as any).thrownOut = ((out["games.json"] as any[]) || [])
+    .filter((g) => g.thrown?.length)
+    .map((g) => ({ id: g.id, round: g.round, ...(g.editionId ? { editionId: g.editionId } : {}), teams: g.teams.map((t: any) => t.name), thrown: g.thrown }));
   if (multi) {
     attachVersions(out, editions);
     // Tag combined team/player rows (list + detail) with the editions they

@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import type { Meta } from "../types";
 import { clearSetCache, refreshIndex } from "../data";
 import { byLabel, roundLabel, parseRoundInput } from "../util";
 import { uploadFiles } from "../upload";
@@ -297,6 +299,47 @@ export function ReplacementEditor({ slug }: { slug: string }) {
           </ul>
         </>
       )}
+    </div>
+  );
+}
+
+// Questions MODAQ (or another QBJ writer) marked thrown out, so the owner can
+// check each room's replacement landed on the right question.
+export function ThrownOutList({ slug, games, editions }: {
+  slug: string; games: NonNullable<Meta["thrownOut"]>; editions: { id: string; label: string }[];
+}) {
+  const multi = editions.length > 1;
+  const edLabel = (id?: string) => editions.find((e) => e.id === id)?.label ?? id ?? "";
+  const cap = (k: string) => (k === "bonus" ? "Bonus" : "Tossup");
+  return (
+    <div className="thrown-list">
+      <h4>Thrown out</h4>
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th className="right">Round</th>
+            {multi && <th>Edition</th>}
+            <th>Game</th>
+            <th>Thrown out</th>
+            <th>Read instead</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {games.flatMap((g) => g.thrown.map((t, k) => (
+            <tr key={`${g.id}-${k}`}>
+              <td className="right mono">{roundLabel(g.round)}</td>
+              {multi && <td>{edLabel(g.editionId)}</td>}
+              <td>{g.teams.join(" vs ")}</td>
+              <td>{t.thrown != null ? `${cap(t.kind)} ${t.thrown}` : <span className="muted">{cap(t.kind)}</span>}</td>
+              <td>{t.read != null ? `${cap(t.kind)} ${t.read}` : <span className="muted">—</span>}</td>
+              <td>
+                <Link className="link" to={`/set/${slug}/scoreboard/${g.id}${t.kind === "tossup" && t.read != null ? `#tu-${t.read}` : ""}`}>Replay</Link>
+              </td>
+            </tr>
+          )))}
+        </tbody>
+      </table>
     </div>
   );
 }

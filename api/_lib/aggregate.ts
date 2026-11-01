@@ -46,6 +46,12 @@ export interface GameFile {
     // `round` is set when the tossup sits in a different packet from the
     // game's round: a mirror moved it there (see canonicalizeTossups).
     tossup_question?: { question_number?: number; round?: number };
+    // A thrown-out question's replacement (QBJ). editionsOf() moves the number
+    // read into tossup_question / bonus and keeps the thrown-out one beside it.
+    replacement_tossup_question?: { question_number?: number };
+    replacement_bonus?: { question?: { question_number?: number }; parts?: any[] };
+    thrown_tossup?: number;
+    thrown_bonus?: number;
     buzzes?: {
       buzz_position?: { word_index?: number };
       player?: { name?: string };
@@ -61,6 +67,33 @@ export interface GameFile {
   }[];
   // Every press behind each buzz, from a Klaxon full buzz log (see klaxon.ts).
   klaxon?: GameKlaxon;
+  // Free text; MODAQ writes "Tossup thrown out on question 14" here.
+  notes?: string;
+}
+
+export interface ThrownOut { kind: "tossup" | "bonus"; thrown: number | null; read: number | null; at: number | null }
+// The questions a game threw out, and what was read instead where the file says.
+export function thrownOutIn(g: GameFile): ThrownOut[] {
+  const out: ThrownOut[] = [];
+  (g.match_questions || []).forEach((mq, i) => {
+    const at = mq.question_number ?? i + 1;
+    if (mq.replacement_tossup_question)
+      out.push({ kind: "tossup", thrown: mq.thrown_tossup ?? null, read: mq.tossup_question?.question_number ?? null, at });
+    if (mq.replacement_bonus)
+      out.push({ kind: "bonus", thrown: mq.thrown_bonus ?? null, read: mq.bonus?.question?.question_number ?? null, at });
+  });
+  // MODAQ's notes name each thrown-out question, in the order they happened.
+  const noted: Record<ThrownOut["kind"], number[]> = { tossup: [], bonus: [] };
+  for (const m of (g.notes || "").matchAll(/\b(tossup|bonus) thrown out on question (\d+)/gi))
+    noted[m[1].toLowerCase() as ThrownOut["kind"]].push(Number(m[2]));
+  for (const kind of ["tossup", "bonus"] as const) {
+    const slots = out.filter((x) => x.kind === kind);
+    noted[kind].forEach((n, k) => {
+      if (slots[k]) { if (slots[k].thrown == null) slots[k].thrown = n; }
+      else out.push({ kind, thrown: n, read: null, at: null });
+    });
+  }
+  return out;
 }
 
 export interface AggregateConfig {
@@ -1288,7 +1321,7 @@ export function aggregate(
   type GTeam = { name: string; tuPts: number; bonusPts: number; bonusesHeard: number; powers: number; gets: number; incorrect: number; place?: number; result?: "W" | "L" | "T" };
   type GPlayer = { name: string; team: string; tuh: number; powers: number; gets: number; incorrect: number; pts: number };
   type GTeamRow = GTeam & { score: number };
-  const gameRecs: { round: number; editionId?: string; tuh: number; teams: GTeam[]; players: GPlayer[]; lineups: Map<string, Lineup>; replay: ReplayTossup[]; teamOrder: string[] }[] = [];
+  const gameRecs: { round: number; editionId?: string; tuh: number; teams: GTeam[]; players: GPlayer[]; lineups: Map<string, Lineup>; replay: ReplayTossup[]; teamOrder: string[]; thrown: ThrownOut[] }[] = [];
 
   // Klaxon: each QBJ buzz paired with the Klaxon cycle that produced it.
   const klaxonRaces: KlaxonRaceRec[] = [];
@@ -1628,6 +1661,7 @@ export function aggregate(
       lineups: gLineups,
       replay: gReplay,
       teamOrder: teamNames,
+      thrown: thrownOutIn(g),
     });
   }
 
@@ -2261,6 +2295,7 @@ export function aggregate(
         id,
         round: rec.round,
         ...(rec.editionId ? { editionId: rec.editionId } : {}),
+        ...(rec.thrown.length ? { thrown: rec.thrown } : {}),
         // Tossups read in the room, which is what every team in it heard.
         tuh: rec.tuh,
         teams: teams.map((t) => ({

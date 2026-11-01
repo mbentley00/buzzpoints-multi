@@ -268,7 +268,13 @@ export interface GameRow {
   // Tossups read in the room, which every team in it heard.
   tuh: number;
   teams: GameTeamLine[];
+  // Questions the game file says were thrown out. Owner-facing.
+  thrown?: ThrownOut[];
 }
+
+// `thrown` was thrown out and `read` read in its place, at question `at` of the
+// game; null where the file doesn't say.
+export interface ThrownOut { kind: "tossup" | "bonus"; thrown: number | null; read: number | null; at: number | null }
 
 export interface Meta {
   setName: string;
@@ -312,6 +318,9 @@ export interface Meta {
   // usually games uploaded into two editions. Owner-facing.
   crossMirrorTeams?: { name: string; editions: string[] }[];
   missingQuestions?: { kind?: "tossups" | "bonuses"; editionId: string; round: number; num: number; games: number; buzzes: number; matchups?: string[] }[];
+  // Games whose files record a thrown-out question. Owner-facing; absent on
+  // sets not rebuilt since this was added.
+  thrownOut?: { id: string; round: number; editionId?: string; teams: string[]; thrown: ThrownOut[] }[];
   generatedAt: string;
 }
 
