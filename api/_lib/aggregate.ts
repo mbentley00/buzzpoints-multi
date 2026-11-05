@@ -1947,6 +1947,8 @@ export function aggregate(
         if (h > 0) { g++; tuh += h; gp += L.gameTuh ? h / L.gameTuh : 1; }
       }
     }
+    // Rostered but never played: leave them off the stats.
+    if (tuh === 0 && s.powers + s.gets + s.incorrect === 0) continue;
     plShare.set(k, tmStats?.fullTuh ? tuh / tmStats.fullTuh : 1);
     // Rebounds: tossups this player converted after another team had buzzed wrong
     // (already flagged per-buzz in the buzz log).
@@ -2314,6 +2316,15 @@ export function aggregate(
           ...(t.place !== undefined ? { place: t.place } : {}),
           players: [...rec.players, ...creditedOnly(rec, t.name)]
             .filter((p) => p.team === t.name)
+            // Same tossups-heard rule as players.json, so exports match the site.
+            .map((p) => {
+              const L = rec.lineups.get(t.name);
+              if (!L) return p;
+              const k = plKey(p.name, t.name), fx = L.fixed.get(k);
+              const tuh = fx !== undefined ? fx : p.tuh ? Math.min(p.tuh, L.gameTuh) : L.complete || fixOnly.has(k) ? 0 : L.gameTuh;
+              return { ...p, tuh };
+            })
+            .filter((p) => p.tuh > 0 || p.powers + p.gets + p.incorrect > 0)
             .sort((a, b) => b.pts - a.pts || a.name.localeCompare(b.name))
             .map((p) => ({
               id: playerId.get(plKey(p.name, p.team)) ?? null,

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, Link, Navigate } from "react-router-dom";
 import { useSetCtx, useScopedJson, scopedPath } from "../components/Layout";
 import { loadSetJson } from "../data";
+import { resolveHeard } from "../gameRows";
 import { TeamDetail, RosterPlayer, CatBonusRow, CatBonusSub, CatTeamTossupRow, CatTeamTossupSub, GameRow, GamePlayerLine } from "../types";
 import { num, pct, roundLabel } from "../util";
 import { Loading, ErrorBox, EditionBadges } from "../components/Common";
@@ -158,7 +159,8 @@ export function TeamDetailPage() {
   // Round picker: the box scores give the games, record and per-game lines;
   // team_rounds.json gives the category tables. Sets built before either
   // existed simply don't get the picker (or the filtered categories).
-  const { data: games } = useScopedJson<GameRow[]>("games.json");
+  const { data: rawGames } = useScopedJson<GameRow[]>("games.json");
+  const games = useMemo(() => rawGames && resolveHeard(rawGames), [rawGames]);
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const filtered = picked.size > 0;
   // The per-round category tallies are big (teams × rounds × subcategories), so
@@ -296,7 +298,7 @@ export function TeamDetailPage() {
       {view === "main" || !teamBonus ? (
         <>
           <h2>Roster{filtered ? " — all rounds" : ""}</h2>
-          <DataTable rows={d.roster} columns={rosterCols} initialSort="pts" initialDir="desc" rowKey={(p) => p.id} />
+          <DataTable rows={d.roster.filter((p) => p.games > 0 || p.powers + p.gets + p.incorrect > 0)} columns={rosterCols} initialSort="pts" initialDir="desc" rowKey={(p) => p.id} />
           {mine.length > 0 && <TeamGames sel={sel} filtered={filtered} phrase={phrase} />}
           <h2>Tossups by category{filtered && canFilterCats ? ` in ${phrase}` : ""}</h2>
           {catNote}

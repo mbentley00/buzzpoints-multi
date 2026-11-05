@@ -2,6 +2,7 @@ import { Fragment, useMemo, useState } from "react";
 import { Link, NavLink, useParams } from "react-router-dom";
 import { useSetCtx, scopedPath } from "../components/Layout";
 import { useSetJson, clearSetCache } from "../data";
+import { resolveHeard } from "../gameRows";
 import { GameRow, GameTeamLine, Meta, Rosters, TeamRow } from "../types";
 import { num, roundLabel, byLabel } from "../util";
 import { PageHeader, Loading, ErrorBox } from "../components/Common";
@@ -121,7 +122,8 @@ export function StandardStats() {
   const perEdition = editions.length > 1 && scope === "all";
   const edId = perEdition ? (sortedEds.find((e) => e.id === edPick) ?? sortedEds[0]).id : "";
   const effScope = perEdition ? edId : scope;
-  const { data: games, error, loading } = useSetJson<GameRow[]>(slug, scopedPath(effScope, "games.json"));
+  const { data: rawGames, error, loading } = useSetJson<GameRow[]>(slug, scopedPath(effScope, "games.json"));
+  const games = useMemo(() => rawGames && resolveHeard(rawGames), [rawGames]);
   const { data: teamRows } = useSetJson<TeamRow[]>(slug, scopedPath(effScope, "teams.json"));
   const { data: rosters } = useSetJson<Rosters>(slug, scopedPath(effScope, "rosters.json"));
   // Box-score tossups heard can be corrected (owners) or suggested (anyone signed in).

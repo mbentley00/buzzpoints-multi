@@ -13,7 +13,7 @@ export function Players() {
   const [q, setQ] = useState("");
 
   const rows = useMemo(() => {
-    let r = data ?? [];
+    let r = (data ?? []).filter((p) => p.tuh > 0 || p.powers + p.gets + p.incorrect > 0);
     if (q.trim()) {
       const n = searchable(q);
       r = r.filter((p) => searchable(p.name).includes(n) || searchable(p.team).includes(n));

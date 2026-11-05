@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { useSetCtx, scopedPath } from "../components/Layout";
 import { useSetJson } from "../data";
+import { resolveHeard } from "../gameRows";
 import { BonusDetail, BonusRow, GameRow, GameTeamLine, Meta, ReplayTossup, TossupDetail, TossupRow } from "../types";
 import { Html, num, roundLabel } from "../util";
 import { PageHeader, Loading, ErrorBox } from "../components/Common";
@@ -42,7 +43,8 @@ const gameTitle = (g: GameRow) => {
 
 export function Scoreboard() {
   const { meta, slug, scope, editions, isOwner, user, allowRequests } = useSetCtx();
-  const { data: games, error, loading } = useSetJson<GameRow[]>(slug, scopedPath(scope, "games.json"));
+  const { data: rawGames, error, loading } = useSetJson<GameRow[]>(slug, scopedPath(scope, "games.json"));
+  const games = useMemo(() => rawGames && resolveHeard(rawGames), [rawGames]);
   const { data: rosters } = useSetJson<Record<string, string[]>>(slug, user && (isOwner || allowRequests) ? scopedPath(scope, "rosters.json") : "");
   // Box-score tossups heard can be corrected (owners) or suggested (anyone signed in).
   const tuhEdit: TuhEditCtx | null = user && (isOwner || allowRequests)
@@ -183,7 +185,8 @@ interface Row {
 export function GameReplay() {
   const { meta, slug, scope, editions, isOwner } = useSetCtx();
   const { gameId = "" } = useParams();
-  const { data: games, error, loading } = useSetJson<GameRow[]>(slug, scopedPath(scope, "games.json"));
+  const { data: rawGames, error, loading } = useSetJson<GameRow[]>(slug, scopedPath(scope, "games.json"));
+  const games = useMemo(() => rawGames && resolveHeard(rawGames), [rawGames]);
   const { data: replays, error: rErr, loading: rLoading } = useSetJson<Record<string, ReplayTossup[]>>(slug, scopedPath(scope, "replays.json"));
   const { data: tossups } = useSetJson<TossupRow[]>(slug, scopedPath(scope, "tossups.json"));
   const { data: bonuses } = useSetJson<BonusRow[]>(slug, meta.hasBonuses ? scopedPath(scope, "bonuses.json") : "");

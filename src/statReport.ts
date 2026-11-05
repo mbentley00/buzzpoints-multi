@@ -6,6 +6,7 @@ import { scopedPath } from "./components/Layout";
 import { zipFiles } from "./zip";
 import { ANSWER_VALUES, counts, phasesOf } from "./yftBuild";
 import type { GameRow, GameTeamLine, TagSummary } from "./types";
+import { resolveHeard } from "./gameRows";
 
 export interface StatReportOptions {
   slug: string;
@@ -74,7 +75,7 @@ interface TeamGame {
 }
 
 export async function buildStatReport(o: StatReportOptions): Promise<Blob> {
-  const all = await loadSetJson<GameRow[]>(o.slug, scopedPath(o.scope, "games.json"));
+  const all = resolveHeard(await loadSetJson<GameRow[]>(o.slug, scopedPath(o.scope, "games.json")));
   const games = (all ?? []).filter((g) => g.teams.length === 2);
   if (!games.length) throw new Error(all?.length ? "This report only covers two-team games, and this tournament has none." : "No games to report. Try Settings → Rebuild stats first.");
 

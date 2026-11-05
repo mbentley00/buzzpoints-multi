@@ -5,6 +5,7 @@
 import { loadSetJson } from "./data";
 import { scopedPath } from "./components/Layout";
 import type { GameRow, GameTeamLine, TagSummary } from "./types";
+import { resolveHeard } from "./gameRows";
 
 // Answer values per scoring format, highest first (as YellowFruit lists them).
 export const ANSWER_VALUES: Record<string, number[]> = {
@@ -68,7 +69,7 @@ export function phasesOf(games: GameRow[], tagList?: TagSummary[], editionId?: s
 }
 
 export async function buildYft(o: YftOptions): Promise<string> {
-  const games = await loadSetJson<GameRow[]>(o.slug, scopedPath(o.scope, "games.json"));
+  const games = resolveHeard(await loadSetJson<GameRow[]>(o.slug, scopedPath(o.scope, "games.json")));
   if (!games?.length) throw new Error("No games to export. Try Settings → Rebuild stats first.");
   if (!games.some((g) => g.teams.length === 2)) throw new Error("YellowFruit only records two-team games, and this tournament has none.");
   const values = ANSWER_VALUES[o.scoring] ?? ANSWER_VALUES.PACE;
