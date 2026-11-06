@@ -14,6 +14,7 @@ async function postJson(url: string, body: unknown) {
 }
 
 function describe(r: CorrectionRequest) {
+  if (r.note) return `${r.note.player}${r.note.value == null ? "" : ` (${r.note.value})`}: ${r.note.text}`;
   if (r.rename)
     return renameKind(r.rename) === "team"
       ? `rename ${r.rename.from} to ${r.rename.to}`
@@ -46,6 +47,15 @@ function Title({ slug, r }: { slug: string; r: CorrectionRequest }) {
       <>
         <span className="pill">Player rename</span>{" "}
         <span className="muted">{r.rename.team ?? "all teams"}</span>
+      </>
+    );
+  if (r.note)
+    return (
+      <>
+        <Link to={`/set/${slug}/tossup/${r.note.round}-${r.note.num}`} className="link">
+          Tossup {roundLabel(r.note.round)}-{r.note.num}
+        </Link>{" "}
+        · <span className="muted">{r.note.team}</span>
       </>
     );
   if (r.tuh)
@@ -100,7 +110,7 @@ export function Requests() {
     setErr(null);
     try {
       await postJson("/api/requests", { slug, id, action });
-      if (action === "approve") clearSetCache(slug);
+      if (action === "approve" && !reqs?.find((x) => x.id === id)?.note) clearSetCache(slug);
       await load();
     } catch (e) {
       setErr(String((e as Error).message || e));
@@ -142,9 +152,9 @@ export function Requests() {
               </div>
               <div className="req-actions">
                 <button className="btn-primary btn-sm" disabled={busyId === r.id} onClick={() => act(r.id, "approve")}>
-                  {busyId === r.id ? "…" : "Approve"}
+                  {busyId === r.id ? "…" : r.note ? "Done" : "Approve"}
                 </button>
-                <button className="btn-link" disabled={busyId === r.id} onClick={() => act(r.id, "reject")}>Reject</button>
+                <button className="btn-link" disabled={busyId === r.id} onClick={() => act(r.id, "reject")}>{r.note ? "Dismiss" : "Reject"}</button>
               </div>
             </div>
           ))}
@@ -161,7 +171,7 @@ export function Requests() {
                   <div className="req-title">
                     <Title slug={slug} r={r} />
                     <span className={`pill ${r.status === "approved" ? "buzz-get" : "buzz-neg"}`} style={{ marginLeft: 8 }}>
-                      {r.status}
+                      {r.note ? (r.status === "approved" ? "done" : "dismissed") : r.status}
                     </span>
                   </div>
                   <div className="req-desc">{describe(r)}</div>

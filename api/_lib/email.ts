@@ -133,6 +133,9 @@ export const publishReminderBody = (setName: string, uploaded: string, url: stri
 export const correctionRequestBody = (requester: string, setName: string, summary: string, desc: string, url: string, visibility?: string) =>
   wrap(`<p><strong>${esc(requester)}</strong> suggested an edit to <strong>${esc(setName)}</strong>.</p><p>${esc(summary)}</p>${desc ? `<p><strong>Note:</strong> ${esc(desc)}</p>` : ""}${visLine(visibility, "This tournament is currently")}<p>Review and approve or reject it on the tournament's Requests page.</p>${btn(url, "Review edit")}`);
 
+export const noteRequestBody = (requester: string, setName: string, summary: string, text: string, url: string) =>
+  wrap(`<p><strong>${esc(requester)}</strong> reported a problem in <strong>${esc(setName)}</strong>.</p><p>${esc(summary)}</p><p style="white-space:pre-wrap">${esc(text)}</p>${btn(url, "Open requests")}`);
+
 // Sent to moderators/admins when a first-time poster submits a tournament.
 // `approveUrl` is a one-click approval link; `reviewUrl` opens the dashboard.
 // The submission isn't a set yet, so its visibility is the one the submitter

@@ -195,12 +195,24 @@ export interface TuhCorrection {
   at?: string;
 }
 
+// A free-text report about one buzz (e.g. the points are wrong). It changes
+// nothing; the owner reads it and fixes the data by hand.
+export interface NoteRequest {
+  round: number;
+  num: number;
+  team: string;
+  player: string;
+  value?: number;
+  text: string;
+}
+
 export interface CorrectionRequest {
   id: string;
   correction?: Correction & { by?: string; at?: string };
   bonus?: BonusCorrection;
   tuh?: TuhCorrection;
   rename?: Rename;
+  note?: NoteRequest;
   by: string;
   at: string;
   status: "pending" | "approved" | "rejected";

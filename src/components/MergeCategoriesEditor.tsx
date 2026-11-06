@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { VirtualCategory } from "../types";
 
 // The parts of a tossup or bonus category tree the editor reads.
@@ -53,7 +54,8 @@ export function MergeCategoriesEditor({ slug, groups }: { slug: string; groups: 
     return opts;
   }, [groups]);
 
-  const [open, setOpen] = useState(false);
+  const [params] = useSearchParams();
+  const [open, setOpen] = useState(params.get("merge") === "1");
   const [cats, setCats] = useState<VirtualCategory[]>(existing);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [filter, setFilter] = useState("");

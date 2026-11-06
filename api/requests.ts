@@ -13,7 +13,7 @@ import {
   readTuhCorrections, writeTuhCorrections, mergeTuhCorrection, validTuhCorrection,
 } from "./_lib/sets.js";
 import { renameKind } from "./_lib/aggregate.js";
-import { sendEmail, appUrl, correctionRequestBody, forumJoinRequestBody, forumApprovedBody, forumReplyBody } from "./_lib/email.js";
+import { sendEmail, appUrl, correctionRequestBody, noteRequestBody, forumJoinRequestBody, forumApprovedBody, forumReplyBody } from "./_lib/email.js";
 import { loadUsers, signPurpose, readPurpose, normEmail } from "./_lib/auth.js";
 import { readForum, writeForum, participants, plainText, threadView, threadSummary, toPhpbb, unreadFor, markSeen, ForumData, ForumThread, MAX_TITLE, MAX_BODY, MAX_NOTE } from "./_lib/forum.js";
 import { canViewContent, SetEntry } from "./_lib/sets.js";
@@ -198,6 +198,10 @@ async function forumPost(body: any, res: VercelResponse, user: string) {
 
 // Human-readable one-line summary of a proposed edit, for the owner email.
 function requestSummary(r: CorrectionRequest): string {
+  if (r.note) {
+    const n = r.note;
+    return `Tossup ${n.round}-${n.num} (${n.team}): ${n.player}'s buzz${n.value == null ? "" : ` (${n.value})`}.`;
+  }
   if (r.rename) {
     if (renameKind(r.rename) === "team") return `Rename team: ${r.rename.from} → ${r.rename.to}.`;
     const scope = r.rename.team ? ` on ${r.rename.team}` : " (every team)";
@@ -223,6 +227,14 @@ function requestSummary(r: CorrectionRequest): string {
     parts.push(`buzz word moved ${c.fromWordIndex ?? "—"} → ${c.toWordIndex ?? "—"}`);
   return `${where}: ${parts.join("; ") || "edit"}.`;
 }
+
+const validNote = (n: any) =>
+  !!n && Number.isFinite(n.round) && Number.isFinite(n.num) && typeof n.team === "string" && typeof n.player === "string" &&
+  typeof n.text === "string" && n.text.trim().length > 0 && n.text.length <= 1000;
+const cleanNote = (n: any) => ({
+  round: Number(n.round), num: Number(n.num), team: String(n.team).slice(0, 200), player: String(n.player).slice(0, 200),
+  ...(Number.isFinite(n.value) ? { value: Number(n.value) } : {}), text: cleanText(n.text, 1000),
+});
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const user = currentUser(req);
@@ -250,14 +262,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // ---- submit a correction request (any logged-in viewer) ----
   if (body.action === "submit") {
-    const { slug, correction, bonus, tuh, rename, desc } = body;
+    const { slug, correction, bonus, tuh, rename, note, desc } = body;
+    const isNote = note !== undefined;
     const isRename = rename !== undefined;
     const isBonus = bonus !== undefined;
     const isTuh = tuh !== undefined;
-    const valid = isRename ? validRename(rename) : isBonus ? validBonusCorrection(bonus) : isTuh ? validTuhCorrection(tuh) : validCorrection(correction);
+    const valid = isNote ? validNote(note) : isRename ? validRename(rename) : isBonus ? validBonusCorrection(bonus) : isTuh ? validTuhCorrection(tuh) : validCorrection(correction);
     if (typeof slug !== "string" || !valid)
       return res.status(400).json({
-        error: isRename ? "Enter a different, non-empty name."
+        error: isNote ? "Describe the problem (1,000 characters max)."
+          : isRename ? "Enter a different, non-empty name."
           : isBonus ? "Pick a different set of parts than the ones already recorded."
           : isTuh ? "Enter a whole number of tossups, different from what's recorded."
           : "Invalid request.",
@@ -274,18 +288,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const stamp = { by: user, at: new Date().toISOString() };
       const r: CorrectionRequest = {
         id: crypto.randomUUID(),
-        ...(isRename ? { rename: { ...rename, ...stamp } }
+        ...(isNote ? { note: cleanNote(note) }
+          : isRename ? { rename: { ...rename, ...stamp } }
           : isBonus ? { bonus: { ...bonus, ...stamp } }
           : isTuh ? { tuh: { ...tuh, ...stamp } }
           : { correction: { ...correction, ...stamp } }),
         by: user, at: stamp.at, status: "pending",
-        desc: typeof desc === "string" ? desc.slice(0, 300) : undefined,
+        desc: typeof desc === "string" ? desc.slice(0, 1000) : undefined,
       };
       reqs.unshift(r);
       await writeRequests(slug, reqs);
       // Everyone who can act on it hears about it — co-owners included.
       for (const to of ownerEmails(entry).filter((e) => e !== user))
-        await sendEmail({
+        await sendEmail(r.note ? {
+          to,
+          subject: `Problem reported — ${entry.name}`,
+          html: noteRequestBody(user, entry.name, requestSummary(r), r.note.text, `${appUrl()}/set/${slug}/requests`),
+        } : {
           to,
           subject: `Edit suggested — ${entry.name}`,
           html: correctionRequestBody(user, entry.name, requestSummary(r), r.desc || "", `${appUrl()}/set/${slug}/requests`, effectiveVisibility(entry)),
@@ -310,7 +329,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const r = reqs.find((x) => x.id === id);
     if (!r || r.status !== "pending") return res.status(404).json({ error: "Request not found or already handled." });
 
-    if (action === "approve") {
+    if (action === "approve" && !r.note) {
       const source = await readSource(slug);
       if (!source) return res.status(500).json({ error: "Source data not found." });
       if (r.rename) {

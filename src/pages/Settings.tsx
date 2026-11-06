@@ -773,6 +773,9 @@ export function Settings() {
             <Sec id="questionedits" title="Edit questions" line="Bulk category and tag changes." help="questionedits" fold>
               <QuestionEditor slug={slug} hasBonuses={!!meta?.hasBonuses} />
             </Sec>
+            <Sec id="mergecats" title="Merge categories" line="Group categories under a new name, e.g. Science.">
+              <Link to={`/set/${slug}/category/tossup?merge=1`} className="link">Open merge tool →</Link>
+            </Sec>
             {meta?.hasBonuses && (
               <>
                 <Sec id="bonusdiff" title="Bonus difficulty marks" line="Each bonus needs one easy, one medium and one hard part." help="bonusdiff"

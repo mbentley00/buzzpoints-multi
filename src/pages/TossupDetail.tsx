@@ -209,10 +209,21 @@ function BuzzEditor({ d, b, slug, isOwner, teammates, cols, onClose, onApplied }
   // The last valid slot is one past the last word — ■END■, i.e. the question was
   // read out before this buzz came.
   const wordValid = newWordIdx === null || (Number.isInteger(newWordIdx) && newWordIdx >= 0 && newWordIdx <= d.words.length);
-  const canSubmit = (playerChanged || wordChanged) && wordValid && !busy;
+  // A viewer can also just describe what's wrong (wrong points, a buzz that
+  // shouldn't be here...) and leave the fix to the owner.
+  const noteOnly = !isOwner && !playerChanged && !wordChanged && desc.trim() !== "";
+  const canSubmit = (playerChanged || wordChanged || noteOnly) && wordValid && !busy;
 
   async function submit() {
     setErr(null);
+    if (noteOnly) {
+      setBusy(true);
+      try {
+        await postJson("/api/requests", { slug, action: "submit", note: { round: d.round, num: d.num, team: b.team, player: b.player, value: b.value, text: desc.trim() } });
+        setDone("Sent to the owner.");
+      } catch (e) { setErr(String((e as Error).message || e)); } finally { setBusy(false); }
+      return;
+    }
     // Addressed by the names the source gave this buzz, not the displayed ones —
     // a rename can have moved the player's or the team's name since.
     const correction: any = { round: d.round, num: d.num, team: b.origTeam ?? b.team, fromPlayer: b.origPlayer ?? b.player, fromWordIndex: b.origWordIndex ?? b.wordIndex };
@@ -247,8 +258,8 @@ function BuzzEditor({ d, b, slug, isOwner, teammates, cols, onClose, onApplied }
           )}
         </label>
         {!isOwner && (
-          <label className="field-inline" style={{ flex: "1 1 220px" }}><span>Reason</span>
-            <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="optional note for the owner" style={{ flex: 1 }} />
+          <label className="field-inline" style={{ flex: "1 1 220px" }}><span>Note</span>
+            <input value={desc} maxLength={1000} onChange={(e) => setDesc(e.target.value)} placeholder="e.g. this was a 10, not a −5" style={{ flex: 1 }} />
           </label>
         )}
         <div className="buzz-edit-actions">

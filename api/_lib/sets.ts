@@ -292,12 +292,24 @@ export function sanitizeEntry(e: SetEntry, user: string | null) {
 // A proposed edit awaiting the owner. Exactly one of `correction` (one buzz) or
 // `rename` (a player or team across the whole tournament) is set; `correction`
 // stays non-optional in shape for the many older records that predate renames.
+// A free-text report about one buzz (e.g. the points are wrong). It changes
+// nothing; the owner reads it and fixes the data by hand.
+export interface NoteRequest {
+  round: number;
+  num: number;
+  team: string;
+  player: string;
+  value?: number;
+  text: string;
+}
+
 export interface CorrectionRequest {
   id: string;
   correction?: Correction;
   bonus?: BonusCorrection;
   tuh?: TuhCorrection;
   rename?: Rename;
+  note?: NoteRequest;
   by: string;
   at: string;
   status: "pending" | "approved" | "rejected";

@@ -55,6 +55,7 @@ export const SETTINGS_INDEX: Entry[] = [
   { id: "phases", tab: "questions", title: "Round phases", words: "prelims playoffs finals tag rounds bracket stage phase filter", when: (c) => src(c) && c.hasRounds },
   { id: "categories", tab: "questions", title: "Category fields", words: "metadata subcategory author writer category mapping fields tags", when: src },
   { id: "questionedits", tab: "questions", title: "Edit questions", words: "recategorize category wrong subject question category tag bulk", when: src },
+  { id: "mergecats", tab: "questions", title: "Merge categories", words: "group combine top-level parent new category science bucket virtual", when: src },
   { id: "bonusdiff", tab: "questions", title: "Bonus difficulty marks", words: "easy medium hard parts e m h difficulty modifiers", when: (c) => src(c) && c.hasBonuses },
   { id: "bonustext", tab: "questions", title: "Fill bonus text", words: "missing bonus leadin lead-in parts blank text", when: (c) => src(c) && c.hasBonuses },
   // Rounds & files
