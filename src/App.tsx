@@ -21,9 +21,8 @@ import { Teams } from "./pages/Teams";
 import { StandardStats } from "./pages/StandardStats";
 import { Scoreboard, GameReplay } from "./pages/Scoreboard";
 import { TeamDetailPage } from "./pages/TeamDetail";
-import { CategoriesTossup } from "./pages/CategoriesTossup";
+import { Categories } from "./pages/Categories";
 import { CategoryPlayersPage } from "./pages/CategoryPlayers";
-import { CategoriesBonus } from "./pages/CategoriesBonus";
 import { Tags } from "./pages/Tags";
 import { Editions } from "./pages/Editions";
 import { Login } from "./pages/Login";
@@ -72,9 +71,11 @@ export default function App() {
         <Route path="scoreboard/:gameId" element={<GameReplay />} />
         <Route path="standard" element={<StandardStats />} />
         <Route path="standard/:view" element={<StandardStats />} />
-        <Route path="category/tossup" element={<CategoriesTossup />} />
+        <Route path="category" element={<Categories />} />
+        {/* The old separate tossup and bonus pages. */}
+        <Route path="category/tossup" element={<Navigate to="../category" replace />} />
         <Route path="category/tossup/:cid/players" element={<CategoryPlayersPage />} />
-        <Route path="category/bonus" element={<CategoriesBonus />} />
+        <Route path="category/bonus" element={<Navigate to="../category" replace />} />
         <Route path="tags" element={<Tags />} />
         <Route path="editions" element={<Editions />} />
         <Route path="requests" element={<Requests />} />

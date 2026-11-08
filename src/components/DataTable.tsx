@@ -1,5 +1,6 @@
 import { useMemo, useState, Fragment, ReactNode } from "react";
 import { useNameOrder, setNameOrder, nameKey, NameOrder } from "../nameOrder";
+import { colTitle } from "../colTitles";
 
 export interface Column<T> {
   key: string;
@@ -84,7 +85,7 @@ export function DataTable<T>({
             {columns.map((col) => (
               <th
                 key={col.key}
-                title={col.title}
+                title={colTitle(col.label, col.title)}
                 onClick={() => clickHeader(col)}
                 className={`${valOf(col) ? "sortable" : ""} ${
                   col.align === "right" ? "right" : col.align === "center" ? "center" : ""

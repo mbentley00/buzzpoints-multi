@@ -39,17 +39,27 @@ export function BuzzerRaces() {
     return r;
   }, [data, round, q, minBuzz, minPct, maxPct]);
 
+  // A format with two power tiers (20 / 15 / 10) lists both in its label; the
+  // top one is the superpower.
+  const superVal = useMemo(() => {
+    const vals = (meta.scoringLabel.match(/\(([^)]*)\)/)?.[1] ?? "").split("/").map(Number).filter((v) => v > 0);
+    return vals.length >= 3 ? Math.max(...vals) : null;
+  }, [meta.scoringLabel]);
+  const supers = (r: BuzzerRace) => (superVal ? r.buzzers.filter((b) => b.value >= superVal).length : 0);
+
   const columns: Column<BuzzerRace>[] = [
     { key: "buzzes", label: "Buzzes", align: "right", sortVal: (r) => r.buzzCount, render: (r) => <span className="race-count">{r.buzzCount}</span>, title: "Within 5 words" },
     {
-      key: "breakdown", label: "P / C / N", align: "center", sortVal: (r) => r.powers,
+      key: "breakdown", label: superVal ? "SP / P / C / N" : meta.hasPower ? "P / C / N" : "C / N", align: "center",
+      sortVal: (r) => (superVal ? supers(r) * 1000 : 0) + r.powers,
       render: (r) => (
         <span className="mono breakdown">
-          {meta.hasPower && <><span className="b-pwr">{r.powers}</span>/</>}
+          {superVal !== null && <><span className="b-super">{supers(r)}</span>/</>}
+          {meta.hasPower && <><span className="b-pwr">{r.powers - supers(r)}</span>/</>}
           <span className="b-get">{r.gets}</span>/<span className="b-neg">{r.incorrect}</span>
         </span>
       ),
-      title: "Powers / Correct / Incorrect",
+      title: [superVal && "Superpowers", meta.hasPower && "Powers", "Correct", "Incorrect"].filter(Boolean).join(" / "),
     },
     { key: "clue", label: "Contested clue", sortVal: (r) => r.hot.toLowerCase(), render: (r) => <ClueSnippet r={r} /> },
     { key: "answer", label: "Answer", sortVal: (r) => r.id, render: (r) => <Link className="link answer-cell" to={`/set/${slug}/tossup/${r.id}`}><Html html={primaryAnswer(r.answer)} /></Link> },

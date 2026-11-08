@@ -30,7 +30,7 @@ export function CategoryPlayersPage() {
   return (
     <div>
       <div className="breadcrumb">
-        <Link to={`/set/${slug}/category/tossup`} className="link">← Categories (Tossup)</Link>
+        <Link to={`/set/${slug}/category`} className="link">← Categories</Link>
       </div>
       {loading && <Loading />}
       {error && <ErrorBox error={error} />}

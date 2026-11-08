@@ -64,12 +64,12 @@ export function Teams() {
     { key: "pp20", label: "PP20TUH", align: "right", sortVal: (t) => t.pp20tuh, render: (t) => num(t.pp20tuh) },
     { key: "bpa", label: "BPA", align: "right", sortVal: (t) => t.bpa ?? -1, render: (t) => num(t.bpa),
       title: "Buzz point area under the curve" },
-    ...(meta.hasBonuses && meta.hasTeamBonuses !== false
+    ...(meta.hasBonuses && meta.hasTeamBonuses !== false && !subject
       ? [{ key: "ppb", label: "PPB", align: "right" as const, sortVal: (t: TeamRow) => t.ppb, render: (t: TeamRow) => num(t.ppb, 2) }]
       : []),
     ...(subject
       ? [
-          { key: "subjHeard", label: "Heard", align: "right" as const, title: `Bonuses heard in ${subject}`,
+          { key: "subjHeard", label: "Heard", align: "right" as const, title: `Bonuses heard in ${subjectLabel}`,
             sortVal: (t: TeamRow) => t.bonusCats?.[subject]?.[0] ?? 0, render: (t: TeamRow) => t.bonusCats?.[subject]?.[0] ?? 0 },
           { key: "subjPpb", label: `${subjectLabel} PPB`, align: "right" as const,
             // A team that heard none sorts below every team that did, either way.
@@ -89,8 +89,8 @@ export function Teams() {
     <div>
       <PageHeader title="Teams" subtitle={`${rows.length} teams`}>
         {subjects.length > 0 && (
-          <select className="subject-select" value={subject} onChange={(e) => setSubject(e.target.value)} aria-label="Rank by PPB in a subject">
-            <option value="">PPB by subject…</option>
+          <select className="subject-select" value={subject} onChange={(e) => setSubject(e.target.value)} aria-label="Subject">
+            <option value="">All subjects</option>
             {subjects.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
           </select>
         )}

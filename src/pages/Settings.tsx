@@ -774,7 +774,7 @@ export function Settings() {
               <QuestionEditor slug={slug} hasBonuses={!!meta?.hasBonuses} />
             </Sec>
             <Sec id="mergecats" title="Merge categories" line="Group categories under a new name, e.g. Science.">
-              <Link to={`/set/${slug}/category/tossup?merge=1`} className="link">Open merge tool →</Link>
+              <Link to={`/set/${slug}/category?merge=1`} className="link">Open merge tool →</Link>
             </Sec>
             {meta?.hasBonuses && (
               <>

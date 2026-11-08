@@ -152,7 +152,7 @@ export function StandardStats() {
 
   return (
     <div>
-      <PageHeader title="YF stats" />
+      <PageHeader title="Traditional Stat Report" />
       <nav className="std-nav">
         {views.map((v) => (
           <NavLink key={v.id} end to={v.path ? `${base}/${v.path}` : base} className={({ isActive }) => (isActive ? "std-nav-link active" : "std-nav-link")}>

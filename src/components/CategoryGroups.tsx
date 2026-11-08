@@ -1,6 +1,7 @@
 import { Fragment, ReactNode, useState } from "react";
 import { Link } from "react-router-dom";
 import { CategoryTag } from "../util";
+import { colTitle } from "../colTitles";
 
 interface SubBase {
   subcategory: string;
@@ -15,6 +16,10 @@ interface GroupBase<S> {
 
 export interface CatColumn<G, S> {
   label: string;
+  /** Unique id when two columns share a label (e.g. Heard for tossups and bonuses). */
+  key?: string;
+  /** Column group shown above the first column of a run (e.g. "Tossups"). */
+  group?: string;
   align?: "right" | "center";
   main: (g: G) => ReactNode;
   sub: (s: S) => ReactNode;
@@ -91,7 +96,11 @@ export function CategoryGroups<G extends GroupBase<S>, S extends SubBase>({
 
   // Sorting a nested table means sorting every level by the same column, so a
   // category and the subcategories inside it are ordered on the same footing.
-  const sortCol = sortKey === null ? null : columns.find((c) => c.label === sortKey);
+  const colKey = (c: CatColumn<G, S>) => c.key ?? c.label;
+  // The first column of each run of a group gets the group's name and a divider.
+  const startsGroup = (i: number) => !!columns[i].group && columns[i].group !== columns[i - 1]?.group;
+  const cellClass = (i: number) => (startsGroup(i) ? " col-group-start" : "");
+  const sortCol = sortKey === null ? null : columns.find((c) => colKey(c) === sortKey);
   const byName = sortKey === "";
   const sorted = (() => {
     if (sortKey === null) return groups;
@@ -138,18 +147,19 @@ export function CategoryGroups<G extends GroupBase<S>, S extends SubBase>({
           <thead>
             <tr>
               <th className="sortable" onClick={() => clickHeader("", true)}>Category{arrow("")}</th>
-              {columns.map((c) => {
+              {columns.map((c, i) => {
                 // A column can be sorted unless what it renders is neither a
                 // number nor a string and it hasn't said how to order it.
                 const sortable = !!c.sortMain || (groups.length > 0 && primitive(c.main(groups[0])) !== null);
                 return (
                   <th
-                    key={c.label}
-                    className={`${alignClass(c.align)} ${sortable ? "sortable" : ""}`}
-                    title={c.title}
-                    onClick={() => clickHeader(c.label, sortable)}
+                    key={colKey(c)}
+                    className={`${alignClass(c.align)} ${sortable ? "sortable" : ""}${cellClass(i)}`}
+                    title={colTitle(c.label, c.title)}
+                    onClick={() => clickHeader(colKey(c), sortable)}
                   >
-                    {c.label}{arrow(c.label)}
+                    {startsGroup(i) && <span className="th-group">{c.group}</span>}
+                    {c.label}{arrow(colKey(c))}
                   </th>
                 );
               })}
@@ -183,8 +193,8 @@ export function CategoryGroups<G extends GroupBase<S>, S extends SubBase>({
                     </Link>
                     {g.virtual && <span className="cat-virtual-badge">merged</span>}
                   </td>
-                  {columns.map((c) => (
-                    <td key={c.label} className={alignClass(c.align) + " strong"}>
+                  {columns.map((c, i) => (
+                    <td key={colKey(c)} className={alignClass(c.align) + " strong" + cellClass(i)}>
                       {c.main(g)}
                     </td>
                   ))}
@@ -218,8 +228,8 @@ export function CategoryGroups<G extends GroupBase<S>, S extends SubBase>({
                               {s.subLabel}
                             </Link>
                           </td>
-                          {columns.map((c) => (
-                            <td key={c.label} className={alignClass(c.align)}>
+                          {columns.map((c, i) => (
+                            <td key={colKey(c)} className={alignClass(c.align) + cellClass(i)}>
                               {c.sub(s)}
                             </td>
                           ))}
@@ -236,8 +246,8 @@ export function CategoryGroups<G extends GroupBase<S>, S extends SubBase>({
                                   {lf.subLabel}
                                 </Link>
                               </td>
-                              {columns.map((c) => (
-                                <td key={c.label} className={alignClass(c.align)}>
+                              {columns.map((c, i) => (
+                                <td key={colKey(c)} className={alignClass(c.align) + cellClass(i)}>
                                   {c.sub(lf as S)}
                                 </td>
                               ))}
@@ -253,8 +263,8 @@ export function CategoryGroups<G extends GroupBase<S>, S extends SubBase>({
             <tfoot>
               <tr className="cat-overall-row">
                 <td><span className="caret-spacer" />Overall</td>
-                {columns.map((c) => (
-                  <td key={c.label} className={alignClass(c.align)}>
+                {columns.map((c, i) => (
+                  <td key={colKey(c)} className={alignClass(c.align) + cellClass(i)}>
                     {(c.overall ?? c.main)(overall)}
                   </td>
                 ))}

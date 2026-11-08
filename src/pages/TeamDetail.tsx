@@ -24,6 +24,39 @@ function Stat({ label, value, title }: { label: string; value: string; title?: s
   );
 }
 
+// Tossup and bonus category trees joined by name at every level, so one table
+// shows both.
+interface JSub { subcategory: string; subLabel: string; leaves?: JSub[]; tu?: CatTeamTossupSub; bn?: CatBonusSub }
+interface JGroup { category: string; subs: JSub[]; virtual?: boolean; tu?: CatTeamTossupRow; bn?: CatBonusRow }
+function joinSubs(tu: CatTeamTossupSub[] = [], bn: CatBonusSub[] = []): JSub[] {
+  const out: JSub[] = [], at = new Map<string, JSub>();
+  const get = (k: string, l: string) => { let x = at.get(k); if (!x) { x = { subcategory: k, subLabel: l }; at.set(k, x); out.push(x); } return x; };
+  for (const t of tu) get(t.subcategory, t.subLabel).tu = t;
+  for (const b of bn) get(b.subcategory, b.subLabel).bn = b;
+  for (const x of out) { const lv = joinSubs(x.tu?.leaves, x.bn?.leaves); if (lv.length) x.leaves = lv; }
+  return out;
+}
+function joinCats(tu: CatTeamTossupRow[] = [], bn: CatBonusRow[] = []): JGroup[] {
+  const out: JGroup[] = [], at = new Map<string, JGroup>();
+  const get = (k: string) => { let g = at.get(k); if (!g) { g = { category: k, subs: [] }; at.set(k, g); out.push(g); } return g; };
+  for (const t of tu) { const g = get(t.category); g.tu = t; g.virtual ||= (t as { virtual?: boolean }).virtual; }
+  for (const b of bn) { const g = get(b.category); g.bn = b; g.virtual ||= b.virtual; }
+  for (const g of out) g.subs = joinSubs(g.tu?.subs, g.bn?.subs);
+  return out;
+}
+// Re-point a tossup or bonus column at one side of the joined rows.
+function lift<G, S>(c: CatColumn<G, S>, side: "tu" | "bn", group: string, i: number): CatColumn<JGroup, JSub> {
+  const gOf = (g: JGroup) => g[side] as G | undefined, sOf = (x: JSub) => x[side] as S | undefined;
+  return {
+    ...c, key: `${side}-${i}`, group,
+    main: (g) => (gOf(g) ? c.main(gOf(g)!) : ""), sub: (x) => (sOf(x) ? c.sub(sOf(x)!) : ""),
+    sortMain: (g) => (gOf(g) ? (c.sortMain ? c.sortMain(gOf(g)!) : prim(c.main(gOf(g)!))) : null),
+    sortSub: (x) => (sOf(x) ? (c.sortSub ? c.sortSub(sOf(x)!) : prim(c.sub(sOf(x)!))) : null),
+    overall: undefined,
+  };
+}
+const prim = (v: unknown) => (typeof v === "number" || typeof v === "string" ? v : null);
+
 type MyGame = { g: GameRow; us: GameRow["teams"][number]; them: GameRow["teams"] };
 
 // Which rounds the page is totalled over: chips to pick any mix of rounds, and a
@@ -150,7 +183,6 @@ export function TeamDetailPage() {
   const { meta, scope, editions, isOwner, user, allowRequests } = useSetCtx();
   const { slug = "", id = "" } = useParams();
   const { data: all, error, loading } = useScopedJson<Record<string, TeamDetail>>("teams_detail.json");
-  const [view, setView] = useState<"main" | "bonus">("main");
   const d = all?.[id];
   // Per-team bonus stats are unavailable for imports that only carry aggregate
   // bonus conversion; hide the team-level bonus UI while keeping tossup stats.
@@ -200,6 +232,7 @@ export function TeamDetailPage() {
   const canFilterCats = !!tr?.teams[id];
   const cats = rv?.categories ?? d.categories;
   const bonusCats = rv?.bonusCategories ?? d.bonusCategories;
+  const joined = joinCats(cats, teamBonus ? bonusCats : []);
   const catNote = !filtered || canFilterCats ? null
     : tr === undefined ? <p className="muted">Loading these rounds…</p>
     : <p className="muted">Season totals. Rebuild stats to filter by round.</p>;
@@ -232,6 +265,11 @@ export function TeamDetailPage() {
     { label: "Hard%", align: "right", main: (g) => pct(g.hardPct), sub: (s) => pct(s.hardPct), sortMain: (g) => g.hardPct, sortSub: (s) => s.hardPct },
   ];
 
+  const catCols: CatColumn<JGroup, JSub>[] = [
+    ...tossupCols.map((c, i) => lift(c, "tu", "Tossups", i)),
+    ...(teamBonus ? bonusCols.map((c, i) => lift(c, "bn", "Bonuses", i)) : []),
+  ];
+
   const rosterCols: Column<RosterPlayer>[] = [
     { key: "name", label: "Player", personName: (p) => p.name, render: (p) => <Link className="link" to={`/set/${slug}/player/${p.id}`}>{p.name}</Link> },
     { key: "games", label: "GP", align: "right", sortVal: (p) => p.games, render: (p) => p.games },
@@ -256,11 +294,6 @@ export function TeamDetailPage() {
             {user && (isOwner || allowRequests) && <> · <Rename slug={slug} kind="team" name={d.name} isOwner={isOwner} /></>}
           </p>
         </div>
-        {teamBonus && (
-          <button className="btn-primary" onClick={() => setView(view === "main" ? "bonus" : "main")}>
-            {view === "main" ? "View Bonuses" : "View Tossup Stats"}
-          </button>
-        )}
       </div>
 
       {rounds.length > 1 && <RoundPicker rounds={rounds} picked={picked} setPicked={setPicked} />}
@@ -295,22 +328,12 @@ export function TeamDetailPage() {
       </div>
       )}
 
-      {view === "main" || !teamBonus ? (
-        <>
-          <h2>Roster{filtered ? " — all rounds" : ""}</h2>
-          <DataTable rows={d.roster.filter((p) => p.games > 0 || p.powers + p.gets + p.incorrect > 0)} columns={rosterCols} initialSort="pts" initialDir="desc" rowKey={(p) => p.id} />
-          {mine.length > 0 && <TeamGames sel={sel} filtered={filtered} phrase={phrase} />}
-          <h2>Tossups by category{filtered && canFilterCats ? ` in ${phrase}` : ""}</h2>
-          {catNote}
-          <CategoryGroups groups={cats} columns={tossupCols} linkBase={`/set/${slug}/tossup`} mainParam="category" subParam="subcategory" />
-        </>
-      ) : (
-        <>
-          <h2>Bonuses by category{filtered && canFilterCats ? ` in ${phrase}` : ""}</h2>
-          {catNote}
-          <CategoryGroups groups={bonusCats} columns={bonusCols} linkBase={`/set/${slug}/bonus`} mainParam="category" subParam="subcategory" />
-        </>
-      )}
+      <h2>Roster{filtered ? " — all rounds" : ""}</h2>
+      <DataTable rows={d.roster.filter((p) => p.games > 0 || p.powers + p.gets + p.incorrect > 0)} columns={rosterCols} initialSort="pts" initialDir="desc" rowKey={(p) => p.id} />
+      {mine.length > 0 && <TeamGames sel={sel} filtered={filtered} phrase={phrase} />}
+      <h2>Categories{filtered && canFilterCats ? ` in ${phrase}` : ""}</h2>
+      {catNote}
+      <CategoryGroups groups={joined} columns={catCols} linkBase={`/set/${slug}/tossup`} mainParam="category" subParam="subcategory" />
     </div>
   );
 }

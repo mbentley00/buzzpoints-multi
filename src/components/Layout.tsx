@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, Link, Outlet, useParams, useLocation, useOutletContext } from "react-router-dom";
 import { useSetJson, useIndex, isRevealed, setRevealed, clearSetCache, refreshIndex, isContentRedacted, useSetEpoch } from "../data";
 import { Meta, SetCtx } from "../types";
@@ -24,44 +24,102 @@ export function scopedPath(scope: string, file: string): string {
 // Load a per-set data file scoped to the currently-selected edition/phase.
 export function useScopedJson<T>(file: string, nonce = 0) {
   const { slug, scope } = useOutletContext<SetCtx>();
-  return useSetJson<T>(slug, scopedPath(scope, file), nonce);
+  return useSetJson<T>(slug, file ? scopedPath(scope, file) : "", nonce);
 }
 
-// The pages under a set, in header order. The set's landing page lists the
-// same ones as cards, so the two can't drift apart.
-export interface SetTab { to: string; label: string; desc: string; badge?: number; badgeTitle?: string }
-export function setTabs(meta: Meta, base: string, o: { hasEditions: boolean; isOwner: boolean; forum?: boolean; forumUnread?: number; pendingAccess?: number; klaxonOn?: boolean }): SetTab[] {
+// The pages under a set, grouped as the header shows them. The set's home page
+// lists the same groups, so the two can't drift apart.
+export interface NavItem { to: string; label: string; badge?: number; badgeTitle?: string }
+export interface NavGroup { label: string; items: NavItem[] }
+export function setNav(meta: Meta, base: string, o: { hasEditions: boolean; isOwner: boolean; forum?: boolean; forumUnread?: number; pendingAccess?: number; klaxonOn?: boolean }): NavGroup[] {
   const n = (k: number, one: string, many = one + "s") => `${k} ${k === 1 ? one : many}`;
-  return [
-    { to: `${base}/tossup`, label: "Tossups", desc: n(meta.numTossups, "question") },
-    ...(meta.hasBonuses ? [{ to: `${base}/bonus`, label: "Bonuses", desc: n(meta.numBonuses, "bonus", "bonuses") }] : []),
-    { to: `${base}/player`, label: "Players", desc: n(meta.numPlayers, "player") },
-    // A shootout's "teams" are its players — one page for them is enough.
-    ...(meta.individual ? [] : [{ to: `${base}/team`, label: "Teams", desc: n(meta.numTeams, "team") }]),
-    { to: `${base}/category/tossup`, label: "Categories (T)", desc: "By subject" },
-    ...(meta.hasBonuses ? [{ to: `${base}/category/bonus`, label: "Categories (B)", desc: "By subject" }] : []),
-    { to: `${base}/buzzer-races`, label: "Races", desc: "Close buzzes" },
-    // Klaxon logs record every press, not just the one that got the floor. Kept
-    // on a page of its own; a viewer who switched it off sees it struck through.
-    ...(meta.hasKlaxon ? [{ to: `${base}/klaxon`, label: o.klaxonOn === false ? "Klaxon (off)" : "Klaxon", desc: "Every buzzer press" }] : []),
-    { to: `${base}/first-sentence`, label: "1st Sentence", desc: "Opening-clue buzzes" },
-    { to: `${base}/packet`, label: "Packets", desc: "Questions by round" },
-    // Only worth a tab once the owner has marked a metadata field as a tag.
-    ...(meta.hasTags ? [{ to: `${base}/tags`, label: "Tags", desc: "By tag" }] : []),
-    { to: `${base}/scoreboard`, label: "Scoreboard", desc: "Games and replays" },
-    // The YellowFruit-style report — standings, individuals, scoreboard.
-    { to: `${base}/standard`, label: "YF Stats", desc: "Standings, individuals, scoreboard" },
-    // Only once the owner has opened it (signed-in viewers see the tab; the
-    // page itself asks anyone else to log in).
-    ...(o.forum ? [{ to: `${base}/discussion`, label: "Forums", desc: o.forumUnread ? `${o.forumUnread} new post${o.forumUnread === 1 ? "" : "s"}` : "Discussion", badge: o.forumUnread || 0, badgeTitle: n(o.forumUnread || 0, "new post") }] : []),
-    ...(o.hasEditions || o.isOwner ? [{ to: `${base}/editions`, label: "Editions", desc: o.hasEditions ? "Compare mirrors" : "Add a mirror" }] : []),
-    ...(o.isOwner ? [{ to: `${base}/requests`, label: "Corrections", desc: "Proposed fixes" }] : []),
-    ...(o.isOwner ? [{
-      to: `${base}/settings`, label: "Settings",
-      desc: o.pendingAccess ? `${n(o.pendingAccess, "access request")} waiting` : "Visibility, details, repairs",
-      badge: o.pendingAccess || 0, badgeTitle: `${n(o.pendingAccess || 0, "access request")} waiting`,
-    }] : []),
+  const groups: NavGroup[] = [
+    {
+      label: "Results",
+      items: [
+        // A shootout's "teams" are its players — one page for them is enough.
+        ...(meta.individual ? [] : [{ to: `${base}/team`, label: "Teams" }]),
+        { to: `${base}/player`, label: "Players" },
+        { to: `${base}/scoreboard`, label: "Scoreboard" },
+        { to: `${base}/standard`, label: "Traditional Stat Report" },
+        ...(o.hasEditions ? [{ to: `${base}/editions`, label: "Editions" }] : []),
+      ],
+    },
+    {
+      label: "Questions",
+      items: [
+        { to: `${base}/packet`, label: "Packets" },
+        { to: `${base}/tossup`, label: "Tossups" },
+        ...(meta.hasBonuses ? [{ to: `${base}/bonus`, label: "Bonuses" }] : []),
+        { to: `${base}/category`, label: "Categories" },
+        // Only once the owner has marked a metadata field as a tag.
+        ...(meta.hasTags ? [{ to: `${base}/tags`, label: "Tags" }] : []),
+      ],
+    },
+    {
+      label: "Buzzes",
+      items: [
+        { to: `${base}/buzzer-races`, label: "Buzzer races" },
+        { to: `${base}/first-sentence`, label: "First sentence" },
+        // Klaxon logs record every press; a viewer who switched it off sees it marked.
+        ...(meta.hasKlaxon ? [{ to: `${base}/klaxon`, label: o.klaxonOn === false ? "Klaxon (off)" : "Klaxon" }] : []),
+      ],
+    },
   ];
+  // Only once the owner has opened it.
+  if (o.forum) {
+    groups.push({ label: "Forum", items: [{ to: `${base}/discussion`, label: "Forum", badge: o.forumUnread || 0, badgeTitle: n(o.forumUnread || 0, "new post") }] });
+  }
+  if (o.isOwner) {
+    groups.push({
+      label: "Manage",
+      items: [
+        { to: `${base}/settings`, label: "Settings", badge: o.pendingAccess || 0, badgeTitle: `${n(o.pendingAccess || 0, "access request")} waiting` },
+        { to: `${base}/requests`, label: "Corrections" },
+        ...(o.hasEditions ? [] : [{ to: `${base}/editions`, label: "Editions" }]),
+      ],
+    });
+  }
+  return groups;
+}
+
+// One header group: a plain link when it holds a single page, else a menu.
+function NavMenu({ group }: { group: NavGroup }) {
+  const loc = useLocation();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  const active = group.items.some((i) => loc.pathname === i.to || loc.pathname.startsWith(i.to + "/"));
+  const badge = group.items.reduce((a, i) => a + (i.badge || 0), 0);
+  useEffect(() => setOpen(false), [loc.pathname, loc.search]);
+  useEffect(() => {
+    if (!open) return;
+    const down = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", down);
+    document.addEventListener("keydown", key);
+    return () => { document.removeEventListener("mousedown", down); document.removeEventListener("keydown", key); };
+  }, [open]);
+  const badgeEl = badge > 0 && <span className="badge-new" title={group.items.find((i) => i.badge)?.badgeTitle}>{badge}</span>;
+  if (group.items.length === 1) {
+    const i = group.items[0];
+    return <NavLink to={i.to} className={({ isActive }) => "nav-group-btn" + (isActive ? " active" : "")}>{i.label}{badgeEl}</NavLink>;
+  }
+  return (
+    <div className="nav-group" ref={ref}>
+      <button type="button" className={"nav-group-btn" + (active ? " active" : "")} aria-expanded={open} aria-haspopup="true" onClick={() => setOpen((v) => !v)}>
+        {group.label}{badgeEl} <span aria-hidden="true" className="nav-caret">▾</span>
+      </button>
+      {open && (
+        <div className="nav-menu">
+          {group.items.map((i) => (
+            <NavLink key={i.to} to={i.to} className={({ isActive }) => (isActive ? "active" : "")}>
+              {i.label}{!!i.badge && <span className="badge-new" title={i.badgeTitle}>{i.badge}</span>}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function SetLayout() {
@@ -144,7 +202,7 @@ export function SetLayout() {
 
   const base = `/set/${slug}`;
   const klaxonOn = useKlaxonOn();
-  const tabs = meta ? setTabs(meta, base, { hasEditions, isOwner, forum: !!entry?.forum, forumUnread: entry?.forumUnread, pendingAccess, klaxonOn }) : [];
+  const groups = meta ? setNav(meta, base, { hasEditions, isOwner, forum: !!entry?.forum, forumUnread: entry?.forumUnread, pendingAccess, klaxonOn }) : [];
   // Settings shows the list itself, so the banner would only repeat it there.
   const onSettings = /\/settings(\/|$)/.test(loc.pathname);
 
@@ -162,13 +220,13 @@ export function SetLayout() {
           )}
           <Link to="/search" className="nav-link topbar-search">Search across tournaments</Link>
           <div className="topbar-auth"><AuthNav /></div>
-          <nav className="nav nav-tabs">
-            {meta &&
-              tabs.map((t) => (
-                <NavLink key={t.to} to={t.to} className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}>
-                  {t.label}{!!t.badge && <span className="badge-new" title={t.badgeTitle}>{t.badge}</span>}
-                </NavLink>
-              ))}
+          <nav className="nav-groups" aria-label="Tournament sections">
+            {meta && (
+              <>
+                <NavLink to={base} end className={({ isActive }) => "nav-group-btn" + (isActive ? " active" : "")}>Overview</NavLink>
+                {groups.map((g) => <NavMenu key={g.label} group={g} />)}
+              </>
+            )}
           </nav>
         </div>
       </header>
@@ -331,7 +389,6 @@ export function SetLayout() {
         <Link to="/" className="link">
           ← All tournaments
         </Link>
-        {meta && <span> · {meta.scoringLabel}</span>}
       </footer>
     </div>
   );
