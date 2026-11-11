@@ -1104,8 +1104,8 @@ a.auth-user:hover { color: #fff; text-decoration: underline; }
 .edition-count { font-size: 12px; font-weight: 600; color: var(--accent-ink); background: var(--accent-soft); padding: 2px 8px; border-radius: 10px; vertical-align: middle; margin-left: 6px; }
 .level-badge { display: inline-block; font-size: 11px; font-weight: 700; color: var(--neutral-chip-ink); background: var(--neutral-chip); padding: 1px 8px; border-radius: 10px; margin-right: 8px; vertical-align: middle; }
 /* which edition(s) a team/player played (combined view of a multi-edition set) */
-.edition-badge { display: inline-block; font-size: 11px; font-weight: 600; color: var(--accent-ink); background: var(--accent-soft); padding: 1px 8px; border-radius: 10px; vertical-align: middle; white-space: nowrap; }
-.edition-badge + .edition-badge { margin-left: 4px; }
+.edition-badge { font: inherit; color: inherit; }
+.edition-badge + .edition-badge::before { content: ", "; }
 .editions-bar { background: var(--info-bg); border-bottom: 1px solid var(--info-line); padding: 7px 24px; display: flex; align-items: center; gap: 10px; font-size: 13.5px; }
 .subject-select { font: inherit; padding: 3px 8px; border: 1px solid var(--field-border); border-radius: 4px; background: var(--bg); color: var(--ink); max-width: 260px; }
 .editions-bar select { font: inherit; padding: 3px 8px; border: 1px solid var(--field-border); border-radius: 4px; }
