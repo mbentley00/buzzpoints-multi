@@ -235,7 +235,7 @@ export function Landing() {
             invisible to it. Only your own group folds to its MINE_CAP newest. */}
         {filtered.length > 0 && (() => {
           const renderRow = (s: SetEntry) => (
-            <Link key={s.slug} to={s.kind === "results" ? `/set/${s.slug}` : `/set/${s.slug}/tossup`} className="set-row">
+            <Link key={s.slug} to={`/set/${s.slug}`} className="set-row">
               <span className="set-row-name">
                 {s.name}
                 <VisBadge s={s} />
