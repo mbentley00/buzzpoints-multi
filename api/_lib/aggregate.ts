@@ -2150,7 +2150,7 @@ export function aggregate(
           playerId: playerId.get(k) ?? null, name: p.name, team: p.team, teamId: teamId.get(p.team) ?? null,
           powers: agg.powers, gets: agg.gets, incorrect: agg.incorrect, points: agg.points,
           earliest: agg.earliest === null ? null : agg.earliest + 1, avgBuzz: agg.posN ? round1(agg.posSum / agg.posN + 1) : null,
-          firstBuzzes: agg.first, top3Buzzes: agg.top3, bpa: bpaOf(agg.unread, agg.tuh),
+          tuh: Math.round(agg.tuh), firstBuzzes: agg.first, top3Buzzes: agg.top3, bpa: bpaOf(agg.unread, agg.tuh),
         });
     }
     rows.sort((a, b) => (b.points as number) - (a.points as number) || (a.name as string).toLowerCase().localeCompare((b.name as string).toLowerCase()));

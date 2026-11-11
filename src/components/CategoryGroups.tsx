@@ -194,7 +194,7 @@ export function CategoryGroups<G extends GroupBase<S>, S extends SubBase>({
                     {g.virtual && <span className="cat-virtual-badge">merged</span>}
                   </td>
                   {columns.map((c, i) => (
-                    <td key={colKey(c)} className={alignClass(c.align) + " strong" + cellClass(i)}>
+                    <td key={colKey(c)} className={alignClass(c.align) + cellClass(i)}>
                       {c.main(g)}
                     </td>
                   ))}

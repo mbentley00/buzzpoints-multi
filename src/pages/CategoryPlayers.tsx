@@ -15,6 +15,7 @@ export function CategoryPlayersPage() {
     { key: "name", label: "Player", personName: (p) => p.name, render: (p) => (p.playerId ? <Link className="link" to={`/set/${slug}/player/${p.playerId}`}>{p.name}</Link> : p.name) },
     // In a shootout the "team" is the player again — nothing to show.
     ...(meta.individual ? [] : [{ key: "team", label: "Team", sortVal: (p: CategoryPlayerRow) => p.team.toLowerCase(), render: (p: CategoryPlayerRow) => (p.teamId ? <Link className="link" to={`/set/${slug}/team/${p.teamId}`}>{p.team}</Link> : p.team) }]),
+    { key: "tuh", label: "TUH", align: "right", sortVal: (p) => p.tuh ?? -1, render: (p) => p.tuh ?? "—", title: "Tossups heard" },
     ...(meta.hasPower ? [{ key: "pwr", label: "Pwr", align: "right" as const, sortVal: (p: CategoryPlayerRow) => p.powers, render: (p: CategoryPlayerRow) => p.powers, title: "Powers" }] : []),
     { key: "gets", label: "Get", align: "right", sortVal: (p) => p.gets, render: (p) => p.gets },
     { key: "inc", label: "Inc", align: "right", sortVal: (p) => p.incorrect, render: (p) => p.incorrect, title: "Incorrect buzzes" },

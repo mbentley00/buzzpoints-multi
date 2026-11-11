@@ -691,6 +691,7 @@ export interface CategoryPlayerRow {
   avgBuzz: number | null;
   firstBuzzes: number;
   top3Buzzes: number;
+  tuh?: number;
   // Over the tossups this player's team heard in the categories this row covers.
   bpa: number | null;
 }
