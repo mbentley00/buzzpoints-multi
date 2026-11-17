@@ -103,6 +103,8 @@ export interface AggregateConfig {
   hasBonuses: boolean;
   // How to read each question's metadata line, once the owner has confirmed it.
   metaMap?: MetaMap | null;
+  // Parent subjects for top-level categories (see withParent).
+  catParents?: CatParents | null;
   // Per-question tag edits the owner made by hand, keyed "<round>-<num>".
   tagEdits?: TagEdits | null;
   // Difficulty marks the owner corrected by hand, keyed "<round>-<num>". A packet
@@ -158,6 +160,58 @@ export const tuhCorrKey = (c: { round: number; team: string; player: string; edi
 export interface TagEdit { add?: string[]; remove?: string[]; category?: string }
 const withCategory = (rm: ResolvedMeta, e?: TagEdit): ResolvedMeta =>
   e?.category ? { ...rm, main: e.category.split(" - ")[0].trim(), full: e.category } : rm;
+
+// Parents the owner gave a set's top-level categories ("Biology" → "Science"),
+// keyed by the top-level name as the packets spell it. A question filed under
+// "Biology" (or "Biology - Cell") then reads "Science - Biology[ - Cell]".
+export type CatParents = Record<string, string>;
+export function withParent(rm: ResolvedMeta, parents?: CatParents | null): ResolvedMeta {
+  const p = parents?.[rm.main]?.trim();
+  if (!p || p.toLowerCase() === rm.main.toLowerCase()) return rm;
+  const full = tidyCategory(`${p} - ${rm.full}`);
+  return { ...rm, main: full.split(" - ")[0].trim(), full };
+}
+
+// The ACF distribution's subject for a category that's really one of its
+// subcategories. Top-level ACF categories (Literature, Religion, Geography…) and
+// anything unrecognized get nothing.
+const ACF_PARENTS: [string, string[]][] = [
+  ["Literature", [
+    "american literature", "british literature", "european literature", "world literature", "other literature",
+    "commonwealth literature", "british commonwealth literature", "classical literature", "ancient literature",
+    "french literature", "german literature", "russian literature", "spanish literature", "italian literature",
+    "latin american literature", "asian literature", "african literature", "poetry", "drama", "plays",
+    "long fiction", "short fiction", "fiction", "novels", "short stories", "literary criticism", "lit",
+    "american lit", "british lit", "european lit", "world lit",
+  ]],
+  ["History", [
+    "american history", "us history", "u s history", "united states history", "british history",
+    "european history", "world history", "other history", "ancient history", "classical history",
+    "classics", "asian history", "african history", "latin american history", "east asian history",
+    "middle eastern history", "historiography", "military history", "archaeology",
+  ]],
+  ["Science", [
+    "biology", "chemistry", "physics", "math", "mathematics", "astronomy", "earth science", "geology",
+    "computer science", "other science", "engineering", "statistics", "bio", "chem", "phys",
+    "cs", "earth and space science", "environmental science", "ecology", "genetics", "biochemistry",
+    "organic chemistry", "neuroscience", "meteorology", "oceanography", "applied science",
+  ]],
+  ["Fine Arts", [
+    "painting", "sculpture", "painting and sculpture", "visual arts", "visual fine arts", "visual art",
+    "music", "classical music", "auditory arts", "auditory fine arts", "opera", "jazz", "film", "architecture",
+    "photography", "dance", "ballet", "other fine arts", "other arts", "musicals", "theater", "theatre",
+    "art", "arts", "art history",
+  ]],
+  ["Social Science", [
+    "economics", "psychology", "sociology", "anthropology", "linguistics", "political science",
+    "political theory", "law", "other social science", "government", "political philosophy",
+  ]],
+];
+const ACF_LOOKUP = new Map<string, string>(
+  ACF_PARENTS.flatMap(([p, cs]) => cs.map((c) => [c.replace(/&/g, " and ").replace(/[^a-z]+/gi, " ").trim().toLowerCase(), p] as [string, string]))
+);
+export const acfParent = (cat: string): string | null =>
+  ACF_LOOKUP.get(cat.replace(/&/g, " and ").replace(/[^a-z]+/gi, " ").trim().toLowerCase()) ?? null;
 export interface TagEdits { tossups?: Record<string, TagEdit>; bonuses?: Record<string, TagEdit> }
 
 // One bonus's corrected difficulty marks, keyed "<round>-<num>". `from` is what
@@ -1178,7 +1232,7 @@ export function aggregate(
     (p.tossups || []).forEach((t, i) => {
       const num = i + 1;
       noteAmbiguous(t.metadata);
-      const rm = withCategory(resolveMeta(t.metadata, cfg.metaMap ?? null), cfg.tagEdits?.tossups?.[`${r}-${num}`]);
+      const rm = withParent(withCategory(resolveMeta(t.metadata, cfg.metaMap ?? null), cfg.tagEdits?.tossups?.[`${r}-${num}`]), cfg.catParents);
       const tok = tokenize(t.question);
       tossups.set(`${r}-${num}`, {
         round: r, num, questionHtml: t.question, answer: t.answer,
@@ -1191,7 +1245,7 @@ export function aggregate(
       (p.bonuses || []).forEach((b, i) => {
         const num = i + 1;
         noteAmbiguous(b.metadata);
-        const rmb = withCategory(resolveMeta(b.metadata, cfg.metaMap ?? null), cfg.tagEdits?.bonuses?.[`${r}-${num}`]);
+        const rmb = withParent(withCategory(resolveMeta(b.metadata, cfg.metaMap ?? null), cfg.tagEdits?.bonuses?.[`${r}-${num}`]), cfg.catParents);
         bonuses.set(`${r}-${num}`, {
           round: r, num, leadin: b.leadin || "", parts: b.parts || [], answers: b.answers || [],
           difficultyModifiers: applyDiffFix(b.difficultyModifiers || [], b.answers || [], cfg.bonusDiffs?.[`${r}-${num}`]?.mods),
@@ -2402,7 +2456,7 @@ export interface ImportedBonus {
 // pre-aggregated bonus data, matching the shapes aggregate() emits so the UI is
 // identical. Entries with the same round-num (across mirrors) are summed. No
 // per-team/per-game breakdown is possible from this data.
-export function bonusFilesFromImported(list: ImportedBonus[], virtualCats: VirtualCategory[] = [], metaMap: MetaMap | null = null): Record<string, unknown> {
+export function bonusFilesFromImported(list: ImportedBonus[], virtualCats: VirtualCategory[] = [], metaMap: MetaMap | null = null, catParents: CatParents | null = null): Record<string, unknown> {
   // merge by position id (round-num), summing counts across editions
   const merged = new Map<string, ImportedBonus>();
   for (const b of list) {
@@ -2423,9 +2477,9 @@ export function bonusFilesFromImported(list: ImportedBonus[], virtualCats: Virtu
   const orderRows: BonusOrderInput[] = [];
   for (const [id, b] of [...merged.entries()].sort()) {
     // Imported bonus stats carry their category as a raw metadata string.
-    const { main, full: sub } = b.categoryOverride
-      ? { main: b.categoryOverride.split(" - ")[0].trim(), full: b.categoryOverride }
-      : resolveMeta(b.category, metaMap ?? null);
+    const { main, full: sub } = withParent(b.categoryOverride
+      ? { main: b.categoryOverride.split(" - ")[0].trim(), full: b.categoryOverride, tags: [] }
+      : resolveMeta(b.category, metaMap ?? null), catParents);
     const heard = b.heard;
     const totalPts = b.points;
     const ppb = heard ? Math.round((100 * totalPts) / heard) / 100 : 0;

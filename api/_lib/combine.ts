@@ -17,7 +17,7 @@
 import {
   readIndex, writeIndex, readSource, writeSource, writeCorrections, writeRequests, readCorrections,
   readBonusCorrections, writeBonusCorrections, readRenames, writeRenames, renameKey, readMetaMap, writeMetaMap,
-  readTagEdits, writeTagEdits, readBonusDiffs, writeBonusDiffs, readVirtualCats, writeVirtualCats,
+  readTagEdits, writeTagEdits, readBonusDiffs, writeBonusDiffs, readVirtualCats, writeVirtualCats, readCatParents, writeCatParents,
   readRoundTags, writeRoundTags, roundTagsFor, readReplacements, editionsOf, canonicalizeEditions,
   aggregateAndWrite, isSetOwner, practiceVisibility, corrKey, bnCorrKey,
   Edition, SetSource, SetEntry, RoundTags,
@@ -113,6 +113,7 @@ export async function combineSets(body: CombineBody, user: string): Promise<{ sl
   const combinedFrom: NonNullable<SetEntry["combinedFrom"]> = [];
   let hasBonuses = false;
   let metaMap: MetaMap | null | undefined; // undefined = not chosen yet
+  let catParents: Record<string, string> = {};
   let next = 1;
 
   for (const e of entries) {
@@ -179,6 +180,7 @@ export async function combineSets(body: CombineBody, user: string): Promise<{ sl
     Object.assign(tagEdits.tossups, srcTu);
     Object.assign(tagEdits.bonuses, srcBn);
 
+    catParents = { ...(await readCatParents(e.slug)), ...catParents };
     for (const v of (await readVirtualCats(e.slug)) || []) {
       const s = vcats.get(v.name) ?? new Set<string>();
       for (const m of v.members) s.add(m);
@@ -212,6 +214,7 @@ export async function combineSets(body: CombineBody, user: string): Promise<{ sl
   await writeTagEdits(slug, tagEdits);
   await writeBonusDiffs(slug, bonusDiffs);
   if (metaMap) await writeMetaMap(slug, metaMap);
+  if (Object.keys(catParents).length) await writeCatParents(slug, catParents);
   if (vcats.size) await writeVirtualCats(slug, [...vcats].map(([n, m]): VirtualCategory => ({ name: n, members: [...m] })));
   await writeRoundTags(slug, { all: roundTags });
   const { meta, editions, tags } = await aggregateAndWrite(slug, source, corrections);

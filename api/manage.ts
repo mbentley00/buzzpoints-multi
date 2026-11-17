@@ -15,7 +15,7 @@ import {
   readAccess, writeAccess, readLinks, writeLinks, canViewContent, effectiveVisibility, InviteLink, Visibility, AccessRole,
   writeVirtualCats, readRoundTags, writeRoundTags, DEFAULT_ROUND_TAGS, RoundTags, RoundTagsDoc, TOURNAMENT_LEVELS,
   editionsOf, canonicalizeEditions, Edition, SetSource, AccessRequest, readRenames, writeRenames, renameKey,
-  readMetaMap, writeMetaMap, readTagEdits, writeTagEdits, readBonusDiffs, writeBonusDiffs,
+  readMetaMap, writeMetaMap, readCatParents, writeCatParents, readTagEdits, writeTagEdits, readBonusDiffs, writeBonusDiffs,
   isSetOwner, isPrimaryOwner, ownerEmails, requestsAllowed, needsPublishApproval, isPractice, practiceVisibility,
   isTournamentDate, readReplacements, writeReplacements,
   nextEditionId,
@@ -23,7 +23,7 @@ import {
 import {
   applyReplacements, scanMissingQuestions, replacementCandidates, suggestReplacement, replacementKey, QuestionReplacement,
 } from "./_lib/replacements.js";
-import { VirtualCategory, scanRoundAlignment, metaFields, MetaMap, MetaField, BonusDiffs } from "./_lib/aggregate.js";
+import { VirtualCategory, scanRoundAlignment, metaFields, MetaMap, MetaField, BonusDiffs, resolveMeta, acfParent, CatParents } from "./_lib/aggregate.js";
 import { LETTER_ROUND_BASE, cleanDifficulty } from "./_lib/publish.js";
 import { sendEmail, appUrl, accessRequestBody, accessGrantedBody, coOwnerBody, coOwnerInviteBody, publishRequestBody } from "./_lib/email.js";
 import { readModConfig, findBlocked } from "./_lib/moderation.js";
@@ -293,6 +293,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .sort((a, b) => b.questions - a.questions);
         return res.status(200).json({ total, shapes, metaMap: await readMetaMap(slug), tagEdits: await readTagEdits(slug) });
       }
+      // Every top-level category as the packets name it (before any parent is
+      // applied), with its question count and the ACF subject it belongs under.
+      if (req.query.op === "catparents") {
+        const source = await readSource(slug);
+        if (!source) return res.status(500).json({ error: "Source data not found." });
+        const mm = await readMetaMap(slug), te = await readTagEdits(slug);
+        const counts = new Map<string, number>();
+        for (const ed of editionsOf(source))
+          for (const p of ed.packets || []) {
+            const scan = (qs: { metadata?: string }[] | undefined, edits: Record<string, { category?: string }> | undefined) =>
+              (qs || []).forEach((q, i) => {
+                const over = edits?.[`${p.round}-${i + 1}`]?.category;
+                const main = over ? over.split(" - ")[0].trim() : resolveMeta(q?.metadata, mm).main;
+                counts.set(main, (counts.get(main) || 0) + 1);
+              });
+            scan(p.tossups, te.tossups);
+            if (source.hasBonuses) scan(p.bonuses, te.bonuses);
+          }
+        const cats = [...counts].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count, acf: acfParent(name) }));
+        return res.status(200).json({ cats, parents: await readCatParents(slug) });
+      }
       // Tossups and bonuses games read that their packets don't have (tiebreakers,
       // replacements), what's been mapped already, and every packet question
       // they could be mapped to.
@@ -553,6 +574,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await writeVirtualCats(slug, clean);
       await aggregateAndWrite(slug, source, await readCorrections(slug));
       return res.status(200).json({ ok: true });
+    } else if (op === "catparents") {
+      if (entry.kind === "results") return res.status(400).json({ error: "Categories apply to buzz tournaments only." });
+      const raw = body.parents;
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return res.status(400).json({ error: "Invalid category groups." });
+      const clean: CatParents = {};
+      for (const [k, v] of Object.entries(raw as Record<string, unknown>).slice(0, 500)) {
+        const key = String(k).trim().slice(0, 120), val = String(v ?? "").trim().slice(0, 80);
+        if (key && val && !val.includes(" - ") && val.toLowerCase() !== key.toLowerCase()) clean[key] = val;
+      }
+      const source = await readSource(slug);
+      if (!source) return res.status(500).json({ error: "Source data not found." });
+      await writeCatParents(slug, clean);
+      await aggregateAndWrite(slug, source, await readCorrections(slug));
+      return res.status(200).json({ ok: true, parents: clean });
     } else if (op === "metamap") {
       if (entry.kind === "results") return res.status(400).json({ error: "Metadata mapping applies to buzz tournaments only." });
       const clean = sanitizeMetaMap(body.metaMap);

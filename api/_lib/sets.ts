@@ -2,7 +2,7 @@
 // re-aggregation helper used by ingest and the edit endpoints.
 import { put, del } from "@vercel/blob";
 import { readBlobJson } from "./blob.js";
-import { aggregate, bonusFilesFromImported, ImportedBonus, PacketFile, GameFile, Correction, BonusCorrection, bnCorrKeyOf, VirtualCategory, Rename, renameKind, MetaMap, TagEdits, BonusDiffs, AggregateConfig, TuhCorrection, tuhCorrKey } from "./aggregate.js";
+import { aggregate, bonusFilesFromImported, ImportedBonus, PacketFile, GameFile, Correction, BonusCorrection, bnCorrKeyOf, VirtualCategory, Rename, renameKind, MetaMap, CatParents, TagEdits, BonusDiffs, AggregateConfig, TuhCorrection, tuhCorrKey } from "./aggregate.js";
 import { getScoring } from "./scoring.js";
 import { isModaqGame, modaqToQbj } from "./modaqGame.js";
 import { buildSearchDoc, invalidateSearchDoc, SEARCH_FILE } from "./searchIndex.js";
@@ -481,6 +481,9 @@ export const writeVirtualCats = (slug: string, c: VirtualCategory[]) => writeJso
 export const readMetaMap = (slug: string) =>
   readBlobJson<MetaMap>(`sets/${slug}/_metamap.json`, false).then((m) => (m?.fields?.length ? m : null));
 export const writeMetaMap = (slug: string, m: MetaMap) => writeJson(`sets/${slug}/_metamap.json`, m);
+export const readCatParents = (slug: string) =>
+  readBlobJson<CatParents>(`sets/${slug}/_catparents.json`, false).then((p) => p || {});
+export const writeCatParents = (slug: string, p: CatParents) => writeJson(`sets/${slug}/_catparents.json`, p);
 export const readTagEdits = (slug: string) =>
   readBlobJson<TagEdits>(`sets/${slug}/_tagedits.json`, false).then((t) => t || {});
 export const writeTagEdits = (slug: string, t: TagEdits) => writeJson(`sets/${slug}/_tagedits.json`, t);
@@ -1009,7 +1012,9 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
   const metaMap = await readMetaMap(slug);
   const tagEdits = await readTagEdits(slug);
   const bonusDiffs = await readBonusDiffs(slug);
+  const catParents = await readCatParents(slug);
   cfg.metaMap = metaMap;
+  cfg.catParents = catParents;
   cfg.tagEdits = tagEdits;
   cfg.bonusDiffs = bonusDiffs;
   cfg.tuhFixes = await readTuhCorrections(slug);
@@ -1023,7 +1028,7 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
     if (!hasImportedBonuses) return;
     const b = out["bonuses.json"] as { heard?: number }[] | undefined;
     if (b && b.some((r) => (r.heard || 0) > 0)) return; // real per-game bonus data present; keep it
-    Object.assign(out, bonusFilesFromImported(collectImportedBonuses(eds, bonusDiffs, roundFilter, tagEdits), virtualCats, metaMap));
+    Object.assign(out, bonusFilesFromImported(collectImportedBonuses(eds, bonusDiffs, roundFilter, tagEdits), virtualCats, metaMap, catParents));
   };
 
   const editionSummaries: EditionSummary[] = [];

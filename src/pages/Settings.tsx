@@ -19,6 +19,7 @@ import { ReplacementEditor, ThrownOutList } from "../components/Replacements";
 import { ReplaceData } from "../components/ReplaceData";
 import { KlaxonUpload } from "../components/KlaxonUpload";
 import { SettingsSearch, SETTINGS_INDEX } from "../components/SettingsSearch";
+import { CategoryParentsEditor } from "../components/CategoryParentsEditor";
 import { buildSetExport, saveBlob } from "../setExport";
 import { buildYft } from "../yftBuild";
 import { buildStatReport } from "../statReport";
@@ -772,6 +773,9 @@ export function Settings() {
             </Sec>
             <Sec id="questionedits" title="Edit questions" line="Bulk category and tag changes." help="questionedits" fold>
               <QuestionEditor slug={slug} hasBonuses={!!meta?.hasBonuses} />
+            </Sec>
+            <Sec id="catparents" title="Group under subjects" line="e.g. Biology → Science - Biology." fold>
+              <CategoryParentsEditor slug={slug} />
             </Sec>
             <Sec id="mergecats" title="Merge categories" line="Group categories under a new name, e.g. Science.">
               <Link to={`/set/${slug}/category?merge=1`} className="link">Open merge tool →</Link>
