@@ -716,7 +716,41 @@ export function crossResemblance(a: TuSig, aKey: string, b: TuSig, bKey: string,
 // renumber rounds so the same physical packet shares a round number everywhere.
 // A no-op (returns the input) for a single edition or when orders already agree.
 export function canonicalizeEditions(editions: Edition[]): Edition[] {
-  return canonicalizeTossups(canonicalizeRounds(editions));
+  return canonicalizeTossups(canonicalizeRounds(editions.map(mergeRepeatedPackets)));
+}
+
+// One site that read the same packet in two of its rounds — a Klaxon mirror
+// whose rooms joined "7" and "Round 7" as separate rounds, say — is one packet,
+// not two. Keyed by round, it was two: the second copy became a packet of its
+// own (packet D showing as both 7 and 19). Fold the later round onto the first.
+function mergeRepeatedPackets(e: Edition): Edition {
+  const packets = [...(e.packets || [])].sort((a, b) => a.round - b.round);
+  if (packets.length < 2) return e;
+  const sig = (p: PacketFile) => new Set((p.tossups || []).map((t) => answerKey(t.answer)).filter(Boolean));
+  const kept: { round: number; set: Set<string> }[] = [];
+  const into = new Map<number, number>();
+  for (const p of packets) {
+    const s = sig(p);
+    const twin = s.size >= 5 && kept.find((k) => {
+      if (k.round === p.round) return false;
+      let n = 0;
+      for (const x of s) if (k.set.has(x)) n++;
+      return n >= 5 && n / Math.min(s.size, k.set.size) >= 0.8;
+    });
+    if (twin) into.set(p.round, twin.round);
+    else kept.push({ round: p.round, set: s });
+  }
+  if (!into.size) return e;
+  const map = (r: number) => into.get(r) ?? r;
+  return {
+    ...e,
+    packets: (e.packets || []).filter((p) => !into.has(p.round)),
+    games: (e.games || []).map((g) => ({
+      ...g, round: map(g.round),
+      match_questions: (g.match_questions || []).map((mq) => mq.tossup_question?.round != null && into.has(mq.tossup_question.round)
+        ? { ...mq, tossup_question: { ...mq.tossup_question, round: map(mq.tossup_question.round) } } : mq),
+    })),
+  };
 }
 
 function canonicalizeRounds(editions: Edition[]): Edition[] {
