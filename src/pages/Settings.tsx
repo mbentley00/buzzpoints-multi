@@ -20,6 +20,10 @@ import { ReplaceData } from "../components/ReplaceData";
 import { KlaxonUpload } from "../components/KlaxonUpload";
 import { SettingsSearch, SETTINGS_INDEX } from "../components/SettingsSearch";
 import { CategoryParentsEditor } from "../components/CategoryParentsEditor";
+
+// Shared links always use quizbowlbuzzpoints.com, even when the owner is on the old .buzz domain.
+const SITE_ORIGIN = /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)
+  ? window.location.origin : "https://www.quizbowlbuzzpoints.com";
 import { buildSetExport, saveBlob } from "../setExport";
 import { buildYft } from "../yftBuild";
 import { buildStatReport } from "../statReport";
@@ -382,7 +386,7 @@ export function Settings() {
     } finally { setBusy(false); }
   }
 
-  const linkUrl = (id: string) => `${window.location.origin}/join/${slug}?key=${id}`;
+  const linkUrl = (id: string) => `${SITE_ORIGIN}/join/${slug}?key=${id}`;
   async function createLink() {
     setErr(null); setMsg(null); setBusy(true);
     try { const d = await postJson("/api/manage", { slug, op: "create-link", approval: linkApproval }); setLinks(d.links || []); }
