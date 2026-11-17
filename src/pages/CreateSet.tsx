@@ -117,9 +117,9 @@ export function CreateSet() {
     } catch {
       /* detection is best-effort; ignore parse errors here */
     }
-    const { roundPacket } = await readSiteGames(files);
+    const { roundPacket, games: settled } = await readSiteGames(files);
     setSites((l) => l.map((x) => {
-      if (x.id !== siteId) return x;
+      if (x.id !== siteId || x.games !== files) return x;
       let versionId = x.versionId;
       // Guess which version this site played from the packet names its games
       // carry, unless the owner already picked one.
@@ -130,7 +130,7 @@ export function CreateSet() {
           if (n > best) { best = n; versionId = v.id; }
         }
       }
-      return { ...x, roundPacket, versionId };
+      return { ...x, roundPacket, games: settled, versionId };
     }));
   }
 

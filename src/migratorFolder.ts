@@ -98,7 +98,7 @@ export async function scanDataFolder(files: PathFile[], onProgress?: (msg: strin
   const setByName = new Map<string, string>();     // norm(set display name) -> setKey
   const edByName = new Map<string, string>();      // `${setKey}|${norm(edition name)}` -> edKey
   const edDisplay = new Map<string, string>();     // `${setKey}|${edKey}` -> display name
-  const mirrorFiles = new Map<string, File[]>();
+  const mirrorFiles = new Map<string, { f: File; folder?: string }[]>();
   const mirrorIndex = new Map<string, File>();
   const setIndexFiles: { setKey: string; f: File }[] = [];
   const edIndexFiles: { setKey: string; edKey: string; f: File }[] = [];
@@ -144,7 +144,8 @@ export async function scanDataFolder(files: PathFile[], onProgress?: (msg: strin
     else if (tj[1] === "game_files" && leaf.toLowerCase().endsWith(".qbj")) {
       const mirror = tj[0];
       if (!mirrorFiles.has(mirror)) mirrorFiles.set(mirror, []);
-      mirrorFiles.get(mirror)!.push(f);
+      // A game in game_files/Round 3/… : "Round 3" is another witness to its round.
+      mirrorFiles.get(mirror)!.push({ f, folder: tj.length > 3 ? tj[tj.length - 2] : undefined });
     }
   }
   for (const { setKey, f } of setIndexFiles) {
@@ -176,19 +177,8 @@ export async function scanDataFolder(files: PathFile[], onProgress?: (msg: strin
   let mi = 0, noGames = 0, unmatched = 0;
   for (const [mirror, games] of mirrorFiles) {
     onProgress?.(`Reading games… ${++mi}/${mirrorFiles.size} sites`);
-    const roundPacket = new Map<number, string>();
-    const vals = new Set<number>();
-    for (const gf of games) {
-      let g: any;
-      try { g = JSON.parse(await gf.text()); } catch { continue; }
-      // Most exports stamp `_round` inside the QBJ, but some only put it in the
-      // file name ("Round_10_…qbj"). The server falls back to the file name
-      // when it files the game, so the packet has to be keyed the same way —
-      // otherwise every round without `_round` gets its games but no packet.
-      const r = g._round != null && Number.isInteger(Number(g._round)) ? Number(g._round) : roundFromFileName(gf.name);
-      if (r != null && Number.isInteger(r) && g.packets && !roundPacket.has(r)) roundPacket.set(r, String(g.packets));
-      for (const mq of g.match_questions || []) for (const bz of mq.buzzes || []) { const v = bz?.result?.value; if (typeof v === "number") vals.add(v); }
-    }
+    const settled = await settleSiteGames(games.map((x) => x.f), games.map((x) => x.folder));
+    const { roundPacket, vals } = settled;
     if (!roundPacket.size) { noGames++; continue; } // no games / no round info
 
     // Prefer the mirror's own index.json, which names its set and edition.
@@ -223,7 +213,7 @@ export async function scanDataFolder(files: PathFile[], onProgress?: (msg: strin
     }
     if (!setKey) { unmatched++; continue; }
     if (!groups.has(setKey)) groups.set(setKey, { key: setKey, name: setName.get(setKey) || setKey, hasBonuses: setBonuses.get(setKey) !== false, scoring: null, mirrors: [], editionNames: new Map() });
-    groups.get(setKey)!.mirrors.push({ name: mirror, label, edKey: edKey ?? "", games, roundPacket });
+    groups.get(setKey)!.mirrors.push({ name: mirror, label, edKey: edKey ?? "", games: settled.games, roundPacket });
     if (date && (!setDate.has(setKey) || date < setDate.get(setKey)!)) setDate.set(setKey, date);
     if (!setValues.has(setKey)) setValues.set(setKey, new Set());
     for (const v of vals) setValues.get(setKey)!.add(v);
@@ -285,25 +275,85 @@ export function mirrorCoverage(scan: FolderScan, setKey: string, m: Mirror): { r
   return { rounds: m.roundPacket.size, matched };
 }
 
+// The round a game says it was played in: its `_round` (a number, or a Klaxon
+// label with one in it), else its file name.
+const declaredRound = (g: any, fileName: string): number | null => {
+  const d = g?._round;
+  if (d != null && d !== "" && Number.isInteger(Number(d))) return Number(d);
+  return roundFromFileName(typeof d === "string" ? d : "") ?? roundFromFileName(fileName);
+};
+
+// One site's games, each in the round it was really played in, and the packet
+// each round used. A game's `_round` can disagree with its file name and its own
+// `packets` (2026 ACF Winter: "Round 3/Round_3_….qbj", packet D, `_round` 1),
+// and a round's packet used to be whichever game was read first — so one
+// mislabeled game could hand a whole round the wrong packet, and the packet it
+// did name turned up twice. Now a round's packet is the one most of its games
+// name, and a game naming a different packet moves to the round that packet was
+// read in (its file or folder round first). A moved game is rewritten with its
+// new `_round`, which is what the server files it by.
+export async function settleSiteGames(games: File[], folders: (string | undefined)[] = []) {
+  const read: { f: File; g: any; round: number | null; alt: number[]; pk: string; raw: string }[] = [];
+  const vals = new Set<number>();
+  for (let i = 0; i < games.length; i++) {
+    const f = games[i];
+    let g: any;
+    try { g = JSON.parse(await f.text()); } catch { read.push({ f, g: null, round: null, alt: [], pk: "", raw: "" }); continue; }
+    const alt = [roundFromFileName(f.name), folders[i] ? roundFromFileName(folders[i]!) : null].filter((r): r is number => r != null);
+    const raw = g?.packets ? String(g.packets) : "";
+    read.push({ f, g, round: declaredRound(g, f.name), alt, pk: raw ? normPacket(raw) : "", raw });
+    for (const mq of g?.match_questions || []) for (const bz of mq.buzzes || []) { const v = bz?.result?.value; if (typeof v === "number") vals.add(v); }
+  }
+  // The packet most of a round's games name (ties: the first named).
+  const majority = () => {
+    const votes = new Map<number, Map<string, { n: number; raw: string }>>();
+    for (const x of read) {
+      if (x.round == null || !x.pk) continue;
+      const m = votes.get(x.round) ?? new Map();
+      const v = m.get(x.pk) ?? { n: 0, raw: x.raw };
+      v.n++; m.set(x.pk, v); votes.set(x.round, m);
+    }
+    const out = new Map<number, { pk: string; raw: string }>();
+    for (const [r, m] of votes) {
+      let best: [string, { n: number; raw: string }] | null = null;
+      for (const e of m) if (!best || e[1].n > best[1].n) best = e;
+      out.set(r, { pk: best![0], raw: best![1].raw });
+    }
+    return out;
+  };
+  const maj = majority();
+  const roundOf = new Map<string, number[]>();
+  for (const [r, m] of maj) roundOf.set(m.pk, [...(roundOf.get(m.pk) || []), r]);
+  // A packet no round mostly read (one room on C while the rest read D) gets a
+  // round of its own after the site's last, rather than D's questions.
+  let next = Math.max(0, ...[...maj.keys()].filter((r) => r < 1000)) + 1;
+  const out: File[] = [];
+  for (const x of read) {
+    if (x.round != null && x.pk && maj.get(x.round)?.pk !== x.pk) {
+      const homes = roundOf.get(x.pk) || [];
+      if (!homes.length) { homes.push(next++); roundOf.set(x.pk, homes); }
+      const to = homes.find((r) => x.alt.includes(r)) ?? (homes.length === 1 ? homes[0] : undefined);
+      if (to != null && to !== x.round) {
+        x.round = to;
+        out.push(new File([JSON.stringify({ ...x.g, _round: to })], x.f.name, { type: x.f.type || "application/json" }));
+        continue;
+      }
+    }
+    out.push(x.f);
+  }
+  const rounds = new Set(read.map((x) => x.round).filter((r): r is number => r != null));
+  const roundPacket = new Map([...majority()].map(([r, m]) => [r, m.raw] as const));
+  return { games: out, roundPacket, rounds, vals };
+}
+
 // ---- manual multi-site upload (New Tournament wizard) ----
 
 // What one site's game files say: the packet each round was read from (the
 // QBJ `packets` field, when the scoring app filled it in) and its buzz values.
-export async function readSiteGames(games: File[]): Promise<{ roundPacket: Map<number, string>; rounds: Set<number> }> {
-  const roundPacket = new Map<number, string>();
-  const rounds = new Set<number>();
-  for (const gf of games) {
-    let g: any;
-    try { g = JSON.parse(await gf.text()); } catch { continue; }
-    const declared = g?._round;
-    const r = declared != null && declared !== "" && Number.isInteger(Number(declared))
-      ? Number(declared)
-      : roundFromFileName(typeof declared === "string" ? declared : "") ?? roundFromFileName(gf.name);
-    if (r == null || !Number.isInteger(r)) continue;
-    rounds.add(r);
-    if (g.packets && !roundPacket.has(r)) roundPacket.set(r, String(g.packets));
-  }
-  return { roundPacket, rounds };
+export async function readSiteGames(games: File[]): Promise<{ games: File[]; roundPacket: Map<number, string>; rounds: Set<number> }> {
+  const folders = games.map((f) => (f.webkitRelativePath || "").split("/").slice(-2, -1)[0]);
+  const { games: settled, roundPacket, rounds } = await settleSiteGames(games, folders);
+  return { games: settled, roundPacket, rounds };
 }
 
 const stripExt = (s: string) => s.replace(/\.(docx?|pdf|json|qbj|txt)$/i, "");
