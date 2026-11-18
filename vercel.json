@@ -4,8 +4,8 @@
   "redirects": [
     {
       "source": "/:path*",
-      "has": [{ "type": "host", "value": "(?:www\\.)?buzzpoints\\.buzz" }],
-      "destination": "https://www.quizbowlbuzzpoints.com/:path*",
+      "has": [{ "type": "host", "value": "(?:www\\.)?(?:buzzpoints\\.buzz|quizbowlbuzzpoints\\.com)" }],
+      "destination": "https://www.buzzpoints.org/:path*",
       "permanent": true
     }
   ],

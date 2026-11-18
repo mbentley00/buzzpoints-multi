@@ -33,7 +33,7 @@ const transport = (): Transporter =>
 // Prefer APP_URL; fall back to the prod host (www is primary — the apex 308s to it,
 // and an invite link that redirects is one more thing to go wrong in a mail client).
 export const appUrl = () =>
-  (process.env.APP_URL || "https://www.quizbowlbuzzpoints.com").replace(/\/+$/, "");
+  (process.env.APP_URL || "https://www.buzzpoints.org").replace(/\/+$/, "");
 
 export async function sendEmail(opts: { to: string; subject: string; html: string; text?: string; replyTo?: string }): Promise<boolean> {
   if (smtpConfigured()) {

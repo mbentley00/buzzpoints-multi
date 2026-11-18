@@ -21,9 +21,9 @@ import { KlaxonUpload } from "../components/KlaxonUpload";
 import { SettingsSearch, SETTINGS_INDEX } from "../components/SettingsSearch";
 import { CategoryParentsEditor } from "../components/CategoryParentsEditor";
 
-// Shared links always use quizbowlbuzzpoints.com, even when the owner is on the old .buzz domain.
+// Shared links always use buzzpoints.org, whichever domain the owner is on.
 const SITE_ORIGIN = /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)
-  ? window.location.origin : "https://www.quizbowlbuzzpoints.com";
+  ? window.location.origin : "https://www.buzzpoints.org";
 import { buildSetExport, saveBlob } from "../setExport";
 import { buildYft } from "../yftBuild";
 import { buildStatReport } from "../statReport";
