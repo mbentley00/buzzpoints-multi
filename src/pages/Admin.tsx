@@ -11,6 +11,7 @@ import { BundledFills } from "../components/BundledFills";
 import { BackupPanel } from "../components/BackupPanel";
 import { formatDate, searchable } from "../util";
 import { buildModaqExport, SetSourceLike } from "../modaqExport";
+import { useDocTitle } from "../title";
 
 interface AdminSet {
   slug: string; name: string; owner: string | null; scoring: string; hasBonuses: boolean;
@@ -44,6 +45,7 @@ const TABS = [
 type TabId = (typeof TABS)[number]["id"];
 
 export function Admin() {
+  useDocTitle("Admin");
   const { user, isAdmin, isModerator, loading: authLoading } = useAuth();
   const [sets, setSets] = useState<AdminSet[] | null>(null);
   const [pending, setPending] = useState<PendingSub[]>([]);

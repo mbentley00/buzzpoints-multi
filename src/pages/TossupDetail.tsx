@@ -4,7 +4,8 @@ import { clearSetCache, useSetJson } from "../data";
 import { KlaxonTossupPanel } from "../components/KlaxonPanels";
 import { useSetCtx } from "../components/Layout";
 import { TossupDetail, Buzz, Rosters, EditionSummary } from "../types";
-import { Html, pct, num, roundLabel } from "../util";
+import { Html, pct, num, roundLabel, plain, primaryAnswer } from "../util";
+import { useDocTitle } from "../title";
 import { Loading, ErrorBox, EditionBadges, TeamName } from "../components/Common";
 import { QuestionNav, useQuestionNav } from "../components/QuestionNav";
 import { Segs, plainTokens, tokenizeQuestion } from "../questionText";
@@ -331,6 +332,8 @@ export function TossupDetailPage() {
   const wParam = Number(params.get("w"));
   const focusWord = Number.isInteger(wParam) && wParam > 0 ? wParam - 1 : null;
   const nav = useQuestionNav(data, id);
+  const tq = (data ?? comb)?.[id];
+  useDocTitle(tq && `Tossup ${roundLabel(tq.round)}-${tq.num}: ${plain(primaryAnswer(tq.answer))}`, meta?.setName);
 
   if (loading) return <Loading />;
   if (error) return <ErrorBox error={error} />;

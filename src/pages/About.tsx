@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { AuthNav } from "../components/Common";
+import { useDocTitle } from "../title";
 
 const FEATURES: [string, string][] = [
   ["Self-serve hosting", "No local setup or deployment."],
@@ -12,6 +13,7 @@ const FEATURES: [string, string][] = [
 ];
 
 export function About() {
+  useDocTitle("About");
   return (
     <div className="app">
       <header className="topbar">

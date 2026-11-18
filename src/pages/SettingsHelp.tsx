@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { AuthNav } from "../components/Common";
+import { useDocTitle } from "../title";
 
 // The long explanations behind each tournament Settings section. Settings itself
 // shows one line per section and links here (in a new tab, so an upload or a
@@ -102,6 +103,7 @@ const SECTIONS: { tab: string; items: { id: string; title: string; body: JSX.Ele
 ];
 
 export function SettingsHelp() {
+  useDocTitle("Settings help");
   const loc = useLocation();
   useEffect(() => {
     const el = loc.hash ? document.getElementById(loc.hash.slice(1)) : null;

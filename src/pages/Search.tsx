@@ -5,6 +5,7 @@ import { DataTable, Column } from "../components/DataTable";
 import { Html, CategoryTag, num, roundLabel, primaryAnswer, searchable } from "../util";
 import { TOURNAMENT_LEVELS, CATEGORY_BUCKETS, Visibility, levelLabel, difficultyLabel } from "../types";
 import { useAuth } from "../auth";
+import { useDocTitle } from "../title";
 
 type SearchType = "players" | "questions";
 type QKind = "all" | "tossup" | "bonus";
@@ -112,6 +113,7 @@ function matchedText(r: QuestionHit, bare: string): string | null {
 }
 
 export function Search() {
+  useDocTitle("Search");
   const [params, setParams] = useSearchParams();
   const q = (params.get("q") || "").trim();
   const type: SearchType = params.get("type") === "questions" ? "questions" : "players";

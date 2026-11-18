@@ -4,12 +4,14 @@ import { refreshIndex, useIndex } from "../data";
 import { useAuth } from "../auth";
 import { AuthNav } from "../components/Common";
 import { TOURNAMENT_LEVELS, difficultyOptions, levelLabel } from "../types";
+import { useDocTitle } from "../title";
 
 // Pool several of your own tournaments into a NEW one — e.g. two practice sets
 // as one "Level 7" stats page. The originals stay as they are; each keeps its
 // questions apart (its packets are renumbered after the previous set's) while
 // players and teams with the same name pool together. See api/_lib/combine.ts.
 export function CombineSets() {
+  useDocTitle("Combine tournaments");
   const { user, loading: authLoading } = useAuth();
   const { data: index, loading } = useIndex();
   const navigate = useNavigate();

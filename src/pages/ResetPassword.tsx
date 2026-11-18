@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth";
+import { useDocTitle } from "../title";
 
 // Landing page for the emailed reset link. Setting the password also signs them
 // in, so there's no second trip through the login form.
 export function ResetPassword() {
+  useDocTitle("Reset password");
   const { resetPassword } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();

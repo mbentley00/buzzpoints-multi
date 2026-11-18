@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth";
+import { useDocTitle } from "../title";
 
 export function Verify() {
+  useDocTitle();
   const { verify } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();

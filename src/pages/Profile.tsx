@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { AuthNav, Loading } from "../components/Common";
 import { useAuth } from "../auth";
+import { useDocTitle } from "../title";
 
 // Your account: the name shown on posts and corrections, and an affiliation
 // (school, club, or team).
 
 export function Profile() {
+  useDocTitle("Profile");
   const { user, name, institution, role, loading, updateProfile } = useAuth();
   const loc = useLocation();
   const [nameDraft, setNameDraft] = useState("");

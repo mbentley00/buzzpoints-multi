@@ -10,6 +10,7 @@ import { CategoryGroups, CatColumn } from "../components/CategoryGroups";
 import { DataTable, Column } from "../components/DataTable";
 import { Rename } from "../components/Rename";
 import { TeamRounds, teamRoundView } from "../teamRounds";
+import { useDocTitle } from "../title";
 
 const buzz = (v: number | null) => (v === null ? "—" : num(v));
 const rankCell = (rank?: number | null, rankOf?: number | null) =>
@@ -241,6 +242,7 @@ export function TeamDetailPage() {
   const { slug = "", id = "" } = useParams();
   const { data: all, error, loading } = useScopedJson<Record<string, TeamDetail>>("teams_detail.json");
   const d = all?.[id];
+  useDocTitle(d?.name, meta?.setName);
   // Per-team bonus stats are unavailable for imports that only carry aggregate
   // bonus conversion; hide the team-level bonus UI while keeping tossup stats.
   const teamBonus = meta.hasBonuses && meta.hasTeamBonuses !== false;

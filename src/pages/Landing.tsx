@@ -5,6 +5,7 @@ import { useAuth } from "../auth";
 import { SetEntry, TOURNAMENT_LEVELS, levelLabel, difficultyLabel } from "../types";
 import { Loading, ErrorBox, AuthNav, SearchInput } from "../components/Common";
 import { formatDate, relativeTime, searchable } from "../util";
+import { useDocTitle } from "../title";
 
 // Access groups for the listing, ordered top → bottom.
 // "Restricted", not "Invite-only": this group is about the VIEWER's access, and
@@ -72,6 +73,7 @@ const byPlayed = (a: SetEntry, b: SetEntry, dir: 1 | -1) => {
 };
 
 export function Landing() {
+  useDocTitle();
   const { data, error, loading } = useIndex();
   const { user, isAdmin } = useAuth();
   const sets = data?.sets ?? [];

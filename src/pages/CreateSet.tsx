@@ -11,6 +11,7 @@ import { warningText } from "../components/SourceFiles";
 import { hasYearFirst, yearFirstSuggestion } from "../util";
 import { scanDataFolder, filesFromPicker, filesFromZip, mirrorPackets, mirrorCoverage, readSiteGames, sitePacketPlan, sitePacketFiles, attachKlaxonLogs, FolderScan } from "../migratorFolder";
 import { stageEditions, ingestPostRetry, StageEdition } from "../ingestClient";
+import { useDocTitle } from "../title";
 
 interface CategoryWarning { category: string; count: number; reason: string; examples: string[] }
 
@@ -57,6 +58,7 @@ function plusYears(years: number): string {
 }
 
 export function CreateSet() {
+  useDocTitle("New tournament");
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const [mode, setMode] = useState<"upload" | "folder" | "import">("upload");

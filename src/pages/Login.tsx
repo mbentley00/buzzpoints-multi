@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth";
+import { useDocTitle } from "../title";
 
 export function Login() {
+  useDocTitle("Log in");
   const { login, signup, resendVerification, forgotPassword, user } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();

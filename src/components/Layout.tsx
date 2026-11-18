@@ -27,6 +27,14 @@ export function useScopedJson<T>(file: string, nonce = 0) {
   return useSetJson<T>(slug, file ? scopedPath(scope, file) : "", nonce);
 }
 
+// The page name a set's URL section gets in the browser tab ("" = Overview).
+const SECTION_TITLES: Record<string, string> = {
+  "": "Overview", team: "Teams", player: "Players", scoreboard: "Scoreboard", standard: "Traditional Stat Report",
+  editions: "Editions", packet: "Packets", tossup: "Tossups", bonus: "Bonuses", "bonus-order": "Bonus order",
+  category: "Categories", tags: "Tags", "buzzer-races": "Buzzer races", "first-sentence": "First sentence",
+  klaxon: "Klaxon", discussion: "Forum", settings: "Settings", requests: "Requests",
+};
+
 // The pages under a set, grouped as the header shows them. The set's home page
 // lists the same groups, so the two can't drift apart.
 export interface NavItem { to: string; label: string; badge?: number; badgeTitle?: string }
@@ -149,6 +157,15 @@ export function SetLayout() {
   // which means it was never closed.
   const allowRequests = entry?.allowRequests !== false;
   const pendingAccess = isOwner ? entry?.pendingAccess ?? 0 : 0;
+  // Tab title: the section, then the tournament. A player, team, tossup or bonus
+  // page names its own subject instead (it runs first, and this stands aside).
+  const seg = loc.pathname.split("/").slice(3).filter(Boolean);
+  const ownTitle = seg.length > 1 && ["player", "team", "tossup", "bonus"].includes(seg[0]);
+  const setName = entry?.name ?? meta?.setName;
+  const section = seg[0] === "category" && seg[3] === "players" ? "Category players" : SECTION_TITLES[seg[0] ?? ""];
+  useEffect(() => {
+    if (!ownTitle && setName) document.title = [section, setName, "Buzzpoints"].filter(Boolean).join(" · ");
+  }, [ownTitle, section, setName]);
   const ctx: SetCtx = { meta: meta as Meta, slug, scope, editions, owner, isOwner, user, allowRequests, level: entry?.level, tdLink: entry?.tdLink, difficulty: entry?.difficulty, combinedFrom: entry?.combinedFrom, tags, tournamentDate: entry?.tournamentDate, forum: !!entry?.forum, forumUnread: entry?.forumUnread ?? 0, pendingAccess };
   // A player's or a team's id is assigned per aggregation scope: ids are handed
   // out in name order over whoever appears in THAT scope, so p25 in the combined

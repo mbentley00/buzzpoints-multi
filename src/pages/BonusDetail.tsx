@@ -5,6 +5,7 @@ import { useSetCtx } from "../components/Layout";
 import { QuestionTags } from "../components/QuestionTags";
 import { BonusDetail, BonusResult, PartConv, Rosters } from "../types";
 import { CategoryTag, Html, pct, num, roundLabel } from "../util";
+import { useDocTitle } from "../title";
 import { Loading, ErrorBox, EditionBadges, TeamName } from "../components/Common";
 import { DataTable, Column } from "../components/DataTable";
 import { QuestionNav, useQuestionNav } from "../components/QuestionNav";
@@ -168,7 +169,7 @@ function rowClass(r: BonusResult, parts: PartConv[]): string {
 }
 
 export function BonusDetailPage() {
-  const { slug, scope, isOwner, editions, user, allowRequests } = useSetCtx();
+  const { slug, scope, isOwner, editions, user, allowRequests, meta } = useSetCtx();
   const { id = "" } = useParams();
   const [editing, setEditing] = useState<string | null>(null);
   // A tag (phase) scope has no per-edition file; fall back to combined for it.
@@ -180,6 +181,8 @@ export function BonusDetailPage() {
   // Who was on each team, for the roster card on a team name.
   const { data: rosters } = useSetJson<Rosters>(slug, version !== "all" ? `editions/${version}/rosters.json` : "rosters.json");
   const nav = useQuestionNav(data, id);
+  const bq = (data ?? comb)?.[id];
+  useDocTitle(bq && `Bonus ${roundLabel(bq.round)}-${bq.num}`, meta?.setName);
   if (loading) return <Loading />;
   if (error) return <ErrorBox error={error} />;
   const d = data?.[id];

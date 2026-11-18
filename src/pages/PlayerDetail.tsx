@@ -4,6 +4,7 @@ import { useSetCtx, useScopedJson } from "../components/Layout";
 import { KlaxonPlayerPanel } from "../components/KlaxonPanels";
 import { PlayerDetail, PlayerBuzz } from "../types";
 import { Html, num, primaryAnswer } from "../util";
+import { useDocTitle } from "../title";
 import { Loading, ErrorBox, EditionBadges } from "../components/Common";
 import { CategoryStatsTable } from "../components/CategoryStatsTable";
 import { DataTable, Column } from "../components/DataTable";
@@ -24,6 +25,7 @@ export function PlayerDetailPage() {
   const { data: all, error, loading } = useScopedJson<Record<string, PlayerDetail>>("players_detail.json");
   const [view, setView] = useState<"cat" | "buzz">("cat");
   const d = all?.[id];
+  useDocTitle(d && `${d.name} (${d.team})`, meta?.setName);
 
   if (loading) return <Loading />;
   if (error) return <ErrorBox error={error} />;
