@@ -3,8 +3,8 @@ import { useParams, Link, Navigate } from "react-router-dom";
 import { useSetCtx, useScopedJson, scopedPath } from "../components/Layout";
 import { loadSetJson } from "../data";
 import { resolveHeard } from "../gameRows";
-import { TeamDetail, RosterPlayer, CatBonusRow, CatBonusSub, CatTeamTossupRow, CatTeamTossupSub, GameRow, GamePlayerLine } from "../types";
-import { num, pct, roundLabel } from "../util";
+import { TeamDetail, RosterPlayer, CatBonusRow, CatBonusSub, CatTeamTossupRow, CatTeamTossupSub, GameRow, GamePlayerLine, BonusDetail, BonusResult } from "../types";
+import { num, pct, roundLabel, Html, primaryAnswer, CategoryTag } from "../util";
 import { Loading, ErrorBox, EditionBadges } from "../components/Common";
 import { CategoryGroups, CatColumn } from "../components/CategoryGroups";
 import { DataTable, Column } from "../components/DataTable";
@@ -179,6 +179,67 @@ function TeamGames({ sel, filtered, phrase }: { sel: MyGame[]; filtered: boolean
   );
 }
 
+// Every bonus this team controlled: which parts it got, and against whom.
+type TeamBonusRow = { b: BonusDetail; r: BonusResult; opp: string; got: boolean[]; idx: (number | null)[] };
+const DIFFS = ["e", "m", "h"] as const;
+
+function TeamBonuses({ team, mine, picked }: { team: string; mine: MyGame[]; picked: Set<number> }) {
+  const { slug } = useSetCtx();
+  const [open, setOpen] = useState(false);
+  const { data, error } = useScopedJson<Record<string, BonusDetail>>(open ? "bonuses_detail.json" : "");
+  const opps = useMemo(() => {
+    const m = new Map<number, string[]>();
+    for (const x of mine) m.set(x.g.round, [...(m.get(x.g.round) || []), ...x.them.map((t) => t.name)]);
+    return m;
+  }, [mine]);
+  const rows = useMemo<TeamBonusRow[]>(() => {
+    const out: TeamBonusRow[] = [];
+    for (const b of Object.values(data ?? {})) {
+      if (picked.size && !picked.has(b.round)) continue;
+      // The part each difficulty sits in; a bonus without marks reads in order.
+      const mods = b.difficultyModifiers.map((x) => String(x || "").charAt(0).toLowerCase());
+      const idx = DIFFS.map((d, i) => { const k = mods.indexOf(d); return k >= 0 ? k : mods.some(Boolean) ? null : i < b.parts.length ? i : null; });
+      for (const r of b.results)
+        if (r.team === team)
+          out.push({ b, r, opp: (opps.get(b.round) || []).join(", "), idx, got: b.parts.map((_, i) => (r.partPts[i] || 0) > 0) });
+    }
+    return out;
+  }, [data, team, opps, picked]);
+
+  const part = (k: number) => (x: TeamBonusRow) => {
+    const i = x.idx[k];
+    if (i == null) return "—";
+    return (
+      <div className="part-cell">
+        <Link to={`/set/${slug}/bonus/${x.b.id}`}><Html html={primaryAnswer(x.b.answers[i] || "")} className="part-answer" /></Link>
+        <span className="part-pct">{x.got[i] ? "✓" : "✕"}</span>
+      </div>
+    );
+  };
+  const cols: Column<TeamBonusRow>[] = [
+    { key: "rn", label: "Rd/#", sortVal: (x) => x.b.round * 100 + x.b.num, render: (x) => <span className="mono">{roundLabel(x.b.round)}-{x.b.num}</span> },
+    { key: "cat", label: "Category", sortVal: (x) => x.b.subcategory, render: (x) => <CategoryTag cat={x.b.category} /> },
+    { key: "opp", label: "Opponent", sortVal: (x) => x.opp, render: (x) => x.opp || "—" },
+    ...DIFFS.map((d, k) => ({ key: d, label: ["Easy", "Medium", "Hard"][k], sortVal: (x: TeamBonusRow) => (x.idx[k] == null ? -1 : x.got[x.idx[k]!] ? 1 : 0), render: part(k) })),
+    { key: "tot", label: "Total", align: "right", sortVal: (x) => x.r.total, render: (x) => x.r.total },
+    { key: "parts", label: "Parts", sortVal: (x) => x.got.filter(Boolean).length,
+      render: (x) => DIFFS.filter((_, k) => x.idx[k] != null && x.got[x.idx[k]!]).map((d) => d.toUpperCase()).join("") },
+  ];
+  const tier = (x: TeamBonusRow) => {
+    const n = x.got.filter(Boolean).length, ratio = x.got.length ? n / x.got.length : 0;
+    return `bonus-row bonus-row-${ratio >= 1 ? "full" : ratio >= 0.5 ? "part" : ratio > 0 ? "low" : "zero"}`;
+  };
+
+  return (
+    <details className="set-sub" onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
+      <summary><h2 style={{ display: "inline" }}>Bonuses</h2></summary>
+      {!open ? null : error ? <ErrorBox error={error} /> : !data ? <Loading /> : rows.length ? (
+        <DataTable rows={rows} columns={cols} initialSort="rn" initialDir="asc" rowKey={(x) => `${x.b.id}-${x.r.editionId ?? ""}-${x.r.total}-${x.opp}`} rowClass={tier} />
+      ) : <p className="muted">None.</p>}
+    </details>
+  );
+}
+
 export function TeamDetailPage() {
   const { meta, scope, editions, isOwner, user, allowRequests } = useSetCtx();
   const { slug = "", id = "" } = useParams();
@@ -331,6 +392,7 @@ export function TeamDetailPage() {
       <h2>Roster{filtered ? " — all rounds" : ""}</h2>
       <DataTable rows={d.roster.filter((p) => p.games > 0 || p.powers + p.gets + p.incorrect > 0)} columns={rosterCols} initialSort="pts" initialDir="desc" rowKey={(p) => p.id} />
       {mine.length > 0 && <TeamGames sel={sel} filtered={filtered} phrase={phrase} />}
+      {teamBonus && <TeamBonuses team={d.name} mine={mine} picked={picked} />}
       <h2>Categories{filtered && canFilterCats ? ` in ${phrase}` : ""}</h2>
       {catNote}
       <CategoryGroups groups={joined} columns={catCols} linkBase={`/set/${slug}/tossup`} mainParam="category" subParam="subcategory" />
