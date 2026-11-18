@@ -1190,6 +1190,9 @@ a.auth-user:hover { color: #fff; text-decoration: underline; }
 /* colored conversion rows on the bonus detail view (by parts converted) */
 .data-table tbody tr.bonus-row td { color: #fff; border-bottom-color: rgba(255, 255, 255, 0.18); }
 .data-table tbody tr.bonus-row a { color: #fff; text-decoration: underline; }
+.data-table tbody tr.bonus-row .cat-tag,
+.data-table tbody tr.bonus-row .part-pct { color: #fff; }
+.data-table tbody tr.bonus-row .part-pct { font-size: 13px; }
 .data-table tbody tr.bonus-row-full td { background: var(--bonus-full); }
 .data-table tbody tr.bonus-row-full:hover td { background: var(--bonus-full-h); }
 .data-table tbody tr.bonus-row-part td { background: var(--bonus-part); }
