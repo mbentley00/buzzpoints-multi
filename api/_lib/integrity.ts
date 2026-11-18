@@ -47,15 +47,20 @@ export function checkIntegrity(files: Json, opts: { individual?: boolean } = {})
   //    a team that isn't in the game's lineup (a phantom team).
   add("buzzes-without-tuh", "Player has buzzes but heard no tossups",
     players.filter((p) => !p.tuh && (p.gets || 0) + (p.powers || 0) + (p.incorrect || 0) > 0).map((p) => `${p.name} (${p.team})`));
+  // A phantom team: one of three or more in a game whose players all heard
+  // nothing (buzzes filed under a team name the lineup doesn't have). A
+  // free-for-all room, where every player is their own team, is fine.
   if (games && !opts.individual)
-    add("game-extra-teams", "Game has more than two teams",
-      games.filter((g) => (g.teams || []).length > 2).map((g) => `round ${g.round}: ${(g.teams || []).map((t: Json) => t.name).join(" / ")}`));
+    add("game-phantom-team", "Game has a team whose players heard no tossups",
+      games.filter((g) => (g.teams || []).length > 2 && (g.teams || []).some((t: Json) => (t.players || []).length && (t.players || []).every((p: Json) => !p.tuh)))
+        .map((g) => `round ${g.round}: ${(g.teams || []).map((t: Json) => t.name).join(" / ")}`));
 
   // 3. A category's TUH is what the player heard in it: each game they were in
   //    (from the box score), scaled by how much of it they played. Sources that
   //    list only the players who buzzed leave that undercounted, so the team's
   //    season share is accepted too. The tossups a game read are taken as the
-  //    packet's first `tuh` — close enough to tell 16 from 40.
+  //    game's replay (exact, including replacement questions in extra slots), or
+  //    failing that the packet's first `tuh` — close enough to tell 16 from 40.
   if (games && tossups.length && catTree.length) {
     const byRound = new Map<number, Json[]>();
     for (const t of tossups) byRound.set(t.round, [...(byRound.get(t.round) || []), t]);
@@ -63,8 +68,13 @@ export function checkIntegrity(files: Json, opts: { individual?: boolean } = {})
     const teamSub = new Map<string, Map<string, number>>();
     const playerSub = new Map<string, Map<string, number>>();
     const teamFull = new Map<string, number>();
+    const replays: Json = files["replays.json"] && typeof files["replays.json"] === "object" ? files["replays.json"] : {};
+    const byId = new Map(tossups.map((t) => [`${t.round}-${t.num}`, t]));
     for (const g of games) {
-      const read = (byRound.get(g.round) || []).filter((t) => t.num <= (g.tuh || 0));
+      const rp: Json[] | undefined = Array.isArray(replays[g.id]) ? replays[g.id] : undefined;
+      const read = rp
+        ? rp.map((q) => byId.get(`${q.r ?? g.round}-${q.n}`)).filter((t): t is Json => !!t)
+        : (byRound.get(g.round) || []).filter((t) => t.num <= (g.tuh || 0));
       for (const tm of g.teams || []) {
         if (!tm.id) continue;
         teamFull.set(tm.id, (teamFull.get(tm.id) || 0) + (g.tuh || 0));
@@ -121,8 +131,9 @@ export function checkIntegrity(files: Json, opts: { individual?: boolean } = {})
     add("category-tuh-mismatch", "Category leaderboard TUH disagrees with the tossups the team heard", off);
   }
 
-  // 4. One packet, one round: the same answers in two rounds means a packet was
-  //    filed twice (games from one round attached to another round's packet).
+  // 4. One packet, one round: the same answers in two rounds that both had
+  //    games means one round's games are scored against the wrong packet. (A
+  //    stray copy in a round nobody played changes no stats, so it's skipped.)
   const sets = new Map<number, Set<string>>();
   for (const t of tossups) {
     const k = answerKey(t.answer);
@@ -131,7 +142,8 @@ export function checkIntegrity(files: Json, opts: { individual?: boolean } = {})
     s.add(k);
     sets.set(t.round, s);
   }
-  const rounds = [...sets.keys()].sort((a, b) => a - b);
+  const played = games ? new Set(games.map((g) => g.round)) : null;
+  const rounds = [...sets.keys()].filter((r) => !played || played.has(r)).sort((a, b) => a - b);
   const dup: string[] = [];
   for (let i = 0; i < rounds.length; i++)
     for (let j = i + 1; j < rounds.length; j++) {
@@ -140,7 +152,7 @@ export function checkIntegrity(files: Json, opts: { individual?: boolean } = {})
       for (const x of a) if (b.has(x)) n++;
       if (n >= 5 && n / Math.min(a.size, b.size) >= 0.8) dup.push(`rounds ${rounds[i]} and ${rounds[j]} share ${n} answers`);
     }
-  add("duplicate-packet", "The same packet appears in two rounds", dup);
+  add("duplicate-packet", "The same packet was played in two rounds", dup);
 
   // 5. Totals that must agree across files.
   const overall = files["categories_tossup_overall.json"];

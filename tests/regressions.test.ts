@@ -68,6 +68,16 @@ test("a part-time player's category TUH follows the games they played", () => {
   assert.deepEqual(checkIntegrity(out), []);
 });
 
+test("a sub's partial-game category TUH is never below the tossups they buzzed on", () => {
+  // 4 Current Events of 20; Sub played 10 of them and got all 4 CE tossups.
+  const cats = [...Array(4).fill("Current Events"), ...Array(16).fill("Geography")];
+  const g = game(1, 20, { A: ["Sub", "Reg"], B: ["Cy"] }, [1, 2, 3, 4].map((q) => ({ q, player: "Sub", team: "A", value: 10 })), { Sub: 10 });
+  const out: any = aggregate([packet(1, cats)] as any, [g] as any, cfg);
+  const row = catRow(out, "Current Events", "Sub");
+  assert.ok(row.tuh >= row.gets, `${row.gets} gets in ${row.tuh} TUH`);
+  assert.deepEqual(checkIntegrity(out), []);
+});
+
 test("a buzz naming a team outside the game goes to the game's team with that player", () => {
   const packets = [packet(1, Array(5).fill("History"))];
   const g = game(1, 5, { "Auburn D": ["Olive", "Brooks"], "Bruin A": ["Jack"] }, [

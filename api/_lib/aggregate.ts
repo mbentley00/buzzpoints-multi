@@ -1317,7 +1317,8 @@ export function aggregate(
   // lineup and anyone missing from it sat that game out.
   // heardSub/heardMid: what this game read, by category, so a player's category
   // TUH can follow the games they were actually in.
-  type Lineup = { gameTuh: number; complete: boolean; listed: Map<string, number>; fixed: Map<string, number>; heardSub: Map<string, number>; heardMid: Map<string, number> };
+  // buzzed: per player, the tossups they buzzed on (a key per tossup) — they heard those for certain.
+  type Lineup = { gameTuh: number; complete: boolean; listed: Map<string, number>; fixed: Map<string, number>; heardSub: Map<string, number>; heardMid: Map<string, number>; buzzed: Map<string, Map<string, { sub: string; mid: string }>> };
   const tmLineups = new Map<string, Lineup[]>();
   const tmOf = (k: string): TM => { let v = tm.get(k); if (!v) { v = { games: 0, wins: 0, losses: 0, ties: 0, tuPts: 0, bonusPts: 0, bonusesHeard: 0, powers: 0, gets: 0, incorrect: 0, tuh: 0, fullTuh: 0, unread: 0 }; tm.set(k, v); } return v; };
   const nestCat = <V>(m: Map<string, Map<string, V>>, k: string, sub: string, make: () => V): V => {
@@ -1453,7 +1454,7 @@ export function aggregate(
       let rs = rosters.get(tname);
       if (!rs) { rs = new Set(); rosters.set(tname, rs); }
       for (const p of mt.team?.players || []) if (p?.name) rs.add(renamed(p.name, tname));
-      const lineup: Lineup = { gameTuh, complete: false, listed: new Map(), fixed: new Map(), heardSub: new Map(), heardMid: new Map() };
+      const lineup: Lineup = { gameTuh, complete: false, listed: new Map(), fixed: new Map(), heardSub: new Map(), heardMid: new Map(), buzzed: new Map() };
       const fixes = fixesFor(g, r, tname);
       if (!tmLineups.has(tname)) tmLineups.set(tname, []);
       tmLineups.get(tname)!.push(lineup);
@@ -1581,6 +1582,13 @@ export function aggregate(
             pv.unread += unread;
             addCat(nestCat(plCat, plKey(pname, bteam || ""), tq.categoryMid, newCatAcc), value, widx, prec, unread);
             addCat(nestCat(plFullCat, plKey(pname, bteam || ""), tq.subcategory, newCatAcc), value, widx, prec, unread);
+          }
+          const BL = bteam ? gLineups.get(bteam) : undefined;
+          if (tq && BL && key) {
+            const pk = plKey(pname, bteam || "");
+            const m = BL.buzzed.get(pk) ?? new Map<string, { sub: string; mid: string }>();
+            m.set(key, { sub: tq.subcategory, mid: tq.categoryMid });
+            BL.buzzed.set(pk, m);
           }
         }
         if (bteam) {
@@ -2019,7 +2027,6 @@ export function aggregate(
     // part-time player a slice of categories only read while they played — 1
     // Current Events TUH beside 2 Current Events gets.)
     const mySub = new Map<string, number>(), myMid = new Map<string, number>();
-    const addAll = (into: Map<string, number>, from: Map<string, number>, f: number) => { for (const [c, n] of from) into.set(c, (into.get(c) || 0) + n * f); };
     if (tmStats && lineups) {
       g = 0; tuh = 0; gp = 0;
       for (const L of lineups) {
@@ -2028,7 +2035,14 @@ export function aggregate(
         if (h > 0) {
           g++; tuh += h; gp += L.gameTuh ? h / L.gameTuh : 1;
           const f = L.gameTuh ? Math.min(1, h / L.gameTuh) : 1;
-          addAll(mySub, L.heardSub, f); addAll(myMid, L.heardMid, f);
+          // Scaled down for a partial game, but never below the tossups they
+          // buzzed on in it: those they certainly heard.
+          const bz = L.buzzed.get(k), bSub = new Map<string, number>(), bMid = new Map<string, number>();
+          for (const q of bz?.values() ?? []) { bSub.set(q.sub, (bSub.get(q.sub) || 0) + 1); bMid.set(q.mid, (bMid.get(q.mid) || 0) + 1); }
+          const addFloor = (into: Map<string, number>, from: Map<string, number>, floor: Map<string, number>) => {
+            for (const [c, n] of from) into.set(c, (into.get(c) || 0) + Math.min(n, Math.max(n * f, floor.get(c) || 0)));
+          };
+          addFloor(mySub, L.heardSub, bSub); addFloor(myMid, L.heardMid, bMid);
         }
       }
     }

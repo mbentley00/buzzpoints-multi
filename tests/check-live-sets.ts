@@ -6,7 +6,7 @@
 import { checkIntegrity } from "../api/_lib/integrity.ts";
 
 const BASE = (process.env.BASE || "https://www.buzzpoints.org").replace(/\/+$/, "");
-const FILES = ["players.json", "tossups.json", "games.json", "categories_tossup.json", "categories_players.json", "categories_tossup_overall.json", "meta.json"];
+const FILES = ["players.json", "tossups.json", "games.json", "categories_tossup.json", "categories_players.json", "categories_tossup_overall.json", "meta.json", "replays.json"];
 
 async function json(path: string): Promise<any> {
   const r = await fetch(`${BASE}${path}`);
