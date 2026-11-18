@@ -1107,6 +1107,27 @@ export const stripParens = (name: string) => {
   return s.replace(/\s+/g, " ").trim() || name;
 };
 
+// The same buzz listed more than once on one tossup — same player and team,
+// same word, same points — is a copy, not a second buzz: nobody buzzes twice at
+// one word. Some imported game files carry every buzz several times over
+// (2024 ACF Winter: 83 games, each buzz x4), which multiplied gets and points.
+export function dedupeBuzzes(g: GameFile): GameFile {
+  let changed = false;
+  const mqs = (g.match_questions || []).map((mq) => {
+    const seen = new Set<string>();
+    const buzzes = (mq.buzzes || []).filter((bz) => {
+      const k = JSON.stringify([bz.team?.name ?? null, bz.player?.name ?? null, bz.buzz_position?.word_index ?? null, bz.result?.value ?? null]);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    if (buzzes.length === (mq.buzzes || []).length) return mq;
+    changed = true;
+    return { ...mq, buzzes };
+  });
+  return changed ? { ...g, match_questions: mqs } : g;
+}
+
 export function individualize(g: GameFile): GameFile {
   const teams = new Map<string, { tuh: number | undefined; bonus: number }>();
   const of = (name: string) => {
@@ -1161,6 +1182,7 @@ export function aggregate(
 ): Record<string, unknown> {
   const scoring = cfg.scoring;
   const hasPower = scoring.hasPower;
+  games = games.map(dedupeBuzzes);
   if (cfg.individual) games = games.map(individualize);
   const tierOf = (v: number) => classify(v, scoring);
   const isPower = (v: number) => tierOf(v) === "power";

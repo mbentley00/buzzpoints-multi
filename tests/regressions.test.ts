@@ -78,6 +78,17 @@ test("a sub's partial-game category TUH is never below the tossups they buzzed o
   assert.deepEqual(checkIntegrity(out), []);
 });
 
+test("the same buzz listed several times counts once", () => {
+  const packets = [packet(1, Array(5).fill("History"))];
+  const g: any = game(1, 5, { A: ["Arunn"], B: ["Cy"] }, [{ q: 1, player: "Arunn", team: "A", value: 10 }]);
+  g.match_questions[0].buzzes = Array(4).fill(g.match_questions[0].buzzes[0]); // an import that repeated rows
+  const out: any = aggregate(packets as any, [g] as any, cfg);
+  const p = out["players.json"].find((x: any) => x.name === "Arunn");
+  assert.equal(p.gets, 1);
+  assert.equal(p.pts, 10);
+  assert.deepEqual(checkIntegrity(out), []);
+});
+
 test("a buzz naming a team outside the game goes to the game's team with that player", () => {
   const packets = [packet(1, Array(5).fill("History"))];
   const g = game(1, 5, { "Auburn D": ["Olive", "Brooks"], "Bruin A": ["Jack"] }, [

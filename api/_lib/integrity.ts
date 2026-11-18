@@ -55,6 +55,15 @@ export function checkIntegrity(files: Json, opts: { individual?: boolean } = {})
       games.filter((g) => (g.teams || []).length > 2 && (g.teams || []).some((t: Json) => (t.players || []).length && (t.players || []).every((p: Json) => !p.tuh)))
         .map((g) => `round ${g.round}: ${(g.teams || []).map((t: Json) => t.name).join(" / ")}`));
 
+  // 2b. A tossup is converted at most once in a game. Two correct buzzes on
+  //     one tossup means copied buzzes (an import that repeated rows).
+  const replaysAll: Json = files["replays.json"] && typeof files["replays.json"] === "object" ? files["replays.json"] : {};
+  const twice: string[] = [];
+  for (const [id, rp] of Object.entries<Json>(replaysAll))
+    for (const q of Array.isArray(rp) ? rp : [])
+      if ((q.b || []).filter((x: unknown[]) => Number(x[2]) > 0).length > 1) twice.push(`game ${id}, tossup ${q.r ? `${q.r}-` : ""}${q.n}`);
+  add("tossup-converted-twice", "A tossup was converted more than once in one game", twice);
+
   // 3. A category's TUH is what the player heard in it: each game they were in
   //    (from the box score), scaled by how much of it they played. Sources that
   //    list only the players who buzzed leave that undercounted, so the team's
