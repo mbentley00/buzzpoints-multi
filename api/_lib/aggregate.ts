@@ -1399,6 +1399,21 @@ export function aggregate(
       const mt = (g.match_teams || []).find((x) => normName(x.team?.name) === normName(t));
       return mt?.team?.name ? teamNamed(mt.team.name) : teamNamed(t);
     };
+    // A buzz credited to a team that isn't in the game — a hand-edited file
+    // whose buzzes say "Auburn D (UG)" while its lineup says "Auburn D" — belongs
+    // to the game's team with that player on it, else the one its name extends.
+    // Taken at its word it became a third team that heard nothing, so its
+    // players scored with 0 TUH and the real team scored 0.
+    const buzzTeam = (orig: string, player: string | null): string => {
+      const named = teamNamed(orig);
+      if (!teamNames.length || teamNames.includes(named)) return named;
+      const p = normName(player), o = normName(orig);
+      const mts = (g.match_teams || []).filter((mt) => mt.team?.name);
+      const has = mts.filter((mt) => p && [...(mt.match_players || []).map((m) => m.player?.name), ...(mt.team?.players || []).map((x) => x?.name)]
+        .some((n) => n && normName(n) === p));
+      const pick = has.length === 1 ? has : mts.filter((mt) => { const n = normName(mt.team!.name); return !!n && !!o && (o.startsWith(n) || n.startsWith(o)); });
+      return pick.length === 1 ? teamNamed(pick[0].team!.name!) : named;
+    };
     let mqIndex = 0;
     // Tossups read in this game (used to credit every teammate with a full game's
     // worth of TUH — see the players section — since sources often list only the
@@ -1500,7 +1515,7 @@ export function aggregate(
         const origWordIndex = bz.buzz_position?.word_index ?? null;
         let pname = origPlayer;
         const origTeam = bz.team?.name ?? null;
-        const bteam = origTeam === null ? null : teamNamed(origTeam);
+        const bteam = origTeam === null ? null : buzzTeam(origTeam, origPlayer);
         let widx = origWordIndex;
         if (tnum != null) {
           // Corrections address a buzz by the names the SOURCE gave it, so a
@@ -2037,6 +2052,12 @@ export function aggregate(
 
   // A leaf's denominator is what that team heard in that subcategory; parents get
   // theirs by summing, which is right because a tossup sits in exactly one.
+  // A subcategory the team heard but never buzzed in still counts toward its
+  // parent's denominator, so it gets an (empty) row too.
+  const subMain = new Map<string, string>();
+  for (const t of tossups.values()) subMain.set(t.subcategory, t.category);
+  for (const [team, heard] of tmCatHeardSub)
+    for (const sub of heard.keys()) nestCat<TuCat>(tmTuCat, team, sub, () => ({ ...newCatAcc(), main: subMain.get(sub) || sub.split(" - ")[0] }));
   for (const [team, subs] of tmTuCat)
     for (const [sub, acc] of subs) acc.tuh = tmCatHeardSub.get(team)?.get(sub) || 0;
 
@@ -2191,14 +2212,16 @@ export function aggregate(
         matched = true;
         agg.powers += c.powers; agg.gets += c.gets; agg.incorrect += c.incorrect; agg.points += c.points;
         agg.posSum += c.posSum; agg.posN += c.posN; agg.unread += c.unread;
-        // The BPA denominator for this slice: what the player's team heard in
-        // each subcategory the filter matched. Summing is right because a tossup
-        // belongs to exactly one subcategory, so nothing is counted twice.
-        agg.tuh += (tmCatHeardSub.get(p.team)?.get(fs) || 0) * (plShare.get(k) ?? 1);
         if (c.earliest !== null) agg.earliest = agg.earliest === null ? c.earliest : Math.min(agg.earliest, c.earliest);
         agg.first += firstPlfc.get(`${k}${SEP}${fs}`) || 0;
         agg.top3 += top3Plfc.get(`${k}${SEP}${fs}`) || 0;
       }
+      // The BPA denominator for this slice: what the player's team heard in
+      // EVERY subcategory the filter matches — not only the ones the player
+      // buzzed in, which is how a merged "Other" read 2 TUH beside 3 gets.
+      // Summing is right because a tossup belongs to exactly one subcategory.
+      for (const [fs, n] of tmCatHeardSub.get(p.team) || [])
+        if (matchFn(fs)) agg.tuh += n * (plShare.get(k) ?? 1);
       if (matched && agg.powers + agg.gets + agg.incorrect > 0)
         rows.push({
           playerId: playerId.get(k) ?? null, name: p.name, team: p.team, teamId: teamId.get(p.team) ?? null,
