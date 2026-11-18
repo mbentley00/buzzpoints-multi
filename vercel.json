@@ -3,6 +3,12 @@
   "outputDirectory": "dist",
   "redirects": [
     {
+      "source": "/",
+      "has": [{ "type": "host", "value": "(?:www\\.)?(?:buzzpoints\\.buzz|quizbowlbuzzpoints\\.com)" }],
+      "destination": "https://www.buzzpoints.org/",
+      "permanent": true
+    },
+    {
       "source": "/:path*",
       "has": [{ "type": "host", "value": "(?:www\\.)?(?:buzzpoints\\.buzz|quizbowlbuzzpoints\\.com)" }],
       "destination": "https://www.buzzpoints.org/:path*",
