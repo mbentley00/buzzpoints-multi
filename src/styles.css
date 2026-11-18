@@ -1190,9 +1190,6 @@ a.auth-user:hover { color: #fff; text-decoration: underline; }
 /* colored conversion rows on the bonus detail view (by parts converted) */
 .data-table tbody tr.bonus-row td { color: #fff; border-bottom-color: rgba(255, 255, 255, 0.18); }
 .data-table tbody tr.bonus-row a { color: #fff; text-decoration: underline; }
-.data-table tbody tr.bonus-row .cat-tag,
-.data-table tbody tr.bonus-row .part-pct { color: #fff; }
-.data-table tbody tr.bonus-row .part-pct { font-size: 13px; }
 .data-table tbody tr.bonus-row-full td { background: var(--bonus-full); }
 .data-table tbody tr.bonus-row-full:hover td { background: var(--bonus-full-h); }
 .data-table tbody tr.bonus-row-part td { background: var(--bonus-part); }
@@ -1201,6 +1198,14 @@ a.auth-user:hover { color: #fff; text-decoration: underline; }
 .data-table tbody tr.bonus-row-low:hover td { background: var(--bonus-low-h); }
 .data-table tbody tr.bonus-row-zero td { background: var(--bonus-zero); }
 .data-table tbody tr.bonus-row-zero:hover td { background: var(--bonus-zero-h); }
+
+/* a team's bonuses: plain rows, the parts it got marked in the buzz palette */
+.team-bonuses { margin-top: 26px; }
+.team-bonuses > summary { cursor: pointer; margin-bottom: 10px; }
+.team-bonuses > summary h2 { display: inline; margin: 0; }
+.bn-mark { font-size: 13px; font-weight: 700; }
+.bn-mark.got { color: var(--get); }
+.bn-mark.miss { color: var(--neg); }
 
 /* first-sentence */
 .fs-list { display: flex; flex-direction: column; gap: 10px; }

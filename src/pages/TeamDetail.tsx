@@ -212,7 +212,7 @@ function TeamBonuses({ team, mine, picked }: { team: string; mine: MyGame[]; pic
     return (
       <div className="part-cell">
         <Link to={`/set/${slug}/bonus/${x.b.id}`}><Html html={primaryAnswer(x.b.answers[i] || "")} className="part-answer" /></Link>
-        <span className="part-pct">{x.got[i] ? "✓" : "✕"}</span>
+        <span className={`bn-mark ${x.got[i] ? "got" : "miss"}`}>{x.got[i] ? "✓" : "✕"}</span>
       </div>
     );
   };
@@ -225,16 +225,12 @@ function TeamBonuses({ team, mine, picked }: { team: string; mine: MyGame[]; pic
     { key: "parts", label: "Parts", sortVal: (x) => x.got.filter(Boolean).length,
       render: (x) => DIFFS.filter((_, k) => x.idx[k] != null && x.got[x.idx[k]!]).map((d) => d.toUpperCase()).join("") },
   ];
-  const tier = (x: TeamBonusRow) => {
-    const n = x.got.filter(Boolean).length, ratio = x.got.length ? n / x.got.length : 0;
-    return `bonus-row bonus-row-${ratio >= 1 ? "full" : ratio >= 0.5 ? "part" : ratio > 0 ? "low" : "zero"}`;
-  };
 
   return (
-    <details className="set-sub" onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
-      <summary><h2 style={{ display: "inline" }}>Bonuses</h2></summary>
+    <details className="team-bonuses" onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
+      <summary><h2>Bonuses</h2></summary>
       {!open ? null : error ? <ErrorBox error={error} /> : !data ? <Loading /> : rows.length ? (
-        <DataTable rows={rows} columns={cols} initialSort="rn" initialDir="asc" rowKey={(x) => `${x.b.id}-${x.r.editionId ?? ""}-${x.r.total}-${x.opp}`} rowClass={tier} />
+        <DataTable rows={rows} columns={cols} initialSort="rn" initialDir="asc" rowKey={(x) => `${x.b.id}-${x.r.editionId ?? ""}-${x.r.total}-${x.opp}`} />
       ) : <p className="muted">None.</p>}
     </details>
   );
