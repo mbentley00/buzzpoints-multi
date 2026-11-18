@@ -8,6 +8,7 @@ import { isModaqGame, modaqToQbj } from "./modaqGame.js";
 import { buildSearchDoc, invalidateSearchDoc, SEARCH_FILE } from "./searchIndex.js";
 import { applyReplacements, scanMissingQuestions, QuestionReplacement } from "./replacements.js";
 import { htmlToText } from "./html.js";
+import { checkIntegrity } from "./integrity.js";
 
 export interface Edition {
   id: string;
@@ -600,7 +601,7 @@ async function writeFiles(prefix: string, files: Record<string, unknown>) {
 
 // Merge editions' packets by (round, position); the LATEST edition that defines a
 // slot wins, so the combined view shows the most recent version of each question.
-function combinedPackets(editions: Edition[]): PacketFile[] {
+export function combinedPackets(editions: Edition[]): PacketFile[] {
   const rounds = new Map<number, { tossups: Map<number, any>; bonuses: Map<number, any> }>();
   for (const e of editions)
     for (const p of e.packets || []) {
@@ -1097,6 +1098,8 @@ export async function aggregateAndWrite(slug: string, source: SetSource, correct
     const pd = out["players_detail.json"] as Record<string, any>;
     for (const id in pd) pd[id].editionIds = playerEds.get(playerKey(pd[id])) || [];
   }
+  // Files that disagree with each other about the same tossups (see integrity.ts).
+  (out["meta.json"] as any).integrity = checkIntegrity(out, { individual: cfg.individual });
   // The cross-tournament search reads this one file instead of the detail files.
   out[SEARCH_FILE] = buildSearchDoc(out);
   invalidateSearchDoc(slug);

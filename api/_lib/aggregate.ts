@@ -1315,7 +1315,9 @@ export function aggregate(
   // Who a team listed in each game, with each player's recorded tossups heard.
   // `complete` = the file lists a player who never buzzed, so it lists the whole
   // lineup and anyone missing from it sat that game out.
-  type Lineup = { gameTuh: number; complete: boolean; listed: Map<string, number>; fixed: Map<string, number> };
+  // heardSub/heardMid: what this game read, by category, so a player's category
+  // TUH can follow the games they were actually in.
+  type Lineup = { gameTuh: number; complete: boolean; listed: Map<string, number>; fixed: Map<string, number>; heardSub: Map<string, number>; heardMid: Map<string, number> };
   const tmLineups = new Map<string, Lineup[]>();
   const tmOf = (k: string): TM => { let v = tm.get(k); if (!v) { v = { games: 0, wins: 0, losses: 0, ties: 0, tuPts: 0, bonusPts: 0, bonusesHeard: 0, powers: 0, gets: 0, incorrect: 0, tuh: 0, fullTuh: 0, unread: 0 }; tm.set(k, v); } return v; };
   const nestCat = <V>(m: Map<string, Map<string, V>>, k: string, sub: string, make: () => V): V => {
@@ -1451,7 +1453,7 @@ export function aggregate(
       let rs = rosters.get(tname);
       if (!rs) { rs = new Set(); rosters.set(tname, rs); }
       for (const p of mt.team?.players || []) if (p?.name) rs.add(renamed(p.name, tname));
-      const lineup: Lineup = { gameTuh, complete: false, listed: new Map(), fixed: new Map() };
+      const lineup: Lineup = { gameTuh, complete: false, listed: new Map(), fixed: new Map(), heardSub: new Map(), heardMid: new Map() };
       const fixes = fixesFor(g, r, tname);
       if (!tmLineups.has(tname)) tmLineups.set(tname, []);
       tmLineups.get(tname)!.push(lineup);
@@ -1499,6 +1501,8 @@ export function aggregate(
         // heard" a category BPA is spread over.
         for (const t of teamNames) {
           bumpHeard(tmCatHeardMid, t, tq.categoryMid); bumpHeard(tmCatHeardSub, t, tq.subcategory);
+          const L = gLineups.get(t);
+          if (L) { L.heardSub.set(tq.subcategory, (L.heardSub.get(tq.subcategory) || 0) + 1); L.heardMid.set(tq.categoryMid, (L.heardMid.get(tq.categoryMid) || 0) + 1); }
           const h = tmRoundOf(t, r).heard; h.set(tq.subcategory, (h.get(tq.subcategory) || 0) + 1);
         }
       }
@@ -1992,6 +1996,8 @@ export function aggregate(
   // tossups a sub heard, so a player's per-category denominators are the
   // team's, scaled by this.
   const plShare = new Map<string, number>();
+  const plCatHeardSub = new Map<string, Map<string, number>>();
+  const plCatHeardMid = new Map<string, Map<string, number>>();
   const scaleHeard = (m: Map<string, number> | undefined, f: number) =>
     m && f !== 1 ? new Map([...m].map(([c, n]) => [c, n * f] as [string, number])) : m;
   const teamRoster = new Map<string, Record<string, unknown>[]>();
@@ -2008,17 +2014,28 @@ export function aggregate(
     const lineups = tmLineups.get(s.team);
     // gp: games played, counting part of a game as that fraction (YellowFruit's GP).
     let g = s.games.size, tuh = s.tuh, gp = g;
+    // What this player heard in each category: every game they were in, each
+    // scaled by how much of that game they played. (A season-wide share gave a
+    // part-time player a slice of categories only read while they played — 1
+    // Current Events TUH beside 2 Current Events gets.)
+    const mySub = new Map<string, number>(), myMid = new Map<string, number>();
+    const addAll = (into: Map<string, number>, from: Map<string, number>, f: number) => { for (const [c, n] of from) into.set(c, (into.get(c) || 0) + n * f); };
     if (tmStats && lineups) {
       g = 0; tuh = 0; gp = 0;
       for (const L of lineups) {
         const rec = L.listed.get(k), fx = L.fixed.get(k);
         const h = fx !== undefined ? fx : rec ? Math.min(rec, L.gameTuh) : L.complete || fixOnly.has(k) ? 0 : L.gameTuh;
-        if (h > 0) { g++; tuh += h; gp += L.gameTuh ? h / L.gameTuh : 1; }
+        if (h > 0) {
+          g++; tuh += h; gp += L.gameTuh ? h / L.gameTuh : 1;
+          const f = L.gameTuh ? Math.min(1, h / L.gameTuh) : 1;
+          addAll(mySub, L.heardSub, f); addAll(myMid, L.heardMid, f);
+        }
       }
     }
     // Rostered but never played: leave them off the stats.
     if (tuh === 0 && s.powers + s.gets + s.incorrect === 0) continue;
     plShare.set(k, tmStats?.fullTuh ? tuh / tmStats.fullTuh : 1);
+    if (tmStats && lineups) { plCatHeardSub.set(k, mySub); plCatHeardMid.set(k, myMid); }
     // Rebounds: tossups this player converted after another team had buzzed wrong
     // (already flagged per-buzz in the buzz log).
     const rebounds = (plBuzzes.get(k) || []).filter((b) => b.rebound).length;
@@ -2034,7 +2051,7 @@ export function aggregate(
     players.push(row);
     if (!teamRoster.has(s.team)) teamRoster.set(s.team, []);
     teamRoster.get(s.team)!.push(row);
-    plDetail[pid] = { ...row, categories: catStatRows(plCat.get(k), s.pts || 0, scaleHeard(tmCatHeardMid.get(s.team), plShare.get(k)!)), buzzes: buzzRowsFor(s.name, s.team) };
+    plDetail[pid] = { ...row, categories: catStatRows(plCat.get(k), s.pts || 0, plCatHeardMid.get(k) ?? scaleHeard(tmCatHeardMid.get(s.team), plShare.get(k)!)), buzzes: buzzRowsFor(s.name, s.team) };
   }
   players.sort((a, b) => (b.ppg as number) - (a.ppg as number));
   files["players.json"] = players;
@@ -2220,8 +2237,9 @@ export function aggregate(
       // EVERY subcategory the filter matches — not only the ones the player
       // buzzed in, which is how a merged "Other" read 2 TUH beside 3 gets.
       // Summing is right because a tossup belongs to exactly one subcategory.
-      for (const [fs, n] of tmCatHeardSub.get(p.team) || [])
-        if (matchFn(fs)) agg.tuh += n * (plShare.get(k) ?? 1);
+      const mine = plCatHeardSub.get(k);
+      for (const [fs, n] of mine ?? tmCatHeardSub.get(p.team) ?? [])
+        if (matchFn(fs)) agg.tuh += n * (mine ? 1 : plShare.get(k) ?? 1);
       if (matched && agg.powers + agg.gets + agg.incorrect > 0)
         rows.push({
           playerId: playerId.get(k) ?? null, name: p.name, team: p.team, teamId: teamId.get(p.team) ?? null,
