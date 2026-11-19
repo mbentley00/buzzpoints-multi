@@ -5,7 +5,7 @@ import { TossupRow } from "../types";
 import { CategoryTag, Html, pct, num, plain, catMatches, roundLabel, primaryAnswer, searchable } from "../util";
 import { DataTable, Column } from "../components/DataTable";
 import { PageHeader, Loading, ErrorBox, RoundFilter, MinHeardFilter, SearchInput } from "../components/Common";
-import { useCategoryFilter, CategoryFilterChip } from "../components/CategoryFilter";
+import { useCategoryFilter, CategoryFilterChip, CategoryLeaderLinks } from "../components/CategoryFilter";
 
 export function Tossups() {
   const { meta } = useSetCtx();
@@ -87,7 +87,7 @@ export function Tossups() {
         <MinHeardFilter value={minHeard} onChange={setMinHeard} />
         <SearchInput value={q} onChange={setQ} placeholder="Search answer / category" />
       </PageHeader>
-      {cat.active && <CategoryFilterChip label={cat.label} onClear={cat.clear} />}
+      {cat.active && <CategoryFilterChip label={cat.label} onClear={cat.clear}><CategoryLeaderLinks /></CategoryFilterChip>}
       {tag && (
         <CategoryFilterChip
           label={tag}

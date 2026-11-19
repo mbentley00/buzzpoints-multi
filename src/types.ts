@@ -638,6 +638,8 @@ export interface TeamRow {
   // (keyed by its full path). Present once a set with per-team bonus data has
   // been rebuilt.
   bonusCats?: Record<string, [number, number]>;
+  // Per category: [tossups heard, points, tossups converted, BPA].
+  tossupCats?: Record<string, [number, number, number, number]>;
 }
 
 export interface RosterPlayer {

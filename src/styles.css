@@ -830,6 +830,7 @@ mark.hot-clue { background: var(--mark-bg); color: var(--ink); padding: 0 2px; }
   background: var(--info-bg); border: 1px solid var(--info-line); border-radius: 999px;
   font-size: 13px;
 }
+.cat-leader-links { margin-left: 14px; padding-left: 14px; border-left: 1px solid var(--line); }
 
 /* merged (virtual) categories */
 .cat-virtual-badge {

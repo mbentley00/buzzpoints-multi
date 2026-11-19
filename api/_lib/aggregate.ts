@@ -2151,7 +2151,36 @@ export function aggregate(
         by[m.category] = [m.heard, m.ppb];
         for (const sub of m.subs as Record<string, any>[]) if (sub.subcategory !== m.category) by[sub.subcategory] = [sub.heard, sub.ppb];
       }
+      // Merged categories too, so a ranking can be had for "Fine Arts" when the
+      // packets only say "Classical Music", "Painting and Sculpture", ….
+      for (const v of virtualCats) {
+        const members = virtualMembers(v);
+        let heard = 0, pts = 0;
+        for (const [sub, c] of tmBonusCat.get(name) || new Map<string, BnCat>())
+          if (members.some((m) => vmatchSub(sub, m))) { heard += c.heard; pts += c.pts; }
+        if (heard) by[v.name] = [heard, Math.round((100 * pts) / heard) / 100];
+      }
       (row as Record<string, unknown>).bonusCats = by;
+    }
+    // The same for tossups, so teams can be ranked in one category:
+    // [tossups heard, points, tossups converted, BPA] per main category, second
+    // level and merged category.
+    {
+      const acc = new Map<string, { tuh: number; pts: number; conv: number; unread: number }>();
+      const bump = (k: string, c: TuCat) => {
+        const a = acc.get(k) ?? { tuh: 0, pts: 0, conv: 0, unread: 0 };
+        a.tuh += c.tuh; a.pts += c.points; a.conv += c.powers + c.gets; a.unread += c.unread;
+        acc.set(k, a);
+      };
+      for (const [fs, c] of tmTuCat.get(name) || new Map<string, TuCat>()) {
+        const parts = fs.split(" - ").map((x) => x.trim());
+        bump(parts[0], c);
+        if (parts.length > 1) bump(`${parts[0]} - ${parts[1]}`, c);
+        for (const v of virtualCats) if (virtualMembers(v).some((m) => vmatchSub(fs, m)) && v.name !== parts[0]) bump(v.name, c);
+      }
+      const tc: Record<string, [number, number, number, number]> = {};
+      for (const [k, a] of acc) if (a.tuh) tc[k] = [a.tuh, a.pts, a.conv, bpaOf(a.unread, a.tuh)];
+      (row as Record<string, unknown>).tossupCats = tc;
     }
   }
   // Rank each team within every category node by total points, so a team's

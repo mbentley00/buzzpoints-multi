@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { useSetCtx, useScopedJson } from "../components/Layout";
 import { TeamRow } from "../types";
-import { num, searchable } from "../util";
+import { num, pct, searchable } from "../util";
 import { DataTable, Column } from "../components/DataTable";
 import { PageHeader, Loading, ErrorBox, SearchInput, EditionBadges } from "../components/Common";
 
@@ -11,17 +11,18 @@ export function Teams() {
   const { slug = "" } = useParams();
   const { data, error, loading } = useScopedJson<TeamRow[]>("teams.json");
   const [q, setQ] = useState("");
-  // Rank by PPB in one subject: a main category or one of its subcategories.
+  // Rank within one subject — a main category, one of its subcategories, or a
+  // merged category — by tossups (BPA, conversion) and bonuses (PPB).
   // Kept in the URL so a ranking can be linked to.
   const [params, setParams] = useSearchParams();
   const subject = params.get("subject") || "";
   const setSubject = (v: string) =>
     setParams((p) => { const n = new URLSearchParams(p); if (v) n.set("subject", v); else n.delete("subject"); return n; }, { replace: true });
 
-  // Every subject some team heard a bonus in, each main followed by its subs.
+  // Every subject some team heard a tossup or bonus in, each main followed by its subs.
   const subjects = useMemo(() => {
     const keys = new Set<string>();
-    for (const t of data ?? []) for (const k of Object.keys(t.bonusCats || {})) keys.add(k);
+    for (const t of data ?? []) for (const k of [...Object.keys(t.bonusCats || {}), ...Object.keys(t.tossupCats || {})]) keys.add(k);
     const mains = [...keys].filter((k) => !k.includes(" - ")).sort((a, b) => a.localeCompare(b));
     return mains.flatMap((m) => [
       { key: m, label: m },
@@ -30,6 +31,9 @@ export function Teams() {
     ]);
   }, [data]);
   const subjectLabel = subject.split(" - ").slice(-1)[0];
+  const tc = (t: TeamRow) => t.tossupCats?.[subject];
+  const hasTuSubject = !!subject && (data ?? []).some((t) => t.tossupCats?.[subject]);
+  const hasBnSubject = !!subject && (data ?? []).some((t) => t.bonusCats?.[subject]);
 
   const rows = useMemo(() => {
     let r = data ?? [];
@@ -67,9 +71,22 @@ export function Teams() {
     ...(meta.hasBonuses && meta.hasTeamBonuses !== false && !subject
       ? [{ key: "ppb", label: "PPB", align: "right" as const, sortVal: (t: TeamRow) => t.ppb, render: (t: TeamRow) => num(t.ppb, 2) }]
       : []),
-    ...(subject
+    ...(subject && hasTuSubject
       ? [
-          { key: "subjHeard", label: "Heard", align: "right" as const, title: `Bonuses heard in ${subjectLabel}`,
+          { key: "subjTuh", label: "TUH", align: "right" as const, title: `Tossups heard in ${subjectLabel}`,
+            sortVal: (t: TeamRow) => tc(t)?.[0] ?? 0, render: (t: TeamRow) => tc(t)?.[0] ?? 0 },
+          { key: "subjConv", label: "Conv%", align: "right" as const, title: `Share of ${subjectLabel} tossups the team converted`,
+            sortVal: (t: TeamRow) => (tc(t)?.[0] ? tc(t)![2] / tc(t)![0] : -1),
+            render: (t: TeamRow) => (tc(t)?.[0] ? pct((100 * tc(t)![2]) / tc(t)![0]) : "—") },
+          { key: "subjPts", label: `${subjectLabel} pts`, align: "right" as const,
+            sortVal: (t: TeamRow) => tc(t)?.[1] ?? -1e9, render: (t: TeamRow) => tc(t)?.[1] ?? "—" },
+          { key: "subjBpa", label: `${subjectLabel} BPA`, align: "right" as const, title: "Buzz point area under the curve",
+            sortVal: (t: TeamRow) => (tc(t)?.[0] ? tc(t)![3] : -1), render: (t: TeamRow) => (tc(t)?.[0] ? num(tc(t)![3]) : "—") },
+        ]
+      : []),
+    ...(subject && hasBnSubject
+      ? [
+          { key: "subjHeard", label: "Bonuses", align: "right" as const, title: `Bonuses heard in ${subjectLabel}`,
             sortVal: (t: TeamRow) => t.bonusCats?.[subject]?.[0] ?? 0, render: (t: TeamRow) => t.bonusCats?.[subject]?.[0] ?? 0 },
           { key: "subjPpb", label: `${subjectLabel} PPB`, align: "right" as const,
             // A team that heard none sorts below every team that did, either way.
@@ -99,7 +116,7 @@ export function Teams() {
       {loading && <Loading />}
       {error && <ErrorBox error={error} />}
       {/* Remounted per subject so choosing one sorts by it. */}
-      {data && <DataTable key={subject} rows={rows} columns={columns} initialSort={subject ? "subjPpb" : "ppg"} initialDir="desc" rowKey={(t) => t.id} />}
+      {data && <DataTable key={subject} rows={rows} columns={columns} initialSort={hasTuSubject ? "subjBpa" : hasBnSubject ? "subjPpb" : "ppg"} initialDir="desc" rowKey={(t) => t.id} />}
     </div>
   );
 }

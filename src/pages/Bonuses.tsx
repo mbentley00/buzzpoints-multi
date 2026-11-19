@@ -5,7 +5,7 @@ import { BonusRow } from "../types";
 import { CategoryTag, Html, pct, num, plain, catMatches, roundLabel, primaryAnswer, searchable } from "../util";
 import { DataTable, Column } from "../components/DataTable";
 import { PageHeader, Loading, ErrorBox, RoundFilter, SearchInput } from "../components/Common";
-import { useCategoryFilter, CategoryFilterChip } from "../components/CategoryFilter";
+import { useCategoryFilter, CategoryFilterChip, CategoryLeaderLinks } from "../components/CategoryFilter";
 
 export function Bonuses() {
   const { meta } = useSetCtx();
@@ -69,7 +69,7 @@ export function Bonuses() {
           By difficulty order →
         </Link>
       </PageHeader>
-      {cat.active && <CategoryFilterChip label={cat.label} onClear={cat.clear} />}
+      {cat.active && <CategoryFilterChip label={cat.label} onClear={cat.clear}><CategoryLeaderLinks /></CategoryFilterChip>}
       {tag && (
         <CategoryFilterChip
           label={tag}
