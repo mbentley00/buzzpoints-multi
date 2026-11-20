@@ -639,7 +639,7 @@ export interface TeamRow {
   // been rebuilt.
   bonusCats?: Record<string, [number, number]>;
   // Per category: [tossups heard, points, tossups converted, BPA].
-  tossupCats?: Record<string, [number, number, number, number]>;
+  tossupCats?: Record<string, [number, number, number, number | null]>;
 }
 
 export interface RosterPlayer {

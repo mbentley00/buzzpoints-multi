@@ -81,7 +81,7 @@ export function Teams() {
           { key: "subjPts", label: `${subjectLabel} pts`, align: "right" as const,
             sortVal: (t: TeamRow) => tc(t)?.[1] ?? -1e9, render: (t: TeamRow) => tc(t)?.[1] ?? "—" },
           { key: "subjBpa", label: `${subjectLabel} BPA`, align: "right" as const, title: "Buzz point area under the curve",
-            sortVal: (t: TeamRow) => (tc(t)?.[0] ? tc(t)![3] : -1), render: (t: TeamRow) => (tc(t)?.[0] ? num(tc(t)![3]) : "—") },
+            sortVal: (t: TeamRow) => (tc(t)?.[0] ? tc(t)![3] ?? -1 : -1), render: (t: TeamRow) => (tc(t)?.[0] ? num(tc(t)![3]) : "—") },
         ]
       : []),
     ...(subject && hasBnSubject

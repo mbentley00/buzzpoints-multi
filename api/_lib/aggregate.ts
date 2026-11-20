@@ -2178,7 +2178,7 @@ export function aggregate(
         if (parts.length > 1) bump(`${parts[0]} - ${parts[1]}`, c);
         for (const v of virtualCats) if (virtualMembers(v).some((m) => vmatchSub(fs, m)) && v.name !== parts[0]) bump(v.name, c);
       }
-      const tc: Record<string, [number, number, number, number]> = {};
+      const tc: Record<string, [number, number, number, number | null]> = {};
       for (const [k, a] of acc) if (a.tuh) tc[k] = [a.tuh, a.pts, a.conv, bpaOf(a.unread, a.tuh)];
       (row as Record<string, unknown>).tossupCats = tc;
     }
