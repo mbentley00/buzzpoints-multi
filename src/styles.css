@@ -1247,7 +1247,7 @@ a.auth-user:hover { color: #fff; text-decoration: underline; }
 .field { display: flex; flex-direction: column; gap: 5px; }
 .field > span { font-weight: 600; font-size: 13.5px; }
 .field input[type="text"], .field input:not([type]), .field input[type="file"], .field select,
-.field input[type="date"], .field input[type="url"], .field input[type="email"], .field input[type="number"] {
+.field input[type="date"], .field input[type="url"], .field input[type="email"], .field input[type="number"], .field input[type="password"] {
   border: 1px solid var(--line-strong); background: var(--surface); border-radius: 4px; padding: 8px 10px; font-size: 14px; color: var(--ink);
   font-family: inherit;
 }
